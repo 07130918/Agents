@@ -1,0 +1,20 @@
+model = "gpt-5.5"
+model_reasoning_effort = "medium"
+personality = "pragmatic"
+
+[features]
+shell_snapshot = true
+unified_exec = true
+js_repl = false
+
+[shell_environment_policy]
+inherit = "core"
+
+[tui]
+notification_condition = "always"
+notification_method = "bel"
+notifications = true
+
+# MCP servers should be configured locally.
+# Do not commit API keys or OAuth credentials.
+

@@ -1,0 +1,28 @@
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Secrets and local runtime state
+*.local
+*.secret
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+auth.json
+.credentials.json
+history.jsonl
+session_index.jsonl
+archived_sessions/
+logs/
+log/
+cache/
+backups/
+file-history/
+shell_snapshots/
+vendor_imports/
+
+# Codex / Claude runtime-only files
+codex/config.toml
+claude/settings.json
+
