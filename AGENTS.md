@@ -8,6 +8,7 @@
 - Codex 用 wrapper は `codex/skills/*/SKILL.md` に置く。
 - Claude Code 用 wrapper は `claude/skills/*/SKILL.md` に置く。
 - 認証情報、履歴、SQLite、cache、file-history は管理しない。
+- `tp-management-nippo-insight` を含む `tp-*` で始まる skill / agent / reference は、会社に関する情報を含み得るためこの GitHub リポジトリでは管理しない。
 - ローカルで設定を更新したら `scripts/sync-from-local.sh` でこのリポジトリへ同期する。
 
 ## 同期先
@@ -25,5 +26,5 @@
 
 - `~/.codex/config.toml` は secrets を含みやすいため、実物は管理しない。
 - `codex/config.example.toml` は構成の参考だけに使う。
+- `tp-*` のローカル専用 skill / agent は GitHub に含めない。同期スクリプトと `.gitignore` で除外する。
 - GitHub に push する前に `scripts/validate.sh` を実行する。
-
