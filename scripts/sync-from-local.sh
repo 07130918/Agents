@@ -4,13 +4,13 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HOME_DIR="${HOME}"
 
-rsync -a --delete "${HOME_DIR}/.agents/references/" "${ROOT}/shared/references/"
-rsync -a --delete "${HOME_DIR}/.agents/skills/" "${ROOT}/codex/skills/"
-rsync -a --delete "${HOME_DIR}/.claude/skills/" "${ROOT}/claude/skills/"
-rsync -a --delete "${HOME_DIR}/.claude/agents/" "${ROOT}/claude/agents/"
+rsync -a --delete --delete-excluded --exclude 'tp-*.md' "${HOME_DIR}/.agents/references/" "${ROOT}/shared/references/"
+rsync -a --delete --delete-excluded --exclude 'tp-*' "${HOME_DIR}/.agents/skills/" "${ROOT}/codex/skills/"
+rsync -a --delete --delete-excluded --exclude 'tp-*' "${HOME_DIR}/.claude/skills/" "${ROOT}/claude/skills/"
+rsync -a --delete --delete-excluded --exclude 'tp-*.md' "${HOME_DIR}/.claude/agents/" "${ROOT}/claude/agents/"
 
 mkdir -p "${ROOT}/codex/agents"
-rsync -a --delete "${HOME_DIR}/.codex/agents/" "${ROOT}/codex/agents/"
+rsync -a --delete --delete-excluded --exclude 'tp-*.toml' "${HOME_DIR}/.codex/agents/" "${ROOT}/codex/agents/"
 
 cp "${HOME_DIR}/.codex/AGENTS.md" "${ROOT}/codex/AGENTS.md"
 cp "${HOME_DIR}/.codex/hooks.json" "${ROOT}/codex/hooks.json"

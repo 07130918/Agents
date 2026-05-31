@@ -26,3 +26,9 @@ vendor_imports/
 codex/config.toml
 claude/settings.json
 
+# Private company-specific skills/agents kept only in local global settings
+codex/skills/tp-*/
+claude/skills/tp-*/
+codex/agents/tp-*.toml
+claude/agents/tp-*.md
+shared/references/tp-*.md

@@ -42,4 +42,6 @@ scripts/apply-to-local.sh
 - file-history
 - archived sessions
 - shell snapshots
+- `tp-management-nippo-insight` を含む `tp-*` の skill / agent / reference
 
+`tp-*` は会社に関する情報を含み得るローカル専用設定です。今後 `tp-` から始まる skill や agent が増えても、この GitHub リポジトリには含めません。
