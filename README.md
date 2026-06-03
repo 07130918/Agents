@@ -28,9 +28,12 @@ git push
 GitHub 側の変更をローカル設定へ反映する場合は、内容を確認してから実行します。
 
 ```bash
+scripts/validate.sh
 scripts/diff-local.sh
 scripts/apply-to-local.sh
 ```
+
+`scripts/validate.sh` と `scripts/diff-local.sh` で `AGENTS.md` / `CLAUDE.md` / skill wrapper の意味が壊れていないことを確認してから `scripts/apply-to-local.sh` を実行します。ローカルから同期する `scripts/sync-from-local.sh` は本文を自動変換せず、同期後の `scripts/validate.sh` で禁止文字や秘密情報を検出します。
 
 ## 管理しないもの
 
