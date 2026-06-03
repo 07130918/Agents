@@ -16,8 +16,6 @@ cp "${HOME_DIR}/.codex/AGENTS.md" "${ROOT}/codex/AGENTS.md"
 cp "${HOME_DIR}/.codex/hooks.json" "${ROOT}/codex/hooks.json"
 cp "${HOME_DIR}/.claude/CLAUDE.md" "${ROOT}/claude/CLAUDE.md"
 
-find "${ROOT}/shared/references" "${ROOT}/codex" "${ROOT}/claude" \
-  -type f \( -name '*.md' -o -name '*.toml' -o -name '*.json' \) \
-  -exec perl -CS -0pi -e 's/\x{ff08}/(/g; s/\x{ff09}/)/g' {} +
+"${ROOT}/scripts/validate.sh"
 
 echo "Synced local global AI settings into ${ROOT}"
