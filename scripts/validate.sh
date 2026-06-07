@@ -28,7 +28,22 @@ if grep -RInE --exclude='validate.sh' --exclude-dir=.git '（|）' "${ROOT}"; th
   exit 1
 fi
 
+if ! command -v ruby >/dev/null 2>&1; then
+  echo "ruby is required to validate SKILL.md YAML frontmatter." >&2
+  exit 1
+fi
+
 find "${ROOT}/codex/skills" "${ROOT}/claude/skills" -path '*/SKILL.md' -type f -print | while read -r file; do
+  ruby -ryaml -e '
+    file = ARGV.fetch(0)
+    content = File.read(file)
+    match = content.match(/\A---\n(.*?)\n---/m)
+    abort("Missing YAML frontmatter: #{file}") unless match
+    YAML.safe_load(match[1], permitted_classes: [], aliases: false)
+  ' "$file" || {
+    echo "Invalid YAML frontmatter: $file" >&2
+    exit 1
+  }
   grep -q '^name:' "$file" || { echo "Missing name: $file" >&2; exit 1; }
   grep -q '^description:' "$file" || { echo "Missing description: $file" >&2; exit 1; }
 done
