@@ -21,7 +21,7 @@
 1. **失敗するテスト** をバグに到達する seam (unit / integration / e2e) で書く
 2. **curl / HTTP スクリプト** をローカル開発サーバーに叩く
 3. **CLI 起動 + フィクスチャ入力** + stdout を既知の正解 snapshot と diff
-4. **ヘッドレスブラウザ** (Playwright / Puppeteer) で UI を駆動し、DOM/console/network を assert
+4. **Chrome DevTools MCP** で UI を駆動し、DOM/console/network を assert
 5. **キャプチャしたトレースを再生** — 実際のリクエスト/ペイロード/イベントログをファイルに保存し、コードパスに単独で流し込む
 6. **使い捨てハーネス** — システムの最小サブセット (1 サービス + モック) を立ち上げ、バグコードパスを 1 関数呼び出しで再現
 7. **Property / fuzz ループ** — 「たまに出力が間違う」系なら 1000 回ランダム入力を流し、失敗モードを探す

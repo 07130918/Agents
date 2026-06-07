@@ -24,7 +24,7 @@
    - frontmatter `description` が謳う trigger / 用途を読む
    - body がカバーする範囲を読む
    - 乖離があれば iter 1 に進む前に description か body を合わせる
-   - 例: description「navigation / form filling / data extraction」と書いてあるが body は `npx playwright test` の CLI ref のみ、のような乖離を検出
+   - 例: description「navigation / form filling / data extraction」と書いてあるが body は Chrome DevTools MCP の限定的な操作メモのみ、のような乖離を検出
    - これを飛ばすと、subagent は description に合わせて body を「再解釈」し、実質 skill が要件を満たしていないのに精度が出る(false positive)
 
 1. **ベースライン準備**: 対象プロンプトを確定し、次の 2 つを用意する。
@@ -213,7 +213,7 @@
    - frontmatter `description` が謳う trigger / 用途を読む
    - body がカバーする範囲を読む
    - 乖離があれば iter 1 に進む前に description か body を合わせる
-   - 例: description「navigation / form filling / data extraction」と書いてあるが body は `npx playwright test` の CLI ref のみ、のような乖離を検出
+   - 例: description「navigation / form filling / data extraction」と書いてあるが body は Chrome DevTools MCP の限定的な操作メモのみ、のような乖離を検出
    - これを飛ばすと、subagent は description に合わせて body を「再解釈」し、実質 skill が要件を満たしていないのに精度が出る(false positive)
 
 1. **ベースライン準備**: 対象プロンプトを確定し、次の 2 つを用意する。
