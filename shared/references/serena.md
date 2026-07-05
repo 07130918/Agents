@@ -112,7 +112,6 @@ Serena方式でアプリ開発、デバッグ、設計、レビューを構造�
 
 - `react-chakra-ui`: Chakra UI v3 や React UI 実装。
 - `nextjs-prisma-patterns`: Next.js App Router と Prisma。
-- `python-backend`: FastAPI / Flask / DB まわり。
 - `testing-patterns`: テスト追加、mock、coverage。
 - `bug-investigation`: 深い根本原因調査。
 - `software-architecture`: 大きめの設計、責務分割、リファクタ。
