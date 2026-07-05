@@ -23,6 +23,7 @@ shell_snapshots/
 vendor_imports/
 
 # Codex / Claude runtime-only files
+.serena/
 codex/config.toml
 claude/settings.json
 
