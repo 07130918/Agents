@@ -7,6 +7,7 @@
 - 実体のある手順は `shared/references/` に置く。
 - Codex 用 wrapper は `codex/skills/*/SKILL.md` に置く。
 - Claude Code 用 wrapper は `claude/skills/*/SKILL.md` に置く。
+- 新規プロジェクト用の AGENTS.md / CLAUDE.md テンプレートは `templates/` に置き、2 ファイルを同一内容で対称管理する (ラッパー・@import は使わない)。ローカル同期の対象外で、このリポジトリが正本。
 - 認証情報、履歴、SQLite、cache、file-history は管理しない。
 - `tp-management-nippo-insight` を含む `tp-*` で始まる skill / agent / reference は、会社に関する情報を含み得るためこの GitHub リポジトリでは管理しない。
 - ローカルで設定を更新したら `scripts/sync-from-local.sh` でこのリポジトリへ同期する。
