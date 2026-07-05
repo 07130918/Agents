@@ -8,6 +8,7 @@ Codex と Claude Code のユーザーグローバル設定を管理するリポ�
 shared/references/   skill 本体の共通参照
 codex/               Codex 用グローバル設定と wrapper
 claude/              Claude Code 用グローバル設定と wrapper
+templates/           新規プロジェクト用の AGENTS.md / CLAUDE.md テンプレート
 scripts/             同期・検証スクリプト
 docs/                運用メモ
 ```
@@ -34,6 +35,18 @@ scripts/apply-to-local.sh
 ```
 
 `scripts/validate.sh` と `scripts/diff-local.sh` で `AGENTS.md` / `CLAUDE.md` / skill wrapper の意味が壊れていないことを確認してから `scripts/apply-to-local.sh` を実行します。ローカルから同期する `scripts/sync-from-local.sh` は本文を自動変換せず、同期後の `scripts/validate.sh` で禁止文字や秘密情報を検出します。
+
+## 新規プロジェクトのセットアップ
+
+新しいプロジェクトを始めるときは、`templates/` の AGENTS.md / CLAUDE.md をコピーして使うことを推奨します。
+
+```bash
+cp templates/AGENTS.md templates/CLAUDE.md <プロジェクトルート>/
+```
+
+- 2 ファイルは意図的な対称配置です。冗長でも両方をフル内容で用意し、片方を変更したらもう片方にも同じ変更を反映します (ラッパー・@import・symlink は使わない)
+- 記入基準と運用ルールは [templates/README.md](templates/README.md) を参照してください
+- `templates/` はローカル同期 (`sync-from-local.sh` / `apply-to-local.sh`) の対象外で、このリポジトリが正本です
 
 ## 管理しないもの
 
