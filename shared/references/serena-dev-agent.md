@@ -82,5 +82,4 @@ Codex agent と Claude Code sub agent で共有する `serena-dev` の本体プ�
 - `testing-patterns`: テスト設計と mock。
 - `react-chakra-ui`: Chakra UI v3。
 - `nextjs-prisma-patterns`: Next.js / Prisma。
-- `python-backend`: Python API / DB。
 - `software-architecture`: 設計とリファクタ。

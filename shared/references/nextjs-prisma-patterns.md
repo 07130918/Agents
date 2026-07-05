@@ -54,7 +54,6 @@ App Router と Prisma を組み合わせたプロジェクトで使う設計パ�
 ## 関連スキル
 
 - `react-chakra-ui`: Chakra UI v3 コンポーネント実装
-- `python-backend`: FastAPI / Knex.js (Prisma とは別系統だが権限設計は共通)
 - `testing-patterns`: Server Actions / Prisma を使うテスト
 - `software-architecture`: 二層テナントモデル (corporation / provider)
 
@@ -110,6 +109,5 @@ App Router と Prisma を組み合わせたプロジェクトで使う設計パ�
 ## 関連スキル
 
 - `react-chakra-ui`: Chakra UI v3 コンポーネント実装
-- `python-backend`: FastAPI / Knex.js (Prisma とは別系統だが権限設計は共通)
 - `testing-patterns`: Server Actions / Prisma を使うテスト
 - `software-architecture`: 二層テナントモデル (corporation / provider)

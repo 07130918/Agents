@@ -185,4 +185,4 @@
 - アーキテクチャ起因のバグが見つかった場合: `software-architecture`
 - 回帰テストの設計: `testing-patterns`
 - Chakra UI v3 の prop バグ: `react-chakra-ui`
-- DB マイグレーションがらみ: `python-backend` / `nextjs-prisma-patterns`
+- DB マイグレーションがらみ: `nextjs-prisma-patterns`
