@@ -69,7 +69,7 @@ docs/
 ## 8. 設定パラメータ一覧 (新規追加分)
 ```
 
-設計レビューを `/codex-review` `/popr` に通してから実装着手。
+設計レビューを `/popr` に通してから実装着手。
 
 ### Step 3: PR-X1 で「設計 doc + scaffold」をマージ
 
@@ -158,5 +158,5 @@ docs/
 ## 関連 skill
 
 - PR 作成: `create-pr` skill
-- レビュー観点: `codex-review` / `principle-of-programming-reviewer` skill
+- レビュー観点: `principle-of-programming-reviewer` skill
 - プロジェクト固有の Phase 進行 (例: bitcoin-trader Phase Y): プロジェクト内 skill

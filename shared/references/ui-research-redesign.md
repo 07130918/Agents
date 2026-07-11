@@ -375,11 +375,10 @@ UI 変更の場合 **dev server を立ち上げてブラウザで実際に触る
 
 ## Phase 7: レビュー
 
-CLAUDE.md の規約に従い `/codex-review` → `/popr` の順で実行する。
+CLAUDE.md の規約に従い `/popr` を実行する。
 
-レビューの観点別の主担当:
+レビュー観点:
 
-- `/codex-review` — バグ・セキュリティ・ベストプラクティス・a11y (フォーカス可視性)。`sanitize-html` 系は `allowedAttributes` と `transformTags` の整合性 (rel 属性落ちによる逆タブナビング等) を見てくれる
 - `/popr` — 構造・責務分離・可読性 (Principle of Programming)
 
 ---

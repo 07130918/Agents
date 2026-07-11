@@ -70,7 +70,7 @@ GitHub issue を起点に、調査・実装計画・実装・品質ゲート・�
 
 ### 7. コードレビューを実行する
 
-- 中規模以上の変更は、グローバル規約に従い `/codex-review` → `/popr` (`principle-of-programming-reviewer`) の順で実行する
+- 中規模以上の変更は、グローバル規約に従い `/popr` (`principle-of-programming-reviewer`) を実行する
 - 指摘があれば対応し、対応しない場合は理由を明確にする
 
 ### 8. PR を提出する
@@ -96,4 +96,4 @@ GitHub issue を起点に、調査・実装計画・実装・品質ゲート・�
 - `serena`: 実装の進め方、設計判断が必要な場合の構造化手順
 - `create-pr`: PR 作成そのもののフロー
 - `git-diff`: 差分確認のみが必要な場合
-- `codex-review` / `principle-of-programming-reviewer`: 中規模以上の変更のコードレビュー
+- `principle-of-programming-reviewer`: 中規模以上の変更のコードレビュー
