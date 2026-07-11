@@ -99,7 +99,7 @@
 
 ## 関連 skill
 
-- `codex-review` / `principle-of-programming-reviewer`: 汎用2観点。中規模以上の変更ではこの2つを先に実行し、その後に本 skill でドメイン観点を追加する。
+- `codex-review` / `principle-of-programming-reviewer`: 汎用2観点。中規模以上の変更では `principle-of-programming-reviewer` を先に実行し、その後に本 skill でドメイン観点を追加する。
 - `multi-model-code-reviewer` agent: 上記2つの一括実行。
 - `security-audit`: セキュリティ専門の網羅監査。
 - `testing-patterns`: test 観点の指摘を修正する際の参照。
