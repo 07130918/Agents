@@ -22,16 +22,21 @@ PR のポリシー (assignee・ラベル・動作確認欄・日本語・スコ�
 2. ベースブランチを決める:
    - `git symbolic-ref refs/remotes/origin/HEAD` で取得できる既定ブランチを優先
    - 失敗時は `develop` があれば `develop`、なければ `main`
-3. 変更把握:
+3. ドキュメント同期ゲート:
+   - 同じbase、HEAD、作業ツリーに対する直前の`sync-docs-code`結果があり、その後に差分が変わっていなければ再利用する
+   - 有効な結果がなければ、`sync-docs-code` skillをbase branchとの差分に対して実行する
+   - statusが`BLOCKED`ならPRを作成しない
+   - statusが`PASS`または`UPDATED`で、関連する文書検証が成功したことを確認する
+4. 変更把握:
    - `git diff --name-only <base>...HEAD`
    - `git diff --stat <base>...HEAD`
    - `git log --oneline <base>..HEAD`
    - 必要に応じて `git diff <base>...HEAD --no-color`
-4. `.github/pull_request_template.md` があれば読み、テンプレート構造を維持して本文を埋める。なければ下の標準テンプレートを使う
-5. 最新コミットメッセージをタイトル候補にしつつ、**全コミットの差分**を見てタイトルを生成する
-6. リモート未プッシュなら `git push -u origin <branch>`
-7. `gh pr create --base <base> --title "..." --body-file <tmp-file>` で作成する
-8. PR URL を出力する
+5. `.github/pull_request_template.md` があれば読み、テンプレート構造を維持して本文を埋める。なければ下の標準テンプレートを使う
+6. 最新コミットメッセージをタイトル候補にしつつ、**全コミットの差分**を見てタイトルを生成する
+7. リモート未プッシュなら `git push -u origin <branch>`
+8. `gh pr create --base <base> --title "..." --body-file <tmp-file>` で作成する
+9. PR URL を出力する
 
 ## 標準本文テンプレート
 
@@ -46,6 +51,10 @@ PR のポリシー (assignee・ラベル・動作確認欄・日本語・スコ�
 
 ## 動作確認
 - {実行したコマンドや確認内容}
+
+## ドキュメント同期
+- status: {PASS または UPDATED}
+- 確認・更新した文書と検証結果
 
 ## レビュー観点
 - {重点的に見てほしい点}
@@ -68,14 +77,17 @@ PR のポリシー (assignee・ラベル・動作確認欄・日本語・スコ�
 
 1. `current_branch=$(git branch --show-current)`
 2. ベースブランチ取得: `git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@'` (失敗時は `main`)
-3. `git diff <base>...HEAD` で差分把握
-4. `.github/pull_request_template.md` があれば Read で読み込み、フォーマットに従う
-5. ブランチ名から数字 prefix を抽出 (`223/foo` → `[223]`)
-6. `gh pr create --base <base> --title "[prefix] 作業内容" --body "<テンプレ準拠本文>"`
+3. 同じ差分への直前の`sync-docs-code`結果は再利用し、それ以外はskillを実行する。`PASS`または`UPDATED`と文書検証成功を確認し、`BLOCKED`なら停止する
+4. `git diff <base>...HEAD` で差分把握
+5. `.github/pull_request_template.md` があれば Read で読み込み、フォーマットに従う
+6. ブランチ名から数字 prefix を抽出 (`223/foo` → `[223]`)
+7. PR本文へドキュメント同期status、確認・更新した文書、検証結果を記載する
+8. `gh pr create --base <base> --title "[prefix] 作業内容" --body "<テンプレ準拠本文>"`
 
 ## ルール
 
 - PR 本文に「Created by Claude Code」等の自動署名を入れない
+- `sync-docs-code`が`BLOCKED`のままPRを作成しない
 - ブランチ名に数字 prefix がない場合は省略
 - `.github/pull_request_template.md` が無いプロジェクトは標準フォーマット (概要 / 変更内容 / 動作確認) で作成
 - 変更内容を git diff で正確に把握してから記述する
@@ -83,4 +95,5 @@ PR のポリシー (assignee・ラベル・動作確認欄・日本語・スコ�
 ## 関連
 
 - 差分確認: `git-diff` skill
+- ドキュメント同期: `sync-docs-code` skill
 - 多段 PR 設計: `docs-driven-development` skill
