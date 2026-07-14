@@ -23,3 +23,4 @@ claude/agents/ -> ~/.claude/agents/
 
 `~/.codex` と `~/.claude` には、履歴、認証、cache、SQLite、shell snapshot などの runtime state が含まれます。これらは GitHub で管理しません。
 
+各リポジトリの `.serena/` に保存される project memory と onboarding state もローカルの runtime state とし、このリポジトリでは管理・検証しません。
