@@ -36,6 +36,8 @@ scripts/apply-to-local.sh
 
 `scripts/validate.sh` と `scripts/diff-local.sh` で `AGENTS.md` / `CLAUDE.md` / skill wrapper の意味が壊れていないことを確認してから `scripts/apply-to-local.sh` を実行します。ローカルから同期する `scripts/sync-from-local.sh` は本文を自動変換せず、同期後の `scripts/validate.sh` で禁止文字や秘密情報を検出します。
 
+`scripts/validate.sh` を変更した場合は、`scripts/validate.test.sh` で `.serena/` の除外と通常ファイルの秘密情報候補検出を回帰確認します。
+
 ## 新規プロジェクトのセットアップ
 
 新しいプロジェクトを始めるときは、`templates/` の AGENTS.md / CLAUDE.md をコピーして使うことを推奨します。
@@ -58,6 +60,7 @@ cp templates/AGENTS.md templates/CLAUDE.md <プロジェクトルート>/
 - file-history
 - archived sessions
 - shell snapshots
+- Serena の project memory (`.serena/`)
 - `tp-management-nippo-insight` を含む `tp-*` の skill / agent / reference
 
 `tp-*` は会社に関する情報を含み得るローカル専用設定です。今後 `tp-` から始まる skill や agent が増えても、この GitHub リポジトリには含めません。

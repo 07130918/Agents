@@ -88,6 +88,7 @@ docs/
 - scaffold の `NotImplementedError` を本実装に置き換える
 - 該当部分のテストを追加
 - PR description で **設計 doc の前提を変えていない** ことを明記。設計変更が必要な場合は先に `docs/design/` を更新する PR を出す
+- 各PRの提出前に`sync-docs-code`を実行し、実装したsection、設計doc、changelog、関連する運用文書の一致を確認する
 
 ### Step 5: 完了時に changelog を残す
 
@@ -158,5 +159,6 @@ docs/
 ## 関連 skill
 
 - PR 作成: `create-pr` skill
+- 実装と設計docのPR前同期: `sync-docs-code` skill
 - レビュー観点: `principle-of-programming-reviewer` skill
 - プロジェクト固有の Phase 進行 (例: bitcoin-trader Phase Y): プロジェクト内 skill

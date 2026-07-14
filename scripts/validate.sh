@@ -16,14 +16,14 @@ if [ -n "${private_matches}" ]; then
   exit 1
 fi
 
-if grep -RInE --exclude='validate.sh' --exclude-dir=.git \
+if grep -RInE --exclude='validate.sh' --exclude-dir=.git --exclude-dir=.serena \
   'sk-[A-Za-z0-9_-]+|sk-proj-|figd_|GITHUB_PERSONAL_ACCESS_TOKEN|BEGIN OPENSSH PRIVATE KEY|BEGIN RSA PRIVATE KEY' \
   "${ROOT}"; then
   echo "Potential secret found. Review before committing." >&2
   exit 1
 fi
 
-if grep -RInE --exclude='validate.sh' --exclude-dir=.git '（|）' "${ROOT}"; then
+if grep -RInE --exclude='validate.sh' --exclude-dir=.git --exclude-dir=.serena '（|）' "${ROOT}"; then
   echo "Full-width parentheses found." >&2
   exit 1
 fi
