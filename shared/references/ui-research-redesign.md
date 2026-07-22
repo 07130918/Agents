@@ -2,21 +2,37 @@
 
 任意のプロジェクトで UI を改善するための汎用手順。プロジェクト固有のトークン、コンポーネント、認証、テスト規約は各プロジェクトの frontend skill が担う。本 skill は、その上位で「何を調べ、どう比較し、何を作り、どう証明するか」を扱う。
 
-## 不変原則
+## 目次
+
+1. 不変原則
+2. 現状と成功条件
+3. UI リサーチの進め方
+4. パターン抽出と証拠台帳
+5. 操作モデルと visual direction
+6. 設計契約と UI 種別ごとの観点
+7. 実装への翻訳
+8. 証拠付き検証とレビュー
+9. アウトプット定型
+
+---
+
+## 1. 不変原則
 
 1. 見た目ではなく、ユーザーが完了させたい仕事と KGI から始める。
 2. 現行 UI、ルート、権限、状態、デザインシステムを調べてから外部事例を見る。
 3. 現行バージョンの公式ドキュメント、公式ヘルプ、標準仕様を一次情報として優先する。
 4. 製品の画面を模倣せず、観測した操作パターンを原則へ翻訳する。
-5. 見た目だけでなく操作モデルが異なる 3 案を比較する。
+5. 構造を変える場合は、見た目ではなく操作モデルが異なる案を比較する。
 6. visual variant は仕事とブランドへの適合で選ぶ。新規性は同点時の判断材料に留める。
 7. 実ブラウザで主要ユーザー、画面幅、状態、失敗経路まで証拠を残す。
 
+UI リサーチの目的は、人気製品の見た目を集めることではない。ユーザーの仕事を阻害している構造を特定し、その障害を解いているパターンを探すこと。
+
 ---
 
-## Phase 0: 現状と成功条件を固定する
+## 2. 現状と成功条件
 
-### 0-1. ユーザージョブと KGI
+### 2-1. ユーザージョブと KGI
 
 次を 1 文にする。
 
@@ -29,24 +45,40 @@
 - 読了率、回遊率、タスク完了率、継続率
 - 初見ユーザーが主要操作を見つけられる割合
 
-### 0-2. 現行契約マップ
+### 2-2. Research Brief
 
-コード、実画面、既存ドキュメントから次を調べる。UI のスクリーンショットだけで推測しない。
+検索前に次を 1 ページ以内で埋める。
+
+| 項目 | 問い |
+|---|---|
+| ユーザー | 誰が、どの頻度と習熟度で使うか |
+| ユーザージョブ | 何を判断・入力・確認・完了したいか |
+| 起点と完了 | どこから始まり、何が起きれば完了か |
+| 現在の障害 | 探索、入力、理解、待機、誤操作のどこに負荷があるか |
+| 主対象 | 行、フォーム、会話、数値、記事など何を扱うか |
+| 情報量 | 件数、項目数、長文、更新頻度はどれくらいか |
+| 操作 | 閲覧、検索、比較、編集、承認、返信など何をするか |
+| 制約 | role、権限、desktop/mobile、時間、アクセシビリティ |
+| KGI | ステップ数、完了時間、見落とし、誤操作など何を改善するか |
+
+### 2-3. 現行契約マップ
+
+コード、実画面、既存ドキュメントから次を調べる。スクリーンショットだけで推測しない。
 
 | 契約 | 確認すること |
 |---|---|
-| 起点 | 一覧、検索、通知、共有 URL、ランディングなど |
+| 起点 | 一覧、検索、通知、ダッシュボード、ランディングなど |
 | 到達先 | 詳細、Dialog、checkout、編集フォームなど |
 | 主対象 | 読む、比較する、更新する中心オブジェクト |
-| 既存操作 | link、button、menu、Like、返信、drag など |
-| URL | canonical URL、query、戻り先の文脈 |
+| 既存操作 | link、button、menu、selection、drag など |
+| ナビゲーション | 戻り先、filter、query、選択状態 |
 | ユーザー | role/persona ごとの閲覧・操作可否 |
 | API/データ | 表示可能な項目、認可、更新、副作用 |
 | 状態 | loading/empty/error/success/disabled/permission denied |
 | UI 基盤 | token、共通部品、breakpoint、icon、motion |
 | 実利用 | device、頻度、情報量、入力環境、支援技術 |
 
-### 0-3. UI ジャンルと変更レベル
+### 2-4. UI ジャンルと変更レベル
 
 | ジャンル | 主目的 | 基本語彙 |
 |---|---|---|
@@ -65,105 +97,155 @@
 
 ---
 
-## Phase 1: 一次情報から操作パターンを調査する
+## 3. UI リサーチの進め方
 
-### 1-1. ユーザージョブを検索語へ変換する
+### 3-1. 調査問いを作る
 
-`modern dashboard UI` だけで検索しない。対象の仕事、情報構造、操作、制約を組み合わせる。
+問いは「ユーザー + 対象 + 仕事 + 制約 + 成功条件」で作る。
 
 ```text
-copy permalink to timeline item
-conversation deep link inbox
-activity feed card secondary actions
-responsive master detail workflow
-accessible clipboard status message
-mobile table bulk actions
-editorial long-form reading navigation
-checkout error recovery pattern
+❌ モダンなダッシュボードはどんな見た目か
+✅ 更新頻度の高い項目から、担当者が要対応だけを短時間で特定するには、どの情報階層とfilterが有効か
 ```
 
-日本語と英語の両方を使うが、件数を増やすことを目的にしない。一次情報へ到達できる製品名、component 名、`official docs`、`help center`、`design system` を加える。
+### 3-2. 検索クエリを組み立てる
 
-### 1-2. 情報源の優先順位
+```text
+[user job] + [surface] + [interaction] + [constraint] + [primary source modifier]
+```
 
-1. 標準仕様、法令、公的デザインシステム
-2. 対象製品の公式ドキュメント、公式ヘルプ、公式デザインシステム
-3. 公式デモ、実製品を自分で操作した観測
-4. 信頼できる専門家の分析
-5. ギャラリー、まとめ記事、SNS
-
-下位情報源は候補発見に使い、重要判断は可能な限り上位情報源で裏付ける。公開情報だけで画面挙動を確認できない場合は「推論」または「未確認」と明記する。
-
-### 1-3. 証拠台帳
-
-material な UI 改善では原則 3 件以上の独立した一次情報を確認する。小さな Lv1 変更では、関連する標準または公式仕様 1 件と現行 UI の観測で十分な場合がある。
-
-| 一次情報 | ユーザージョブ | 観測事実 | 抽出した原則 | 今回の採否 |
-|---|---|---|---|---|
-| 公式 URL/実画面 | 何を完了するためか | 情報源が直接示すこと | 効く理由の推論 | 採用/一部採用/不採用と理由 |
-
-製品名だけの列挙、スクリーンショットだけの収集、形容詞だけの要約をリサーチ完了としない。
-
-### 1-4. パターン dossier
-
-各事例を次の同じ軸で分解すると比較できる。
-
-- 主対象と情報階層
-- 起点から完了までのステップ
-- primary/secondary/tertiary action
-- 常時表示と段階的開示
-- 成功、失敗、処理中のフィードバック
-- mouse、keyboard、touch、支援技術
-- desktop から mobile への再配置
-- URL、認証、権限、機密情報
-- product 固有で転用すべきでない要素
-
-### 1-5. 一次情報の starting points
-
-次は固定の模倣対象ではない。タスクに近い現行の一次情報へ差し替える。
-
-| 公式情報 | 調べる時の観点 |
+| 部品 | 例 |
 |---|---|
-| [Slack: Forward messages](https://slack.com/help/articles/203274767-Forward-messages-in-Slack) | 項目単位の共有と元権限を維持したリンク |
-| [Intercom: Conversations FAQs](https://www.intercom.com/help/en/articles/8838326-conversations-faqs) | 会話内の特定返信へ直接到達するリンク |
-| [Intercom: Side conversations](https://www.intercom.com/help/en/articles/8398956-side-conversations) | 通知から対象スレッドへ戻る deep link |
-| [Linear: Select issues](https://linear.app/docs/select-issues) | 高密度リストの選択とコンテキスト操作 |
-| [デジタル庁: ボタン](https://design.digital.go.jp/dads/components/button/) | アクション階層とボタンの使い分け |
-| [デジタル庁: ボタンのアクセシビリティ](https://design.digital.go.jp/dads/components/button/accessibility/) | 操作領域、disabled、ラベル |
-| [W3C WAI: Link pattern](https://www.w3.org/WAI/ARIA/apg/patterns/link/) | native link の意味とキーボード操作 |
-| [W3C: Status messages](https://www.w3.org/WAI/WCAG21/Techniques/failures/F103) | 動的な成功・失敗通知の知覚可能性 |
+| user job | triage, compare, review, approve, learn, recover |
+| surface | data table, form, dashboard, timeline, detail page, onboarding |
+| interaction | filtering, bulk action, validation, progressive disclosure, keyboard navigation |
+| constraint | mobile, high density, novice user, role based, accessibility |
+| primary source | official docs, help center, design system, accessibility guidelines |
+
+クエリ例:
+
+- `support inbox triage unread filtering official help`
+- `long form validation error recovery design system`
+- `dense data table bulk actions keyboard accessibility`
+- `student progress dashboard hierarchy education platform`
+- `mobile multi step form save progress official design system`
+
+日本語と英語の両方を使うが、件数を増やすことを目的にしない。`modern`、`clean`、`cool` のような形容詞だけで検索しない。
+
+### 3-3. 製品ではなく問題クラスから探す
+
+| 問題クラス | 近い製品カテゴリ |
+|---|---|
+| 大量情報から優先対象を探す | CRM、issue tracker、support inbox |
+| 複雑な入力を完了する | accounting、admin form、checkout、public service |
+| 状態変化を時系列で追う | activity feed、conversation、audit log |
+| 数値を監視し異常を見つける | analytics、observability、finance dashboard |
+| 学習や継続を支える | LMS、habit tracker、education app |
+| 対象を見ながら処理する | master-detail、review console、editor |
+
+対象業界と同じ製品だけに限定しない。同じ認知課題、情報量、操作頻度を持つ別業界の方が参考として近い場合がある。
+
+### 3-4. 情報源の優先順位
+
+1. W3C、法令、公的デザインシステム
+2. 対象製品の公式 design system、公式 help、公式 docs
+3. 実製品を自分で操作した観測
+4. 信頼できる専門家や調査機関の分析
+5. gallery、まとめ記事、SNS
+
+下位情報源は候補発見に使い、重要な設計判断は上位情報源で再確認する。公開情報から確認できない挙動は「未確認」または「推論」と明記する。
+
+### 3-5. 調査量と停止条件
+
+Lv3/Lv4 では原則 3 件以上の独立した一次情報を確認する。次を満たしたら収集から比較へ進む。
+
+- 調査問いごとに 2〜3 個の異なる解法が見つかった。
+- 少なくとも 1 件は標準仕様または公的デザインシステムで裏付けた。
+- 採用候補だけでなく、不採用にすべき条件も説明できる。
+- 新しい結果が既存パターンの繰り返しになった。
+
+Lv1/Lv2 では、問いに直接答える標準または公式仕様 1 件と現行 UI の観測で足りる場合がある。
 
 ---
 
-## Phase 2: 操作モデルを比較してから visual direction を選ぶ
+## 4. パターン抽出と証拠台帳
 
-### 2-1. 3 つの操作モデル
+### 4-1. 証拠台帳
 
-色、角丸、余白だけを変えた 3 案は比較にならない。情報構造または操作の流れが material に異なる案を作る。
+| 情報源 | 調査問い | 観測事実 | 推論した原則 | 適用条件 | 採否 |
+|---|---|---|---|---|---|
+| URL/実画面 | 何を知るためか | 直接確認できたこと | なぜ有効と考えるか | どの状況で成立するか | 採用/一部採用/不採用 |
 
-例:
+観測事実には形容詞を使わず、配置、順序、表示条件、操作結果を記録する。
 
-1. 一覧から独立した詳細ページへ移動する
-2. 一覧と詳細を同時表示する master-detail にする
-3. 一覧内で展開して完結させる
+```text
+❌ 操作が分かりやすい
+✅ 行を選択した時だけ操作バーが表の上部に現れ、選択件数を表示する
+```
 
-### 2-2. 評価表
+### 4-2. 共通の分解軸
 
-| 評価軸 | 問い |
+| 軸 | 確認内容 |
 |---|---|
-| KGI | 完了時間、手順、再探索を最も減らすか |
-| 発見性 | 初見で操作を見つけ、結果を予測できるか |
-| 情報階層 | 判断に必要な情報が適切な時に見えるか |
-| 操作衝突 | nested interactive や誤タップを生まないか |
-| 安全性 | 権限、機密情報、破壊的操作を守れるか |
-| アクセシビリティ | semantics、focus、status、target size を守れるか |
-| responsive | mobile で情報欠落や横スクロールを生まないか |
-| 整合性 | 既存 product と design system に沿うか |
-| 実装リスク | 状態、API、テストを含め最小の安全な差分か |
+| 主対象 | 最初に認識させる情報は何か |
+| 情報階層 | title、metadata、status、detail の順序 |
+| 操作階層 | primary/secondary/tertiary action |
+| 発見性 | 常時表示、文脈表示、menu のどれか |
+| 開示 | inline、popover、Dialog、side panel、別ページのどれか |
+| 状態 | loading、empty、error、success、disabled |
+| feedback | 操作直後に何が、どこで、どれくらい表示されるか |
+| 入力方式 | mouse、keyboard、touch、支援技術 |
+| responsive | 小さい画面で何を残し、移動し、畳むか |
+| 安全性 | role、確認、undo、競合、機密情報 |
 
-採用案と不採用理由を記録する。ユーザーが設計選択を求めている場合は 3 案を提示する。実装まで明示的に任され、合理的な推奨案がある場合は、判断と理由を記録して進めてよい。
+### 4-3. 原則への翻訳
 
-### 2-3. Visual Variant Catalog
+製品固有の実装を、そのまま要件にしない。
+
+```text
+観測: 選択時だけ画面下部に操作バーが現れる
+原則: 低頻度の一括操作は、選択という文脈が生じるまで隠して通常時の密度を下げる
+適用条件: 複数選択があり、操作対象件数を明示できる
+不適用条件: 毎回必ず使う主要操作、またはmobileで選択状態が見失われる場合
+```
+
+転用しない要素:
+
+- ブランド固有の色、illustration、motion
+- product 固有の権限やデータ構造
+- desktop 専用の hover 依存操作
+- 実データ量と合わない情報密度
+- 利用頻度の違いを無視した menu 配置
+
+---
+
+## 5. 操作モデルと visual direction
+
+### 5-1. 操作モデルを比較する
+
+Lv3/Lv4 では、色、角丸、余白だけを変えた案を 1 案として数えない。情報構造または操作の流れが異なる 3 案を作る。Lv1/Lv2 では現状維持案と改善案の比較で十分な場合がある。
+
+| 例 | 案 A | 案 B | 案 C |
+|---|---|---|---|
+| 詳細の開示 | inline 展開 | side panel/Dialog | 独立ページ |
+| 編集 | 一覧内編集 | 専用フォーム | step 分割 |
+| 大量操作 | 行ごと | 選択後の action bar | 条件指定による一括処理 |
+| dashboard | KPI 中心 | 要対応中心 | workflow 中心 |
+
+評価軸:
+
+- KGI への直接効果
+- 初見の発見性と結果の予測可能性
+- 情報量と操作頻度への適合
+- 誤操作、破壊的操作、権限漏れのリスク
+- keyboard、touch、支援技術
+- desktop/mobile の一貫性
+- 既存 product と design system への適合
+- API、状態、テストを含む実装コスト
+
+差が小さい場合は、既存 product との一貫性と最小差分を優先する。新規性だけを理由に複雑な案を選ばない。
+
+### 5-2. Visual Variant Catalog
 
 操作モデルが決まった後に視覚表現を選ぶ。
 
@@ -188,7 +270,9 @@ material な UI 改善では原則 3 件以上の独立した一次情報を確�
 
 ---
 
-## Phase 3: 設計契約を言語化する
+## 6. 設計契約と UI 種別ごとの観点
+
+### 6-1. 設計契約
 
 ```markdown
 ## 設計契約: <機能名>
@@ -200,7 +284,7 @@ material な UI 改善では原則 3 件以上の独立した一次情報を確�
 - Visual variant:
 - 主対象と情報階層:
 - アクション階層:
-- entry point/destination/canonical URL:
+- ナビゲーション/戻り先:
 - persona/role別の表示と認可:
 - desktop/mobileの再配置:
 - loading/empty/error/success/disabled:
@@ -208,44 +292,51 @@ material な UI 改善では原則 3 件以上の独立した一次情報を確�
 - 採用しないproduct固有要素:
 ```
 
-### タイムライン、一覧/詳細、共有リンクの判断基準
+### 6-2. UI 種別ごとの調査観点
 
-| 面 | 主な責務 |
+| UI 種別 | 主な問い |
 |---|---|
-| 一覧/タイムライン | 走査、比較、軽い反応、対象を開く、共有する |
-| 詳細 | 共有された対象の理解、長文確認、返信や更新の完了 |
+| 一覧/テーブル | 走査、比較、filter、sort、pagination、bulk action、列の優先順位 |
+| フォーム | 入力順、default、補足、validation、保存、離脱、再開 |
+| ダッシュボード | 誰が何を判断するか、異常、比較期間、次の action |
+| タイムライン | 時系列、未読、actor、grouping、filter、軽い反応、長文の開示 |
+| 詳細ページ | 主対象、metadata、関連情報、主要 action、戻り先 |
+| 検索 | query 支援、結果の順位、絞り込み、0 件、履歴 |
+| オンボーディング | 初回だけ必要な説明、skip、進捗、成功体験 |
+| 空状態 | なぜ空か、次にできること、権限や filter の影響 |
+| mobile | 意味順、片手操作、keyboard、固定要素、overflow |
 
-- カード内に Like、返信、menu などがある場合、カード全体を link にしない。移動用の独立した native link を置く。
-- 「詳細を開く」と「リンクをコピー」は別の仕事として別操作にする。
-- 共有が主要ユースケースなら copy/share を常時表示し、稀なら overflow menu を検討する。
-- 詳細から一覧へ戻れるようにし、filter/query の文脈を可能な範囲で保つ。
-- canonical URL はリソースの identity から作り、現在地の偶発的な query/hash に依存させない。
-- URL を知ることを権限として扱わず、到達先の API/server でも認可する。
-- 権限外レスポンスや preview に機密情報を含めない。
-- copy 成功は control の表示変化と programmatic な status で伝え、色だけに依存しない。
-- desktop の master-detail は主内容を広く、補助操作を狭くする。mobile は意味順を保った縦積みにする。
+種別の名前だけで解法を固定しない。同じ table でも、閲覧中心と毎日更新する業務では必要な密度と操作が異なる。
 
-### アクション階層
+### 6-3. アクションと視覚制約
 
-- primary: その面の主要業務を完了する操作。原則 1 つ。
-- secondary: 詳細表示、共有など primary を支える操作。
-- tertiary: 低頻度の補助操作。必要なら menu にまとめる。
+- primary action は、その面の主要業務を完了する操作にする。
+- 頻度、緊急度、可逆性に応じて常時表示と段階的開示を選ぶ。
 - link は移動、button は command または状態変更に使う。
 - disabled だけで理由を隠さず、必要なら補足または代替導線を示す。
-- touch target は採用する design system とアクセシビリティ基準を満たす。
-
-### 視覚制約
-
 - semantic token と共通 component を優先し、生の色や一回限りの component を増やさない。
 - heading、body、metadata、status の階層を先に作り、装飾で穴埋めしない。
-- 形状、影、motion は意味のある少数の variant に絞る。
 - Business SaaS で大きな hero、広すぎる余白、強い card motion を入れない。
 - Consumer-facing で dashboard pattern だけを当て、brand の温度を消さない。
-- card in card、意味のない gradient、頭文字 badge、均一な card grid の連続など、AI 生成 UI のクリシェを避ける。
+- card in card、意味のない gradient、頭文字 badge、均一な card grid の連続を避ける。
 
 ---
 
-## Phase 4: プロジェクト規約に落とし込んで実装する
+## 7. 実装への翻訳
+
+### 7-1. 設計と実装を対応させる
+
+| 設計決定 | 実装で確認すること |
+|---|---|
+| 情報階層 | DOM の意味順、heading、responsive 時の順序 |
+| 操作階層 | native link/button、共通 component、focus order |
+| feedback | 画面内表示、aria live/status、失敗時の復帰 |
+| 開示 | focus management、Escape、戻る操作、状態保持 |
+| responsive | breakpoint、overflow、touch target、固定要素 |
+| role | UI 表示と API 認可の両方 |
+| 状態 | loading/empty/error/success の component と test |
+
+### 7-2. プロジェクト規約へ委譲する
 
 1. プロジェクトの AGENTS.md/CLAUDE.md と frontend skill を読む。
 2. 外部 component API に不確実性があれば現行の公式ドキュメントを確認する。
@@ -257,9 +348,7 @@ material な UI 改善では原則 3 件以上の独立した一次情報を確�
 
 framework 固有の prop、Server/Client 境界、画像、motion の詳細はプロジェクト skill へ委譲する。本 skill に一時的な workaround を蓄積しない。
 
----
-
-## Phase 5: 自動検証する
+### 7-3. 自動検証
 
 プロジェクトの標準コマンドを優先し、少なくとも次を確認する。
 
@@ -273,36 +362,26 @@ cache を疑う前にエラーログと import trace を読む。cache 削除は
 
 ---
 
-## Phase 6: 実ブラウザで証拠を取る
+## 8. 証拠付き検証とレビュー
+
+### 8-1. 実ブラウザ検証
 
 UI 変更は dev server を起動し、実際の操作で確認する。type-check と screenshot だけでは完了にしない。
 
 | 軸 | 必須証拠 |
 |---|---|
-| persona/role | 主要ユーザー、権限外ユーザー、未認証 |
+| persona/role | 主要ユーザー、権限外ユーザー、必要なら未認証 |
 | viewport | 実運用 desktop、375px 前後の mobile、必要なら tablet |
 | input | mouse、keyboard、touch 相当 |
+| task | 起点から完了まで、戻る、再試行 |
 | state | loading、empty、error、success、disabled、permission denied |
-| navigation | entry、destination、back、deep link、refresh |
-| feedback | focus、validation、copy、submit、failure recovery |
-| runtime | console error、network status/response、hydration |
+| feedback | focus、validation、submit、failure recovery |
+| runtime | console error、network status/response、hydration、保存結果 |
 | visual | overflow、target size、contrast、主要情報と操作の優先順位 |
 
-### deep link/Clipboard の証拠
+スクリーンショットには viewport、persona/role、state、実行した task を紐付ける。手動確認できない項目は「未確認」と理由を明記し、成功扱いにしない。
 
-1. 一覧から対象を開き、destination URL を記録する。
-2. コピーした URL を実際に貼り付け、canonical 値と一致するか確認する。
-3. 新規タブ、refresh、未認証、権限外で同じ URL を開く。
-4. success 表示が control と支援技術の両方で認識できるか確認する。
-5. API response と画面に権限外の情報が含まれないか確認する。
-
-スクリーンショットには viewport、persona/role、state、URL を紐付ける。手動確認できない項目は「未確認」と理由を明記し、成功扱いにしない。
-
----
-
-## Phase 7: セルフレビューとフィードバック
-
-PR 前にプロジェクト指定のレビューを行い、次を再確認する。
+### 8-2. セルフレビュー
 
 - KGI と変更が直接つながっているか
 - 一次情報の観測と自分の推論を混同していないか
@@ -313,9 +392,21 @@ PR 前にプロジェクト指定のレビューを行い、次を再確認す�
 
 material な Business SaaS 変更では、現場担当と運用担当が同じ業務を完了できるか確認する。外部へ依頼や連絡を行う場合は、ユーザーの許可範囲に従う。
 
+### 8-3. 失敗パターン
+
+- 有名 product 名を並べただけで調査を終える
+- screenshot の印象を観測事実として扱う
+- 3 案が色、角丸、余白だけ異なる
+- desktop screenshot だけで responsive 対応済みとする
+- success path だけ実装して empty/error/permission を後回しにする
+- hover でしか主要操作を発見できない
+- card 全体の click と内部の button/link を競合させる
+- visual novelty のために既存の学習コストを増やす
+- project skill にある framework 固有ルールを重複記載する
+
 ---
 
-## アウトプット定型
+## 9. アウトプット定型
 
 ```markdown
 ## リデザイン記録: <機能名> (YYYY-MM-DD)
@@ -326,7 +417,7 @@ material な Business SaaS 変更では、現場担当と運用担当が同じ�
 - UIジャンル/変更レベル:
 
 ### リサーチ
-| 一次情報 | 観測したパターン | 抽出した原則 | 実装への反映 |
+| 情報源 | 観測事実 | 抽出した原則 | 適用条件 |
 |---|---|---|---|
 
 ### 選択
@@ -343,7 +434,7 @@ material な Business SaaS 変更では、現場担当と運用担当が同じ�
 - ✅ desktop/mobile/keyboard
 - ✅ loading/empty/error/success
 - ✅ 対象ユーザー/権限外ユーザー
-- ✅ console/network/URL/Clipboard
+- ✅ console/network/navigation/form feedback
 - ⚠️ 未確認項目と理由:
 ```
 
