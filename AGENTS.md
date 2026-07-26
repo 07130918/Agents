@@ -29,5 +29,5 @@
 - `~/.codex/config.toml` は secrets を含みやすいため、実物は管理しない。
 - `codex/config.example.toml` は構成の参考だけに使う。
 - `tp-*` のローカル専用 skill / agent は GitHub に含めない。同期スクリプトと `.gitignore` で除外する。
-- Claude Code のユーザーグローバル skill と subagent を一時無効化している理由と復帰条件は `docs/decisions/2026-07-26-disable-claude-skills-and-subagents-for-opus-5.md` を参照する。
+- Claude Code のユーザーグローバル skill と subagent を一時無効化している理由と復帰条件は `docs/decisions/2026-07-26-disable-claude-skills-and-subagents-for-claude-5.md` を参照する。
 - GitHub に push する前に `scripts/validate.sh` を実行する。

@@ -7,7 +7,7 @@
 ## 移行方針
 
 1. `Agents` に `shared/`、`codex/`、`claude/`、`scripts/`、`docs/` を置く。
-2. Claude Code の既存 `CLAUDE.md`、skill、subagent は `claude/` 配下へ移す。現在の skill と subagent は Opus 5 向け再設計まで `skills.disabled/` と `agents.disabled/` に退避する。
+2. Claude Code の既存 `CLAUDE.md`、skill、subagent は `claude/` 配下へ移す。現在の skill と subagent は Claude 5 世代向け再設計まで `skills.disabled/` と `agents.disabled/` に退避する。
 3. Codex の `AGENTS.md`、skill wrapper、agent 定義、hooks は `codex/` 配下へ置く。
 4. 共通 reference は `shared/references/` へ置く。
 5. 認証情報、履歴、cache、SQLite は移行しない。

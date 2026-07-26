@@ -1,4 +1,4 @@
-# Opus 5 向け再設計まで Claude Code skill と subagent を無効化する
+# Claude 5 世代向け再設計まで Claude Code skill と subagent を無効化する
 
 - ステータス: 採用
 - 決定日: 2026-07-26
@@ -7,6 +7,8 @@
 ## 背景
 
 Opus 5 では、以前のモデル向けに積み重ねた skill や workflow が指示競合、作業の早期終了、既存手順との不整合につながる可能性がある。Dan Shipper 氏の[初期評価](https://x.com/danshipper/status/2080700057892815114)でも、既存 skill を外して一から試した場合に結果が改善したと報告されている。
+
+Anthropic の[Claude 5 世代向け context engineering ガイド](https://claude.com/blog/the-new-rules-of-context-engineering-for-claude-5-generation-models)では、Opus 5 と Fable 5 向けに Claude Code の system prompt を 80% 以上削減しても、coding evaluation で測定可能な性能低下がなかったと報告されている。同ガイドは system prompt、`CLAUDE.md`、skill 間の重複や競合による過剰制約を避け、必要な context を段階的に読み込む設計を推奨している。
 
 Claude Code のユーザー subagent は全プロジェクトから検出され、description に基づく自動委譲の対象となる。subagent の system prompt や model 指定も以前のモデル向け workflow の一部なので、skill だけを外しても素の挙動との比較に旧設定が混ざる。
 
@@ -19,7 +21,16 @@ Claude Code のユーザー subagent は全プロジェクトから検出され�
 3. ローカル設定も `~/.claude/skills/` と `~/.claude/agents/` から、それぞれ `.disabled` を付けたディレクトリへ移す。
 4. 同期スクリプトは `.disabled` ディレクトリを正本として扱い、`scripts/apply-to-local.sh` の実行時に有効な skill と subagent が残らないようにする。
 5. Codex の skill と agent、Claude Code の `CLAUDE.md`、共通 reference は今回の対象外とし、変更しない。
-6. Opus 5 向け skill と subagent は既存セットの一括復元ではなく、素の Opus 5 との比較で必要性を確認したものから別の変更として再導入する。
+6. Claude 5 世代向け skill と subagent は既存セットの一括復元ではなく、素の Opus 5 と Fable 5 との比較で必要性を確認したものから別の変更として再導入する。
+
+## 再設計方針
+
+1. Opus 5 と Fable 5 に共通する軽量な設定を基本とし、モデル別の設定は比較結果で必要性を確認できる場合だけ追加する。
+2. `CLAUDE.md` はリポジトリの目的とコードから推測しにくい注意点を中心にし、一般的なコーディング規則を増やしすぎない。
+3. skill は特定タスクで必要な知識や判断基準へ到達するための軽量な guide とし、長い手順は progressive disclosure で分割する。
+4. 具体例の反復で探索範囲を狭めるより、tool や script の interface、引数、事後条件を明確にする。
+5. subagent は context 分離、tool 制限、独立検証など主 thread と異なる実行環境が必要な場合に限定する。model の固定は比較検証で必要性が確認できる場合だけ行う。
+6. 旧設定を一括で戻さず、代表タスクによる baseline との比較と回帰確認を追加単位ごとに行う。
 
 ## 影響
 
@@ -46,7 +57,7 @@ skill 名ごとの設定管理が必要で、新規追加時の無効化漏れ�
 
 次の条件を満たす skill または subagent だけを、別の PR で有効な配置へ戻す。
 
-1. Opus 5 の素の挙動と比較し、設定を追加する必要性が説明できる。
+1. Opus 5 と Fable 5 の素の挙動と比較し、設定を追加する必要性が説明できる。
 2. 代表タスクで作業の早期終了、指示競合、不要な委譲を増やさないことを確認できる。
 3. 低または中 effort を含む想定運用で再現性を確認できる。
 4. 定義、共通 reference、同期スクリプト、運用文書の対応が検証されている。
