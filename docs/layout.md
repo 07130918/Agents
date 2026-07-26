@@ -15,9 +15,11 @@ codex/skills/ -> ~/.agents/skills/
 codex/agents/ -> ~/.codex/agents/
 codex/hooks.json -> ~/.codex/hooks.json
 claude/CLAUDE.md -> ~/.claude/CLAUDE.md
-claude/skills/ -> ~/.claude/skills/
-claude/agents/ -> ~/.claude/agents/
+claude/skills.disabled/ -> ~/.claude/skills.disabled/
+claude/agents.disabled/ -> ~/.claude/agents.disabled/
 ```
+
+Claude Code のユーザーグローバル skill と subagent は、Opus 5 向けの再設計が完了するまで `skills.disabled/` と `agents.disabled/` に退避します。`scripts/apply-to-local.sh` は既存の有効なディレクトリも退避して、Claude Code がユーザーグローバル拡張を検出しない状態にします。判断の詳細は [ADR](decisions/2026-07-26-disable-claude-skills-and-subagents-for-opus-5.md) を参照してください。
 
 ## Excluded Runtime State
 

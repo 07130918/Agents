@@ -36,7 +36,9 @@ scripts/apply-to-local.sh
 
 `scripts/validate.sh` と `scripts/diff-local.sh` で `AGENTS.md` / `CLAUDE.md` / skill wrapper の意味が壊れていないことを確認してから `scripts/apply-to-local.sh` を実行します。ローカルから同期する `scripts/sync-from-local.sh` は本文を自動変換せず、同期後の `scripts/validate.sh` で禁止文字や秘密情報を検出します。
 
-`scripts/validate.sh` を変更した場合は、`scripts/validate.test.sh` で `.serena/` の除外と通常ファイルの秘密情報候補検出を回帰確認します。
+現在、Claude Code のユーザーグローバル skill と subagent は Opus 5 向けに再設計するため一時無効化しています。リポジトリの `claude/skills.disabled/` と `claude/agents.disabled/` を同名のローカルディレクトリへ同期し、有効な `~/.claude/skills/` と `~/.claude/agents/` は作成しません。判断の背景と復帰条件は [ADR](docs/decisions/2026-07-26-disable-claude-skills-and-subagents-for-opus-5.md) を参照してください。
+
+`scripts/validate.sh` を変更した場合は `scripts/validate.test.sh`、ローカル適用処理を変更した場合は `scripts/apply-to-local.test.sh` で回帰確認します。
 
 ## 新規プロジェクトのセットアップ
 
