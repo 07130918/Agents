@@ -6,8 +6,6 @@
 
 ## 背景
 
-Opus 5 では、以前のモデル向けに積み重ねた skill や workflow が指示競合、作業の早期終了、既存手順との不整合につながる可能性がある。Dan Shipper 氏の[初期評価](https://x.com/danshipper/status/2080700057892815114)でも、既存 skill を外して一から試した場合に結果が改善したと報告されている。
-
 Anthropic の[Claude 5 世代向け context engineering ガイド](https://claude.com/blog/the-new-rules-of-context-engineering-for-claude-5-generation-models)では、Opus 5 と Fable 5 向けに Claude Code の system prompt を 80% 以上削減しても、coding evaluation で測定可能な性能低下がなかったと報告されている。同ガイドは system prompt、`CLAUDE.md`、skill 間の重複や競合による過剰制約を避け、必要な context を段階的に読み込む設計を推奨している。
 
 Claude Code のユーザー subagent は全プロジェクトから検出され、description に基づく自動委譲の対象となる。subagent の system prompt や model 指定も以前のモデル向け workflow の一部なので、skill だけを外しても素の挙動との比較に旧設定が混ざる。
