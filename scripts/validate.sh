@@ -3,10 +3,22 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+for configuration_name in skills agents; do
+  if [ -e "${ROOT}/claude/${configuration_name}" ] || [ -L "${ROOT}/claude/${configuration_name}" ]; then
+    echo "Claude Code ${configuration_name} must remain disabled under claude/${configuration_name}.disabled." >&2
+    exit 1
+  fi
+
+  if [ ! -d "${ROOT}/claude/${configuration_name}.disabled" ]; then
+    echo "Missing Claude Code disabled directory: claude/${configuration_name}.disabled" >&2
+    exit 1
+  fi
+done
+
 private_matches="$(
-  find "${ROOT}/codex/skills" "${ROOT}/claude/skills" -maxdepth 1 -type d -name 'tp-*' -print
+  find "${ROOT}/codex/skills" "${ROOT}/claude/skills.disabled" -maxdepth 1 -type d -name 'tp-*' -print
   find "${ROOT}/codex/agents" -maxdepth 1 -type f -name 'tp-*.toml' -print
-  find "${ROOT}/claude/agents" -maxdepth 1 -type f -name 'tp-*.md' -print
+  find "${ROOT}/claude/agents.disabled" -maxdepth 1 -type f -name 'tp-*.md' -print
   find "${ROOT}/shared/references" -maxdepth 1 -type f -name 'tp-*.md' -print
 )"
 
@@ -33,7 +45,7 @@ if ! command -v ruby >/dev/null 2>&1; then
   exit 1
 fi
 
-find "${ROOT}/codex/skills" "${ROOT}/claude/skills" -path '*/SKILL.md' -type f -print | while read -r file; do
+find "${ROOT}/codex/skills" "${ROOT}/claude/skills.disabled" -path '*/SKILL.md' -type f -print | while read -r file; do
   ruby -ryaml -e '
     file = ARGV.fetch(0)
     content = File.read(file)
