@@ -61,6 +61,8 @@ for required_text in \
   'lint、format、型check、test' \
   'sync-docs-code' \
   'commit権限とmessage形式はglobal指示の共通契約に従う' \
+  '各commitは単独checkout時にもbuild、型check、関連testが通る状態を保つ' \
+  '同じ目的の実装と関連testは原則として同じcommitに含め' \
   'assignee' \
   'label'; do
   if ! grep -Fq "${required_text}" "${CREATE_PR_REFERENCE}"; then

@@ -18,7 +18,8 @@
 - PR作成依頼は、現在scopeの変更をcommit、pushしてPRを作る権限を含む。merge権限は含まない。
 - PRは宣言済みscopeだけを含め、無関係な整形、依存更新、別課題を混ぜない。
 - 1 commitを単独revertしたとき、その変更目的だけが戻る単位に分ける。
-- 実装、data取得・永続化、UI、test、refactor・設定など、独立して説明できる変更を別commitにする。
+- 各commitは単独checkout時にもbuild、型check、関連testが通る状態を保つ。後続commitがなければ動かない変更は同じcommitにまとめる。
+- 同じ目的の実装と関連testは原則として同じcommitに含め、独立して説明できるdata取得・永続化、UI、refactor・設定は別commitにする。
 - 各commitで対象pathを`git add <path>`または`git add -p`により明示し、`git diff --cached`で内容を確認する。
 - Commit件名はglobal指示の`Gitと成果物の共通契約`に従う。
 - PR titleと本文は日本語で書き、全commitと最終diffの実態を反映する。
@@ -62,8 +63,9 @@
 1. 最終diffを変更目的ごとに分け、commit一覧を決める。
 2. 各commitで対象pathだけをstageし、`git diff --cached --check`と`git diff --cached`を確認する。
 3. 共通契約に従う日本語件名でcommitする。
-4. Commit後に`git status --short`を確認し、PR対象の変更が残っていれば次のcommitへ進む。
-5. 全commit作成後、必要な品質gateを再実行する。
+4. Commit後、そのcommitが単独checkout時の動作可能性を満たすか確認する。後続commitへ依存する分割なら同じcommitへまとめ直す。
+5. `git status --short`を確認し、PR対象の変更が残っていれば次のcommitへ進む。
+6. 全commit作成後、必要な品質gateを再実行する。
 
 ### 5. PR差分を確定する
 
