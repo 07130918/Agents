@@ -1,99 +1,120 @@
 # create-pr
 
-この参照は複数 CLI から使う共通本体です。実行中の CLI に対応する節だけを使用してください。
+現在branchの変更を意味のある単位でcommitし、品質gateとdocumentation同期を通してから、日本語のPRを作成するworkflow。commit、push、PR作成の操作とpolicyはこのreferenceを正本とする。
 
-PR のポリシー (assignee・ラベル・動作確認欄・日本語・スコープ・品質ゲート) はグローバル設定の GitHub PR 節と Git 運用節に従う。ここには操作手順のみを記載する。
+## 使う場面
 
-## Codex / .agents 版
+- 「PRを作って」「commitしてpushし、PRを提出して」と依頼されたとき。
+- `issue-to-pr`などのworkflowから最終提出を委譲されたとき。
 
-# /create-pr スキル
+対象外:
 
-現在のブランチと既定ベースブランチの差分を分析し、日本語のタイトル・本文でプルリクエストを作成する。
+- 差分確認だけの依頼。`git-diff`を使う。
+- Issueの調査・実装を含む一連の対応。`issue-to-pr`を起点にする。
+- PR merge。mergeはuserが行う。
 
-## 前提条件
+## 共通契約
 
-- 現在のブランチがベースブランチではない
-- 変更がコミット済み
-- `gh` CLI がインストール・認証済み
+- PR作成依頼は、現在scopeの変更をcommit、pushしてPRを作る権限を含む。merge権限は含まない。
+- PRは宣言済みscopeだけを含め、無関係な整形、依存更新、別課題を混ぜない。
+- 1 commitを単独revertしたとき、その変更目的だけが戻る単位に分ける。
+- 実装、data取得・永続化、UI、test、refactor・設定など、独立して説明できる変更を別commitにする。
+- 各commitで対象pathを`git add <path>`または`git add -p`により明示し、`git diff --cached`で内容を確認する。
+- Commit件名はglobal指示の`Gitと成果物の共通契約`に従う。
+- PR titleと本文は日本語で書き、全commitと最終diffの実態を反映する。
+- PR作成時は`07130918`をassigneeに設定し、変更内容に合うlabelを付ける。
+- Bot reviewは指摘の根拠を検証し、妥当な指摘だけを反映する。Copilotへのreview依頼はuserが手動で行う。
+
+## 完了条件
+
+- Project指定のlint、format、型check、testが成功している。
+- 実行できない必須checkは理由と代替確認がPR本文に記録されている。
+- `sync-docs-code`が`PASS`または`UPDATED`で、`BLOCKED`ではない。
+- Commit済みの`<base>...HEAD`と未commit差分の両方を確認し、PR対象に未commit変更が残っていない。
+- PR URL、assignee、label、base、headを確認できる。
 
 ## 手順
 
-1. `git branch --show-current` で現在のブランチを取得する。空、`HEAD`、ベースブランチなら停止する
-2. ベースブランチを決める:
-   - `git symbolic-ref refs/remotes/origin/HEAD` で取得できる既定ブランチを優先
-   - 失敗時は `develop` があれば `develop`、なければ `main`
-3. ドキュメント同期ゲート:
-   - 同じbase、HEAD、作業ツリーに対する直前の`sync-docs-code`結果があり、その後に差分が変わっていなければ再利用する
-   - 有効な結果がなければ、`sync-docs-code` skillをbase branchとの差分に対して実行する
-   - statusが`BLOCKED`ならPRを作成しない
-   - statusが`PASS`または`UPDATED`で、関連する文書検証が成功したことを確認する
-4. 変更把握:
-   - `git diff --name-only <base>...HEAD`
-   - `git diff --stat <base>...HEAD`
-   - `git log --oneline <base>..HEAD`
-   - 必要に応じて `git diff <base>...HEAD --no-color`
-5. `.github/pull_request_template.md` があれば読み、テンプレート構造を維持して本文を埋める。なければ下の標準テンプレートを使う
-6. 最新コミットメッセージをタイトル候補にしつつ、**全コミットの差分**を見てタイトルを生成する
-7. リモート未プッシュなら `git push -u origin <branch>`
-8. `gh pr create --base <base> --title "..." --body-file <tmp-file>` で作成する
-9. PR URL を出力する
+### 1. Contextを固定する
 
-## 標準本文テンプレート
+1. `git branch --show-current`と`git status --short --branch`を確認する。
+2. 現在branchが空、`HEAD`、`main`、`develop`なら停止する。
+3. `git fetch --prune origin`でremote refsを最新化する。
+4. `git symbolic-ref refs/remotes/origin/HEAD`を優先してbaseを決める。失敗時は`develop`、次に`main`を使う。
+5. 比較元を`origin/<base>`に固定し、`git diff --name-status origin/<base>...HEAD`、`git diff --name-status`、`git diff --cached --name-status`、untracked fileを確認する。
+6. `.env`、認証情報、秘密情報らしいfileが含まれる場合はcommitせず、対象を報告する。
 
-`.github/pull_request_template.md` がない場合は以下を使う:
+### 2. 品質gateを通す
 
-```
+1. ProjectのAGENTS.md、CLAUDE.md、package script、Makefile、CIから必須commandを特定する。
+2. 変更に該当するlint、format、型check、unit testを実行する。
+3. Bug修正またはUI変更は、再現手順を実環境で再実行する。
+4. 必須checkが失敗した状態ではcommitとPR作成へ進まない。
+
+### 3. Documentationを同期する
+
+1. `sync-docs-code`を同じbase、HEAD、working treeへ実行する。
+2. `PASS`または`UPDATED`と関連検証の成功を確認する。
+3. `BLOCKED`ならPRを作成しない。
+
+### 4. Commitを作成する
+
+1. 最終diffを変更目的ごとに分け、commit一覧を決める。
+2. 各commitで対象pathだけをstageし、`git diff --cached --check`と`git diff --cached`を確認する。
+3. 共通契約に従う日本語件名でcommitする。
+4. Commit後に`git status --short`を確認し、PR対象の変更が残っていれば次のcommitへ進む。
+5. 全commit作成後、必要な品質gateを再実行する。
+
+### 5. PR差分を確定する
+
+1. `git diff --name-only origin/<base>...HEAD`、`git diff --stat origin/<base>...HEAD`、`git log --oneline origin/<base>..HEAD`を確認する。
+2. 必要に応じて`git diff origin/<base>...HEAD --no-color`を読み、scope外変更がないことを確認する。
+3. `.github/pull_request_template.md`があれば構造を維持する。なければ標準templateを使う。
+4. 最新commitだけでなく、全commitの差分からPR titleと本文を作る。
+
+### 6. PushしてPRを作成する
+
+1. `git push -u origin <branch>`で現在branchをpushする。
+2. `gh pr create`でbase、head、title、本文、assignee、labelを指定する。
+3. `gh pr view`でURL、state、draft、assignee、label、base、headを確認する。
+
+## 標準PR本文
+
+```markdown
 ## 概要
-{変更の要約}
+
+{変更の目的と結果}
 
 ## 変更内容
+
 - {主要な変更}
 
 ## 動作確認
-- {実行したコマンドや確認内容}
+
+- {実行commandと結果}
 
 ## ドキュメント同期
-- status: {PASS または UPDATED}
-- 確認・更新した文書と検証結果
+
+- status: PASS | UPDATED
+- 確認した契約: {対象}
+- 更新文書: {pathまたは更新不要の理由}
+- 検証: {commandと結果}
 
 ## レビュー観点
-- {重点的に見てほしい点}
+
+- {重点的に確認してほしい点}
 ```
 
-## 注意
+## 失敗時
 
-- タイトルは簡潔にする
-- 最新コミット 1 件だけでなく **全コミットの差分** で判断する
-- 秘密情報 (`.env`, 認証情報) が含まれていれば警告する
-- `--no-verify` は使わない
+- GitHub認証が無ければ、完了済みcommitと実行すべき`gh auth login`を示して停止する。
+- 品質gateまたはdocumentation同期が失敗したらPRを作らず、失敗commandと再開条件を報告する。
+- Push後にPR作成だけ失敗した場合は、branch URLと再実行commandを示す。
+- `--no-verify`は使わない。
 
-## Claude Code 版
+## 関連skill
 
-# /create-pr
-
-現在の作業ブランチとベースブランチの差分から、プロジェクトの PR テンプレートに沿った PR を日本語で作成する。
-
-## 手順
-
-1. `current_branch=$(git branch --show-current)`
-2. ベースブランチ取得: `git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@'` (失敗時は `main`)
-3. 同じ差分への直前の`sync-docs-code`結果は再利用し、それ以外はskillを実行する。`PASS`または`UPDATED`と文書検証成功を確認し、`BLOCKED`なら停止する
-4. `git diff <base>...HEAD` で差分把握
-5. `.github/pull_request_template.md` があれば Read で読み込み、フォーマットに従う
-6. ブランチ名から数字 prefix を抽出 (`223/foo` → `[223]`)
-7. PR本文へドキュメント同期status、確認・更新した文書、検証結果を記載する
-8. `gh pr create --base <base> --title "[prefix] 作業内容" --body "<テンプレ準拠本文>"`
-
-## ルール
-
-- PR 本文に「Created by Claude Code」等の自動署名を入れない
-- `sync-docs-code`が`BLOCKED`のままPRを作成しない
-- ブランチ名に数字 prefix がない場合は省略
-- `.github/pull_request_template.md` が無いプロジェクトは標準フォーマット (概要 / 変更内容 / 動作確認) で作成
-- 変更内容を git diff で正確に把握してから記述する
-
-## 関連
-
-- 差分確認: `git-diff` skill
-- ドキュメント同期: `sync-docs-code` skill
-- 多段 PR 設計: `docs-driven-development` skill
+- `issue-to-pr`: Issue起点の調査と実装。
+- `sync-docs-code`: PR前のdocumentation同期gate。
+- `git-diff`: 差分確認だけを行う。
+- `git-worktree-ops`: 独立worktreeの作成とmerge後整理。

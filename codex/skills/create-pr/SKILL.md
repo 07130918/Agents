@@ -1,8 +1,9 @@
 ---
 name: create-pr
 description: |
-  現在のブランチと既定ベースブランチの差分を分析し、日本語のタイトル・本文でプルリクエストを作成する。
-  Use when: user asks to create a PR, open a pull request, or run /create-pr.
+  このユーザーglobal構成のPR提出を一貫して扱う正本。現在branchの変更を品質gate後に意味のある単位でcommitし、pushして日本語のPRを作成する。
+  Use when: user asks to commit and create a PR, push and open a pull request, submit current changes, create a PR, or run /create-pr.
+  Does not trigger on: commit only without a PR, issue investigation or implementation (defer to issue-to-pr), or diff inspection only (defer to git-diff).
   Accepts args: none.
 ---
 
