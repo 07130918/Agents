@@ -2,12 +2,12 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-HOME_DIR="${HOME}"
+LOCAL_CONFIG_ROOT="${AGENTS_LOCAL_CONFIG_ROOT:-${HOME}}"
 
 disable_claude_directory() {
   local configuration_name="$1"
-  local active_path="${HOME_DIR}/.claude/${configuration_name}"
-  local disabled_path="${HOME_DIR}/.claude/${configuration_name}.disabled"
+  local active_path="${LOCAL_CONFIG_ROOT}/.claude/${configuration_name}"
+  local disabled_path="${LOCAL_CONFIG_ROOT}/.claude/${configuration_name}.disabled"
 
   mkdir -p "${disabled_path}"
 
@@ -27,20 +27,20 @@ disable_claude_directory() {
   fi
 }
 
-mkdir -p "${HOME_DIR}/.agents/references" "${HOME_DIR}/.agents/skills"
-mkdir -p "${HOME_DIR}/.codex/agents" "${HOME_DIR}/.claude"
+mkdir -p "${LOCAL_CONFIG_ROOT}/.agents/references" "${LOCAL_CONFIG_ROOT}/.agents/skills"
+mkdir -p "${LOCAL_CONFIG_ROOT}/.codex/agents" "${LOCAL_CONFIG_ROOT}/.claude/skills"
 
-disable_claude_directory "skills"
 disable_claude_directory "agents"
 
-rsync -a --delete --exclude 'tp-*.md' "${ROOT}/shared/references/" "${HOME_DIR}/.agents/references/"
-rsync -a --delete --exclude 'tp-*' "${ROOT}/codex/skills/" "${HOME_DIR}/.agents/skills/"
-rsync -a --delete --exclude 'tp-*.toml' "${ROOT}/codex/agents/" "${HOME_DIR}/.codex/agents/"
-rsync -a --delete --exclude 'tp-*' "${ROOT}/claude/skills.disabled/" "${HOME_DIR}/.claude/skills.disabled/"
-rsync -a --delete --exclude 'tp-*.md' "${ROOT}/claude/agents.disabled/" "${HOME_DIR}/.claude/agents.disabled/"
+rsync -a --delete --exclude 'tp-*.md' "${ROOT}/shared/references/" "${LOCAL_CONFIG_ROOT}/.agents/references/"
+rsync -a --delete --exclude 'tp-*' "${ROOT}/codex/skills/" "${LOCAL_CONFIG_ROOT}/.agents/skills/"
+rsync -a --delete --exclude 'tp-*.toml' "${ROOT}/codex/agents/" "${LOCAL_CONFIG_ROOT}/.codex/agents/"
+rsync -a --delete --exclude 'tp-*' "${ROOT}/claude/skills/" "${LOCAL_CONFIG_ROOT}/.claude/skills/"
+rsync -a --delete --exclude 'tp-*' "${ROOT}/claude/skills.disabled/" "${LOCAL_CONFIG_ROOT}/.claude/skills.disabled/"
+rsync -a --delete --exclude 'tp-*.md' "${ROOT}/claude/agents.disabled/" "${LOCAL_CONFIG_ROOT}/.claude/agents.disabled/"
 
-cp "${ROOT}/codex/AGENTS.md" "${HOME_DIR}/.codex/AGENTS.md"
-cp "${ROOT}/codex/hooks.json" "${HOME_DIR}/.codex/hooks.json"
-cp "${ROOT}/claude/CLAUDE.md" "${HOME_DIR}/.claude/CLAUDE.md"
+cp "${ROOT}/codex/AGENTS.md" "${LOCAL_CONFIG_ROOT}/.codex/AGENTS.md"
+cp "${ROOT}/codex/hooks.json" "${LOCAL_CONFIG_ROOT}/.codex/hooks.json"
+cp "${ROOT}/claude/CLAUDE.md" "${LOCAL_CONFIG_ROOT}/.claude/CLAUDE.md"
 
 echo "Applied ${ROOT} into local global AI settings"

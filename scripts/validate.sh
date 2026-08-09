@@ -3,20 +3,34 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-for configuration_name in skills agents; do
-  if [ -e "${ROOT}/claude/${configuration_name}" ] || [ -L "${ROOT}/claude/${configuration_name}" ]; then
-    echo "Claude Code ${configuration_name} must remain disabled under claude/${configuration_name}.disabled." >&2
-    exit 1
-  fi
+if [ -L "${ROOT}/claude/skills" ] || [ ! -d "${ROOT}/claude/skills" ]; then
+  echo "Missing or invalid Claude Code active skills directory: claude/skills." >&2
+  exit 1
+fi
 
+if [ -e "${ROOT}/claude/agents" ] || [ -L "${ROOT}/claude/agents" ]; then
+  echo "Claude Code agents must remain disabled under claude/agents.disabled." >&2
+  exit 1
+fi
+
+for configuration_name in skills agents; do
   if [ ! -d "${ROOT}/claude/${configuration_name}.disabled" ]; then
     echo "Missing Claude Code disabled directory: claude/${configuration_name}.disabled" >&2
     exit 1
   fi
 done
 
+for active_skill in "${ROOT}"/claude/skills/*; do
+  [ -d "${active_skill}" ] || continue
+  skill_name="$(basename "${active_skill}")"
+  if [ -e "${ROOT}/claude/skills.disabled/${skill_name}" ]; then
+    echo "Claude Code skill cannot be both active and disabled: ${skill_name}" >&2
+    exit 1
+  fi
+done
+
 private_matches="$(
-  find "${ROOT}/codex/skills" "${ROOT}/claude/skills.disabled" -maxdepth 1 -type d -name 'tp-*' -print
+  find "${ROOT}/codex/skills" "${ROOT}/claude/skills" "${ROOT}/claude/skills.disabled" -maxdepth 1 -type d -name 'tp-*' -print
   find "${ROOT}/codex/agents" -maxdepth 1 -type f -name 'tp-*.toml' -print
   find "${ROOT}/claude/agents.disabled" -maxdepth 1 -type f -name 'tp-*.md' -print
   find "${ROOT}/shared/references" -maxdepth 1 -type f -name 'tp-*.md' -print
@@ -45,7 +59,7 @@ if ! command -v ruby >/dev/null 2>&1; then
   exit 1
 fi
 
-find "${ROOT}/codex/skills" "${ROOT}/claude/skills.disabled" -path '*/SKILL.md' -type f -print | while read -r file; do
+find "${ROOT}/codex/skills" "${ROOT}/claude/skills" "${ROOT}/claude/skills.disabled" -path '*/SKILL.md' -type f -print | while read -r file; do
   ruby -ryaml -e '
     file = ARGV.fetch(0)
     content = File.read(file)

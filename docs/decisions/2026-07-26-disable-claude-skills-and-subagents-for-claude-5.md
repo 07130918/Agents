@@ -1,8 +1,9 @@
-# Claude 5 世代向け再設計まで Claude Code skill と subagent を無効化する
+# Claude 5 世代向け再設計まで既存の Claude Code skill と subagent を無効化する
 
 - ステータス: 採用
 - 決定日: 2026-07-26
-- 対象: Claude Code のユーザーグローバル skill と subagent
+- 更新日: 2026-08-09
+- 対象: Claude Code の既存ユーザーグローバル skill と subagent、および新規skillの反映判断
 
 ## 背景
 
@@ -14,12 +15,13 @@ Claude Code のユーザー subagent は全プロジェクトから検出され�
 
 ## 決定
 
-1. `claude/skills/` を `claude/skills.disabled/` へ移し、既存の Claude Code 用 wrapper を Git 履歴に残したまま一時無効化する。
+1. 2026-07-26時点の `claude/skills/` を `claude/skills.disabled/` へ移し、既存の Claude Code 用 wrapper を Git 履歴に残したまま一時無効化する。
 2. `claude/agents/` を `claude/agents.disabled/` へ移し、既存の Claude Code 用 subagent も一時無効化する。
-3. ローカル設定も `~/.claude/skills/` と `~/.claude/agents/` から、それぞれ `.disabled` を付けたディレクトリへ移す。
-4. 同期スクリプトは `.disabled` ディレクトリを正本として扱い、`scripts/apply-to-local.sh` の実行時に有効な skill と subagent が残らないようにする。
-5. Codex の skill と agent、Claude Code の `CLAUDE.md`、共通 reference は今回の対象外とし、変更しない。
-6. Claude 5 世代向け skill と subagent は既存セットの一括復元ではなく、素の Opus 5 と Fable 5 との比較で必要性を確認したものから別の変更として再導入する。
+3. ローカルの既存設定も `~/.claude/skills/` と `~/.claude/agents/` から、それぞれ `.disabled` を付けたディレクトリへ移す。
+4. skillを新規作成するときは、Claude Codeにも反映するかをユーザーへ必ず確認する。明示的に希望された場合だけ `claude/skills/<skill-name>/SKILL.md` を作成し、`~/.claude/skills/` へ有効配置する。
+5. 同期スクリプトはactiveな `skills/` と退避済みの `skills.disabled/` を別々に同期する。`scripts/apply-to-local.sh` はリポジトリで管理するactive skillだけを有効化し、Claude Code subagentは引き続きすべて無効化する。
+6. Codex の skill と agent、Claude Code の `CLAUDE.md`、共通 reference はこの無効化判断の対象外とする。
+7. 退避済みの既存skillとsubagentは一括復元せず、素の Opus 5 と Fable 5 との比較で必要性を確認したものから別の変更として再導入する。
 
 ## 再設計方針
 
@@ -32,10 +34,11 @@ Claude Code のユーザー subagent は全プロジェクトから検出され�
 
 ## 影響
 
-- Claude Code は `~/.claude/skills/` と `~/.claude/agents/` にあるユーザーグローバル拡張を検出しなくなる。
+- Claude Code は、ユーザーが明示的に反映を希望した新規skillだけを `~/.claude/skills/` から検出する。
+- 2026-07-26時点の既存skillと全subagentは、引き続き `.disabled` 配下にあり検出されない。
 - 組み込み、plugin 提供、プロジェクトローカルの skill と subagent はこの決定の対象外となる。
 - 退避した wrapper、subagent 定義、共通 reference は削除しないため、内容の参照と段階的な再設計ができる。
-- `scripts/sync-from-local.sh` は有効な `~/.claude/skills/` または `~/.claude/agents/` が存在する場合に失敗し、意図しない再有効化を防ぐ。
+- `scripts/sync-from-local.sh` は有効な `~/.claude/skills/` を管理対象として同期する。有効な `~/.claude/agents/` が存在する場合は引き続き失敗し、意図しないsubagent再有効化を防ぐ。
 
 ## 検討した代替案
 
@@ -53,7 +56,7 @@ skill 名ごとの設定管理が必要で、新規追加時の無効化漏れ�
 
 ## 復帰条件
 
-次の条件を満たす skill または subagent だけを、別の PR で有効な配置へ戻す。
+退避済みの既存skillまたはsubagentは、次の条件を満たすものだけを別のPRで有効な配置へ戻す。新規skillは作成時の明示確認を有効化条件とする。
 
 1. Opus 5 と Fable 5 の素の挙動と比較し、設定を追加する必要性が説明できる。
 2. 代表タスクで作業の早期終了、指示競合、不要な委譲を増やさないことを確認できる。

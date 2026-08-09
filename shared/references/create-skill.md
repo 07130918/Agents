@@ -1,6 +1,6 @@
 # create-skill
 
-Codex と Claude Code の両方から呼び出せる skill を作成・更新するためのワークフロー。原則として、この PC の共通構成では本体を `~/.agents/references/<skill-name>.md` に置き、`~/.agents/skills/<skill-name>/SKILL.md` と `~/.claude/skills/<skill-name>/SKILL.md` は短い wrapper にする。
+Codex用skillを作成・更新し、希望された場合はClaude Codeからも呼び出せるようにするワークフロー。原則として、このPCの共通構成では本体を `~/.agents/references/<skill-name>.md`、Codex wrapperを `~/.agents/skills/<skill-name>/SKILL.md` に置く。新規作成時はClaude Codeにも反映するかをユーザーへ必ず確認し、希望された場合だけ `~/.claude/skills/<skill-name>/SKILL.md` を作る。
 
 ## 使う場面
 
@@ -34,13 +34,14 @@ find ~/.agents/references -maxdepth 1 -name '*.md'
 ```
 
 2. 同名または近い目的の skill がある場合は新規作成ではなく更新を優先する。
-3. 仕様が不足していても、次のデフォルトで進められるなら質問せず実装する。
+3. 新規作成時は、ユーザーがClaude Codeへの反映可否をすでに指定していなければ「Claude Codeにも反映しますか」と必ず確認する。この確認は省略しない。
+4. その他の仕様が不足していても、次のデフォルトで進められるなら質問せず実装する。
 
 デフォルト:
 
 - scope: ユーザーが「この PC 全体」「グローバル」と言ったら global、それ以外は現在のリポジトリ。
-- target: Codex と Claude Code の両方。
-- structure: 共通 reference + 両 CLI wrapper。
+- target: Codex。Claude Codeはユーザーが明示的に希望した場合だけ追加する。
+- structure: 共通reference + Codex wrapper。Claude Codeへ反映する場合はClaude Code wrapperも追加する。
 - content type: instruction-only。
 - scripts: 同じ処理を毎回書く、または deterministic reliability が必要な場合だけ追加。
 - validation: frontmatter、参照パス、行数、発火例を確認。
@@ -59,7 +60,7 @@ find ~/.agents/references -maxdepth 1 -name '*.md'
 ```text
 ~/.agents/references/<skill-name>.md
 ~/.agents/skills/<skill-name>/SKILL.md
-~/.claude/skills/<skill-name>/SKILL.md
+~/.claude/skills/<skill-name>/SKILL.md  # Claude Codeへの反映を希望された場合だけ
 ```
 
 プロジェクト固有で同じ共通構成を使う場合:
@@ -67,10 +68,10 @@ find ~/.agents/references -maxdepth 1 -name '*.md'
 ```text
 <repo>/.agents/references/<skill-name>.md
 <repo>/.agents/skills/<skill-name>/SKILL.md
-<repo>/.claude/skills/<skill-name>/SKILL.md
+<repo>/.claude/skills/<skill-name>/SKILL.md  # Claude Codeへの反映を希望された場合だけ
 ```
 
-単一 CLI だけが対象の場合は、その CLI の標準配置だけを作る。
+Claude Codeへの反映を希望されなかった場合は、Claude Code wrapperを作らない。
 
 ## 作成フロー
 
@@ -82,6 +83,7 @@ find ~/.agents/references -maxdepth 1 -name '*.md'
 name:
 scope:
 target_cli:
+claude_reflection: yes / no
 job:
 trigger_examples:
 non_trigger_examples:
@@ -93,7 +95,7 @@ supporting_files:
 validation:
 ```
 
-質問は最大 3 つまで。実装場所、破壊的副作用、認証情報の扱いが不明な場合だけ質問する。
+質問は最大3つまで。Claude Codeへの反映確認は新規作成時の必須質問として数える。ほかは実装場所、破壊的副作用、認証情報の扱いが不明な場合だけ質問する。
 
 ### 2. description を先に書く
 
@@ -136,7 +138,7 @@ allowed-tools: Read Write Edit Glob Grep Bash(find *) Bash(wc *) Bash(mkdir *)
 この skill が発火したら、作業前に必ず上記の参照ファイルを読み、実行中の CLI に対応する手順・チェックリスト・注意事項に従ってください。
 ```
 
-Claude Code 側 template:
+Claude Codeへの反映を希望された場合だけ、次のtemplateでwrapperを作る。
 
 ```markdown
 ---
@@ -200,11 +202,18 @@ reference には実際の workflow を置く。標準構成:
 
 ```bash
 test -f <codex-skill>/SKILL.md
-test -f <claude-skill>/SKILL.md
 test -f <reference>
-wc -l <codex-skill>/SKILL.md <claude-skill>/SKILL.md <reference>
-rg -n 'name:|description:|~/.agents/references|.agents/references' <codex-skill>/SKILL.md <claude-skill>/SKILL.md
+wc -l <codex-skill>/SKILL.md <reference>
+rg -n 'name:|description:|~/.agents/references|.agents/references' <codex-skill>/SKILL.md
 rg -n -P '\x{ff08}|\x{ff09}' <changed-files>
+```
+
+Claude Codeへの反映を希望された場合は、同じ検証へ次を追加する。
+
+```bash
+test -f <claude-skill>/SKILL.md
+wc -l <claude-skill>/SKILL.md
+rg -n 'name:|description:|~/.agents/references|.agents/references' <claude-skill>/SKILL.md
 ```
 
 判定基準:
@@ -214,6 +223,7 @@ rg -n -P '\x{ff08}|\x{ff09}' <changed-files>
 - `name` と directory name が一致する。
 - description の先頭に trigger words がある。
 - 参照パスが存在する。
+- 最終報告にClaude Codeへの反映有無を明記する。
 - この PC では全角カッコを使わない。
 - 絵文字を使う場合は `✅`、`⚠️`、`❌` のみ。
 
