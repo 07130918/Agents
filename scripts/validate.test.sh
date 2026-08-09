@@ -4,12 +4,14 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SERENA_PROBE=""
 SECRET_PROBE=""
+FALSE_POSITIVE_PROBE=""
 ACTIVE_AGENT_PROBE=""
 DUPLICATE_SKILL_PROBE=""
 
 cleanup() {
   [ -z "${SERENA_PROBE}" ] || rm -f "${SERENA_PROBE}"
   [ -z "${SECRET_PROBE}" ] || rm -f "${SECRET_PROBE}"
+  [ -z "${FALSE_POSITIVE_PROBE}" ] || rm -f "${FALSE_POSITIVE_PROBE}"
   [ -z "${ACTIVE_AGENT_PROBE}" ] || rmdir "${ACTIVE_AGENT_PROBE}"
   [ -z "${DUPLICATE_SKILL_PROBE}" ] || rmdir "${DUPLICATE_SKILL_PROBE}"
 }
@@ -23,6 +25,17 @@ if ! "${ROOT}/scripts/validate.sh" >/dev/null; then
   echo "Validation must ignore .serena runtime state." >&2
   exit 1
 fi
+
+FALSE_POSITIVE_PROBE="$(mktemp "${ROOT}/validate-risk-reviewer-test.XXXXXX")"
+printf '%s\n' 'name = "pr-risk-reviewer"' >"${FALSE_POSITIVE_PROBE}"
+
+if ! "${ROOT}/scripts/validate.sh" >/dev/null; then
+  echo "Validation must not treat pr-risk-reviewer as an API key." >&2
+  exit 1
+fi
+
+rm -f "${FALSE_POSITIVE_PROBE}"
+FALSE_POSITIVE_PROBE=""
 
 SECRET_PROBE="$(mktemp "${ROOT}/validate-test.XXXXXX")"
 printf 's%s\n' 'k-validation-probe' >"${SECRET_PROBE}"
