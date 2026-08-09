@@ -1,0 +1,4 @@
+interface:
+  display_name: "アーキテクチャ・フロー可視化"
+  short_description: "機能のアーキテクチャと状態遷移を自己完結型HTMLで可視化"
+  default_prompt: "$visualize-architecture-flow を使い、この機能のアーキテクチャと処理フローを自己完結型の1枚HTMLで可視化してください。"
