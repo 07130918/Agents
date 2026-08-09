@@ -59,7 +59,7 @@ GitHub issue を起点に、調査・実装計画・実装・品質ゲート・�
 - `sync-docs-code` skill を実行し、base branch からの全差分について実装上の契約とリポジトリ内ドキュメントを照合する
 - DB、API、UI、環境変数、設定、運用手順、architecture の変更に対応する正本を確認し、必要な更新を同じ差分へ含める
 - ゲートが `BLOCKED` のままPR作成へ進まない。`PASS`または`UPDATED`になり、文書検証が成功してから次へ進む
-- 文書更新が発生した場合は対象ファイルを明示的にstageし、`docs:` commitとして意味のある単位でcommitする
+- 文書更新は現在scopeの差分へ含め、stageとcommit分割は`create-pr`に委譲する
 - 今回の差分と無関係な既存乖離は変更へ混ぜず、日本語の派生issue候補として報告する
 
 ### 7. 完了前の差分gateを通す

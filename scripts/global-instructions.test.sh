@@ -30,6 +30,11 @@ if grep -nE '^## (GitHub PR|コミットメッセージ|バグ調査)$' "${CODEX
   exit 1
 fi
 
+if grep -nE '07130918|git add <path>|根本原因を特定' "${CODEX_GLOBAL}"; then
+  echo "Skillへ移管した詳細をglobal指示へ戻さないでください。" >&2
+  exit 1
+fi
+
 for skill_name in \
   issue-to-pr \
   bug-investigation \
@@ -65,6 +70,11 @@ done
 
 if ! grep -Fq '必須gateの失敗または未解決のblockerが残る場合は、PR作成へ進まない' "${ISSUE_TO_PR_REFERENCE}"; then
   echo "issue-to-prに観測可能な停止条件がありません。" >&2
+  exit 1
+fi
+
+if grep -nE 'git add|git diff --cached|`docs:` commit' "${ISSUE_TO_PR_REFERENCE}"; then
+  echo "Commit操作はcreate-prだけに定義してください。" >&2
   exit 1
 fi
 
