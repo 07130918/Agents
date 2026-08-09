@@ -199,4 +199,4 @@ CIが落ちているので直してください
 
 - `create-pr`: PR作成。
 - `github-actions-ops`: GitHub Actions失敗の調査。
-- `codex-review`: ローカル差分のコードレビュー。
+- `pr-risk-reviewer` agent: ローカル差分のコードレビュー。
