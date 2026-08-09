@@ -10,7 +10,7 @@
 
 ## 対象外
 
-- 汎用レビュー: `codex-review` (正確性/セキュリティ) と `principle-of-programming-reviewer` (設計原則) を使う。
+- 汎用レビュー: `pr-risk-reviewer` agent (正確性/セキュリティ) と `principle-of-programming-reviewer` skill (設計原則) を使う。
 - 上記2つの一括実行: `multi-model-code-reviewer` agent を使う。
 - セキュリティ専門の網羅監査: `security-audit` を使う。
 - GitHub PR 単位のレビュー: PR レビュー用の workflow を使う。
@@ -99,7 +99,7 @@
 
 ## 関連 skill
 
-- `codex-review` / `principle-of-programming-reviewer`: 汎用2観点。中規模以上の変更では `principle-of-programming-reviewer` を先に実行し、その後に本 skill でドメイン観点を追加する。
+- `pr-risk-reviewer` agent / `principle-of-programming-reviewer` skill: 汎用2観点。中規模以上の変更では `principle-of-programming-reviewer` を先に実行し、その後に本 skill でドメイン観点を追加する。
 - `multi-model-code-reviewer` agent: 上記2つの一括実行。
 - `security-audit`: セキュリティ専門の網羅監査。
 - `testing-patterns`: test 観点の指摘を修正する際の参照。

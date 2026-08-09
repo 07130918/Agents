@@ -69,5 +69,5 @@
 
 ## 関連
 
-- レビュー: `codex-review` / `principle-of-programming-reviewer` skill
+- レビュー: `pr-risk-reviewer` agent / `principle-of-programming-reviewer` skill
 - PR 作成: `create-pr` skill
