@@ -60,6 +60,7 @@ for required_text in \
   'git diff --cached' \
   'lint、format、型check、test' \
   'sync-docs-code' \
+  'commit権限とmessage形式はglobal指示の共通契約に従う' \
   'assignee' \
   'label'; do
   if ! grep -Fq "${required_text}" "${CREATE_PR_REFERENCE}"; then
@@ -73,8 +74,8 @@ if ! grep -Fq '必須gateの失敗または未解決のblockerが残る場合は
   exit 1
 fi
 
-if grep -nE 'git add|git diff --cached|`docs:` commit' "${ISSUE_TO_PR_REFERENCE}"; then
-  echo "Commit操作はcreate-prだけに定義してください。" >&2
+if grep -inE 'git add|git diff --cached|`docs:` commit|commit.*正本|message.*正本' "${ISSUE_TO_PR_REFERENCE}"; then
+  echo "Commit操作とpolicyの正本はissue-to-prへ重複定義しないでください。" >&2
   exit 1
 fi
 
