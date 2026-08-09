@@ -36,9 +36,9 @@ scripts/apply-to-local.sh
 
 `scripts/validate.sh` と `scripts/diff-local.sh` で `AGENTS.md` / `CLAUDE.md` / skill wrapper の意味が壊れていないことを確認してから `scripts/apply-to-local.sh` を実行します。ローカルから同期する `scripts/sync-from-local.sh` は本文を自動変換せず、同期後の `scripts/validate.sh` で禁止文字や秘密情報を検出します。
 
-現在、Claude Code のユーザーグローバル skill と subagent は Claude 5 世代向けに再設計するため一時無効化しています。リポジトリの `claude/skills.disabled/` と `claude/agents.disabled/` を同名のローカルディレクトリへ同期し、有効な `~/.claude/skills/` と `~/.claude/agents/` は作成しません。判断の背景と復帰条件は [ADR](docs/decisions/2026-07-26-disable-claude-skills-and-subagents-for-claude-5.md) を参照してください。
+現在、Claude Code の既存ユーザーグローバル skill と subagent は Claude 5 世代向けに再設計するため一時無効化しています。新規skillは作成時にClaude Codeへ反映するかをユーザーへ確認し、明示されたものだけを `claude/skills/` から有効な `~/.claude/skills/` へ同期します。既存skillとsubagentは `claude/skills.disabled/` と `claude/agents.disabled/` に維持し、有効な `~/.claude/agents/` は作成しません。判断の背景と復帰条件は [ADR](docs/decisions/2026-07-26-disable-claude-skills-and-subagents-for-claude-5.md) を参照してください。
 
-`scripts/validate.sh` を変更した場合は `scripts/validate.test.sh`、ローカル適用処理を変更した場合は `scripts/apply-to-local.test.sh` で回帰確認します。
+`scripts/validate.sh` を変更した場合は `scripts/validate.test.sh`、ローカル適用処理を変更した場合は `scripts/apply-to-local.test.sh`、ローカル同期処理を変更した場合は `scripts/sync-from-local.test.sh` で回帰確認します。
 
 ## 新規プロジェクトのセットアップ
 
