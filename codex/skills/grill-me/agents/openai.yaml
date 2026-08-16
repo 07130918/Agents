@@ -1,0 +1,5 @@
+interface:
+  display_name: "Grill Me"
+  short_description: "計画やアイデアを1問ずつストレステスト"
+policy:
+  allow_implicit_invocation: false

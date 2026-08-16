@@ -1,22 +1,30 @@
 # Grill With Docs
 
-ドメインドキュメントを意識した grilling セッション。
+リポジトリの計画や設計をgrillingし、解決したdomain用語と長期的な意思決定をその場で記録するstatefulなworkflow。
 
-## やること (what-to-do)
+ユーザが `grill-with-docs` を明示的に選択した場合だけ開始する。
 
-計画のあらゆる側面について、共通理解に到達するまで**容赦なく**ユーザをインタビューする。決定の依存関係を 1 つずつ解決しながら、設計ツリーの各分岐を walk する。**各質問には自分の推奨回答を提示する**。
+## 必須reference
 
-質問は**一度に 1 つだけ**。各質問のフィードバックを待ってから次に進む。
+最初の質問を出す前に `~/.agents/references/grilling.md` を最後まで読み、そのインタビュー規律に従う。
 
-コードベースを探索すれば答えられる質問は、ユーザに聞かずに自分で探索する。
+`CONTEXT.md` を更新する直前に `~/.agents/references/grill-with-docs-context-format.md` を読む。ADRを提案する直前に `~/.agents/references/grill-with-docs-adr-format.md` を読む。必要になる前に両方を読み込まない。
 
-### 開始時の探索プロトコル
+## 使う場面
 
-最初の質問に入る前に、短く探索してから開始する。これは質問 1 つ分に数えない。
+- リポジトリ内の変更を1つのsessionで合意できるscopeに研ぐ。
+- 既存コードとdomain languageを照合しながら、曖昧な用語を解決する。
+- 特定featureがなくても、既存リポジトリのdomain languageを整備する。
 
-1. `CONTEXT-MAP.md`、ルート `CONTEXT.md`、該当コンテキストの `CONTEXT.md`、`docs/adr/` を探す。
-2. ユーザの計画に関係しそうなコード、schema、API、UI、テストを軽く読む。深掘りしすぎない。
-3. 次の 4 点を 5 から 8 行で宣言してから、最初の質問を 1 つだけ出す。
+複数sessionにまたがる大規模計画は先にscopeを分割する。ファイルを更新しない軽量なインタビューには `grill-me` を使う。
+
+## 開始時の探索
+
+最初の質問に入る前に短く探索する。これは質問1つ分に数えない。
+
+1. `CONTEXT-MAP.md`、ルート `CONTEXT.md`、該当contextの `CONTEXT.md`、`docs/adr/` を探す。
+2. 計画に関係するコード、schema、API、UI、testを軽く読む。最初から深掘りしすぎない。
+3. 次の4点を5から8行で宣言し、frontierから最初の質問を1つ出す。
 
 ```text
 既知の用語:
@@ -25,128 +33,71 @@
 最初に解くべき分岐:
 ```
 
-このサマリーで断定できないことは「未確定領域」に置く。コードや docs で答えられることを質問にしてはいけない。
+断定できないことは `未確定領域` に置く。コードやdocsで確認できる事実をユーザへ質問しない。
 
----
+## contextを分類する
 
-## 補助情報 (supporting-info)
+ルートに `CONTEXT-MAP.md` がある場合は、質問や文書更新の前に次を分類する。
 
-### ドメイン認識 (domain awareness)
+- 用語を所有するbounded context
+- 同名の用語が別contextで同じ意味か、異なる意味か
+- 決定がsystem-wideか、context-specificか
+- context間の関係を変える場合、`CONTEXT-MAP.md` の更新が必要か
 
-コードベースを探索する時、既存ドキュメントも探す。
+分類できない時は、推測で `CONTEXT.md` を更新せず、どのcontextの言葉かを質問する。
 
-#### ファイル構造
+## domain modelを研ぐ
 
-ほとんどのリポジトリは単一コンテキスト:
+### glossaryへ挑戦する
 
-```
-/
-├── CONTEXT.md
-├── docs/
-│   └── adr/
-│       ├── 0001-event-sourced-orders.md
-│       └── 0002-postgres-for-write-model.md
-└── src/
-```
+ユーザが既存の `CONTEXT.md` と矛盾する言葉を使ったら即座に指摘する。曖昧またはoverloadされた言葉には、精密なcanonical termを推奨する。
 
-ルートに `CONTEXT-MAP.md` があれば**複数コンテキスト**。マップは各コンテキストの所在を指す:
+domain上の関係を議論する時は具体的なedge caseを作り、概念の境界をstress-testする。ユーザが説明した挙動はコードと照合し、矛盾があればどちらが正しいかを解決する。
 
-```
-/
-├── CONTEXT-MAP.md
-├── docs/
-│   └── adr/                          ← システム全体の決定
-├── src/
-│   ├── ordering/
-│   │   ├── CONTEXT.md
-│   │   └── docs/adr/                 ← context-specific 決定
-│   └── billing/
-│       ├── CONTEXT.md
-│       └── docs/adr/
-```
+### `CONTEXT.md` をインラインで更新する
 
-ファイルは**遅延作成**する。書くべき内容ができた時だけ作る。`CONTEXT.md` が無ければ最初の用語が解決した時に作る。`docs/adr/` が無ければ最初の ADR が必要な時に作る。
+次のgateをすべて満たした用語だけを、その場で `CONTEXT.md` へ追加する。バッチ更新しない。
 
-#### 複数コンテキストの分類
+1. ユーザがcanonical termと定義へ明示的に同意した。
+2. 既存用語との衝突、alias、avoid語が整理された。
+3. コード上の呼称や実際の挙動と矛盾していない。
+4. そのcontext固有のdomain概念であり、実装詳細ではない。
 
-`CONTEXT-MAP.md` がある時は、質問や doc 更新の前に次を分類する。
+仮説段階の語は会話内で `未解決の候補語` として扱う。`CONTEXT.md` はglossaryだけに使い、spec、scratch pad、decision ledgerにしない。DB column、API route、UI component、内部helperはdomain expertにとって意味がある場合だけ用語に含める。
 
-- 今話している用語はどの bounded context の言葉か
-- 用語が複数 context をまたぐなら、各 context で意味が同じか違うか
-- ADR が必要な場合、それは system-wide decision か context-specific decision か
-- context 間の関係を変えるなら、`CONTEXT-MAP.md` の Relationships 更新が必要か
+### ADRを控えめに提案する
 
-分類できない場合は、推測で `CONTEXT.md` を更新せず、まず「この用語はどの context の言葉ですか?」と聞く。
+次の3条件をすべて満たす時だけADRを提案する。
 
-### セッション中の規律
+1. 元に戻すcostが意味のあるレベルで高い。
+2. contextがなければ将来の読み手にとって驚く。
+3. 真の代替案を比較したtrade-offの結果である。
 
-#### 用語集に対して挑戦する
+1つでも欠けたらADRを作らない。ユーザが作成へ同意したら、その場で記録する。
 
-ユーザが `CONTEXT.md` の既存言語と矛盾する用語を使ったら、**即座にコールアウトする**:
+## 安全に文書を更新する
 
-> 「あなたの用語集は『キャンセル』を X と定義しているけれど、今 Y を意味しているように聞こえます。どちらですか?」
+- 編集直前に対象ファイルを読み直し、既存の未commit変更を保持する。
+- 読み取り後に対象ファイルが変わった場合は、自動的に上書きせず競合を解決する。
+- 同じglossaryやADRを複数writerが同時更新している場合は、ownerを決めるまで書き込まない。
+- 解決済みでもglossaryにもADRにも該当しない決定は会話に残す。無理に文書へ押し込まない。
 
-#### 曖昧な言葉を研ぐ
+## 終了時の引き継ぎ
 
-ユーザが曖昧、または overload された語を使ったら、精密な canonical 用語を提案する:
-
-> 「『アカウント』とおっしゃいましたが、それは Customer ですか、User ですか? それらは別物です」
-
-#### 具体シナリオでストレステスト
-
-ドメインの関係を議論している時、具体シナリオで edge を突く。エッジケースを探るシナリオを発明し、ユーザに概念間の境界について精密に答えさせる。
-
-#### コードとクロスリファレンス
-
-ユーザが「こう動く」と述べたら、コードがそれに同意するかを確認する。矛盾を見つけたら surface する:
-
-> 「あなたのコードは Order 全体をキャンセルしますが、たった今『部分キャンセルが可能』と言いました。どちらが正しいですか?」
-
-#### `CONTEXT.md` をインラインで更新
-
-用語が解決した瞬間に **`CONTEXT.md` をその場で更新**する。バッチしない。フォーマットは `CONTEXT-FORMAT.md` を参照。
-
-ただし、次の update gate をすべて満たすまで glossary に入れない:
-
-1. ユーザが canonical term と定義に明示同意した
-2. 既存用語との衝突、alias、avoid 語が整理された
-3. コード上の呼称や実際の挙動と矛盾していない。矛盾がある場合は、矛盾を明記して先に解決した
-4. その語がこの context 固有のドメイン概念であり、単なる実装詳細ではない
-
-仮説段階の語は `CONTEXT.md` に入れない。必要なら会話内で「未解決の候補語」として扱い、解決後に更新する。
-
-`CONTEXT.md` を実装詳細に couple させない。**ドメイン専門家にとって意味のある用語のみ**を含める。DB カラム名、API route、UI コンポーネント名、内部 helper 名は、それ自体がドメイン専門家の言葉として意味を持つ場合だけ入れる。
-
-#### ADR は控えめに提案する
-
-ADR を提案するのは**3 条件すべて**満たす時だけ:
-
-1. **元に戻しにくい** — 後で考えを変えるコストが意味のあるレベル
-2. **コンテキスト無しでは驚く** — 将来の読み手が「なぜこの実装にした?」と思う
-3. **真のトレードオフの結果** — 真の代替があり、特定の理由でそちらを選んだ
-
-3 つのうち 1 つでも欠けたらスキップする。フォーマットは `ADR-FORMAT.md` を参照。
-
-#### 終了条件と成果物サマリー
-
-grilling は無限に続けない。高影響の未解決分岐がなくなり、残りが低リスクな詳細だけになったら終了してよい。
-
-終了時は次を短く出す:
+共通referenceの終了条件を満たしたら、次を短くまとめる。
 
 ```text
 Resolved decisions:
-Open questions:
+Deferred questions:
 Updated docs:
-ADR candidates:
+Created ADRs:
 Next step:
 ```
 
-`Open questions` には、実装前に必ず解くべきものと、後でよいものを分ける。`Next step` は `to-prd`、`docs-driven-development`、実装、追加調査などから 1 つ推奨する。
-
----
+`Deferred questions` は実装前に解くものと、後でよいものを分ける。`Next step` は `docs-driven-development`、実装、prototype、追加調査から1つ推奨する。glossaryやADRに入らない具体的な制約、negative requirement、数値defaultもsummaryに残し、同じtaskのまま次へ進める。
 
 ## 関連 skill
 
-- ドキュメント無しの軽量版: `grill-me`
-- アーキテクチャ改善の文脈での grilling: `software-architecture` ワークフロー Step 3
-- 仕様駆動開発で `docs/design/` を先に書く流れ: `docs-driven-development`
+- ドキュメントを書かない軽量版: `grill-me`
+- アーキテクチャ改善のgrilling: `software-architecture` のworkflow Step 3
+- `docs/design/` を正本にして実装へ進む: `docs-driven-development`

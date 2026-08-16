@@ -16,8 +16,34 @@ mkdir -p "${TEST_CONFIG_ROOT}/.claude/skills/legacy-active"
 printf '%s\n' 'legacy active skill' >"${TEST_CONFIG_ROOT}/.claude/skills/legacy-active/SKILL.md"
 mkdir -p "${TEST_CONFIG_ROOT}/.claude/agents"
 printf '%s\n' 'local private subagent' >"${TEST_CONFIG_ROOT}/.claude/agents/tp-local-test.md"
+mkdir -p "${TEST_CONFIG_ROOT}/.agents/skills/grill-with-docs"
+printf '%s\n' 'legacy duplicated format' >"${TEST_CONFIG_ROOT}/.agents/skills/grill-with-docs/CONTEXT-FORMAT.md"
+printf '%s\n' 'legacy duplicated format' >"${TEST_CONFIG_ROOT}/.agents/skills/grill-with-docs/ADR-FORMAT.md"
 
 AGENTS_LOCAL_CONFIG_ROOT="${TEST_CONFIG_ROOT}" "${ROOT}/scripts/apply-to-local.sh" >/dev/null
+
+if [ ! -f "${TEST_CONFIG_ROOT}/.agents/references/grilling.md" ]; then
+  echo "Shared grilling reference must be applied to local settings." >&2
+  exit 1
+fi
+
+if [ ! -f "${TEST_CONFIG_ROOT}/.agents/references/grill-with-docs-context-format.md" ] ||
+  [ ! -f "${TEST_CONFIG_ROOT}/.agents/references/grill-with-docs-adr-format.md" ]; then
+  echo "Shared grill-with-docs formats must be applied to local settings." >&2
+  exit 1
+fi
+
+if ! grep -q '^  allow_implicit_invocation: false$' "${TEST_CONFIG_ROOT}/.agents/skills/grill-me/agents/openai.yaml" ||
+  ! grep -q '^  allow_implicit_invocation: false$' "${TEST_CONFIG_ROOT}/.agents/skills/grill-with-docs/agents/openai.yaml"; then
+  echo "Grilling skills must remain manual-only after applying local settings." >&2
+  exit 1
+fi
+
+if [ -e "${TEST_CONFIG_ROOT}/.agents/skills/grill-with-docs/CONTEXT-FORMAT.md" ] ||
+  [ -e "${TEST_CONFIG_ROOT}/.agents/skills/grill-with-docs/ADR-FORMAT.md" ]; then
+  echo "Grill-with-docs formats must not be duplicated under the skill wrapper." >&2
+  exit 1
+fi
 
 if [ ! -f "${TEST_CONFIG_ROOT}/.claude/skills/visualize-architecture-flow/SKILL.md" ]; then
   echo "Managed active Claude Code skills must be copied into skills." >&2
