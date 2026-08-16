@@ -1,0 +1,5 @@
+interface:
+  display_name: "Grill with Docs"
+  short_description: "設計を問い詰め、用語と決定を記録"
+policy:
+  allow_implicit_invocation: false

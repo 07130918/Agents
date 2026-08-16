@@ -185,7 +185,7 @@ interface はまだ提案しない。ユーザに問う: 「どれを深掘り�
 
 判断が結晶化したらインラインで副作用を起こす:
 
-- **`CONTEXT.md` に無い概念で deepened module を命名しそう?** → `CONTEXT.md` をその場で更新 (`grill-with-docs/CONTEXT-FORMAT.md`)。ファイルが無ければ lazy に作る
+- **`CONTEXT.md` に無い概念で deepened module を命名しそう?** → `~/.agents/references/grill-with-docs-context-format.md` に従い、その場で更新する。ファイルが無ければ lazy に作る
 - **対話の中で曖昧な語が研がれた?** → `CONTEXT.md` をその場で更新
 - **ユーザが load-bearing な理由で候補を却下?** → ADR を提案する。「将来のレビューが同じ提案を再度しないよう ADR にしますか?」と framing する。ephemeral な理由 (今は時間が無いだけ) や自明な理由はスキップ
 - **deepened module の interface を複数案検討したい?** → `reference-interface-design.md` の並列サブエージェント手法に進む
