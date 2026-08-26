@@ -83,14 +83,14 @@ repository rootと変更pathに適用される`AGENTS.md`、`CLAUDE.md`、`CONTR
 - base branchとexact base SHA
 - exact head SHA
 - working tree: clean / dirtyと、対象に含めるかどうか
-- working tree manifest: 対象へ含めるdirty fileごとのpath、最終file mode / type、`git hash-object`、削除fileのmarker。通常reviewではHEAD treeと最終filesystem snapshotの差分だけを記録し、index-only差分は含めない
+- working tree manifest: 対象へ含めるdirty fileごとのpath、最終file mode / type、canonical content hash、削除fileのmarker。通常reviewではHEAD treeと最終filesystem snapshotの差分だけを記録し、index-only差分は含めない
 - index diff: staged-onlyまたはindex状態が明示された場合だけ、cached diff content hash
 - PR remote: PR URLのrepositoryと一致したremote名と正規化前のfetch URL。PR URL以外では`not applicable`
 - 対象pathと除外path。除外には理由を付ける
 - skill version: 実行中CLIのwrapperとこのreferenceについて、pathと`git hash-object`で得たcontent hash
 - project rules: 実際に適用した`source: base:<base_sha> | head:<head_sha>`、path、`git rev-parse <source_sha>:<rules_path>`で得たblob hash
 
-SHAは短縮せず、`git rev-parse`で得たfull SHAを使う。untracked fileも最終file mode / typeと`git hash-object --no-filters -- <path>`をmanifestへ含める。通常のcurrent branchレビューではindex diffを別途fingerprintへ追加せず、clean / dirty判定にも使わない。working tree manifestのcontent hashと、commit tree内のproject rulesを示すblob hashを混同しない。fingerprintのいずれかが変わったレビューは別対象であり、異なるfingerprintのgradeは比較しない。
+SHAは短縮せず、`git rev-parse`で得たfull SHAを使う。regular fileのcanonical content hashは`git hash-object --no-filters -- <path>`で取得する。symlinkは参照先fileをdereferenceせず、link targetのbytesそのものを`git hash-object --stdin`でhashする。untracked fileも同じtype別規則で最終file mode / typeとcanonical content hashをmanifestへ含める。通常のcurrent branchレビューではindex diffを別途fingerprintへ追加せず、clean / dirty判定にも使わない。working tree manifestのcontent hashと、commit tree内のproject rulesを示すblob hashを混同しない。fingerprintのいずれかが変わったレビューは別対象であり、異なるfingerprintのgradeは比較しない。
 
 ### 3. 差分を取得して分割する
 
@@ -217,7 +217,7 @@ MinorとNitは費用対効果で任意対応または別issue候補にする。�
 - base: `<branch>` / `<full SHA>`
 - head: `<full SHA>`
 - working tree: clean | dirty / included | excluded
-- working tree manifest: `<path>: <hash or deleted>`
+- working tree manifest: `<path>: <mode/type> / <canonical content hash or deleted>`
 - index diff: `<cached diff content hash>`。staged-onlyまたはindex状態が明示された場合だけ出力
 - PR remote: `<remote name>: <fetch URL>` | not applicable
 - target paths: ...
