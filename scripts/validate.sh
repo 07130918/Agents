@@ -74,6 +74,4 @@ find "${ROOT}/codex/skills" "${ROOT}/claude/skills" "${ROOT}/claude/skills.disab
   grep -q '^description:' "$file" || { echo "Missing description: $file" >&2; exit 1; }
 done
 
-"${ROOT}/scripts/principle-of-programming-reviewer.test.sh"
-
 echo "Validation passed."

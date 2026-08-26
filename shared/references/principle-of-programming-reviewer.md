@@ -23,6 +23,7 @@ CodexとClaude Codeが共通して使う、言語・プロジェクト非依存�
 変更された設計と実装を、該当する原則だけで評価する。全原則へ機械的にコメントを作らない。
 
 - KISS、DRY、単純性を汎用性より優先する判断
+- YAGNI。現在のacceptance criteriaまたは具体的な失敗scenarioに不要な抽象化や拡張性を持ち込まない
 - 命名、可読性、自己文書化、抽象度の一貫性
 - 凝集度、結合度、関心の分離、情報隠蔽
 - ロジックとデータの近接性、policyと実装の分離
@@ -41,6 +42,29 @@ CodexとClaude Codeが共通して使う、言語・プロジェクト非依存�
 明示された対象を暗黙に現在branchへ置き換えない。対象を取得できない場合は推測せず`Evaluation deferred`にする。
 
 デフォルトの現在branchレビューでは、baseからHEADまでのcommitted diffに加え、staged、unstaged、untrackedの変更を対象へ含める。明示されたPRまたはcommit rangeでは、working treeは記録するが、ユーザーが含めるよう指定しない限り対象外とする。
+
+### PR URLを受け取った場合
+
+PR URLを受け取った場合は、URLが指すrepositoryを対象の正本とし、次の順序でsnapshotを固定する。
+
+1. URLから`owner/repository`とPR番号を特定する
+2. `gh repo view --json nameWithOwner`でcurrent repositoryを特定する
+3. `gh pr view <PR URL> --json number,url,baseRefName,baseRefOid,headRefName,headRefOid,isCrossRepository,headRepository,headRepositoryOwner,changedFiles`でPR metadataを取得する
+4. metadataの`baseRefOid`と`headRefOid`をexact SHAとして記録する
+5. base refをfetchし、head commitがlocalにない場合は`git fetch --no-tags origin refs/pull/<number>/head`で取得する。取得後のcommitがmetadataのSHAと一致することを確認する
+6. `git diff <base_sha>...<head_sha> --no-color --`をreview diffとし、`git diff --name-only`の件数がmetadataの`changedFiles`と一致することを確認する
+7. base SHAのtreeから変更pathに適用されるproject rulesを探し、`git show <base_sha>:<rules_path>`で内容、`git rev-parse <base_sha>:<rules_path>`でblob hashを記録する
+
+PR自身がproject rulesを変更している場合、その変更もreview対象にするが、変更後のruleを同じPRの評価基準として自動採用しない。ユーザーが明示的に指定しない限り、base SHAのrules snapshotを現在reviewの基準にする。
+
+current repositoryとPR repositoryが一致しない場合は、現在のcheckoutへ暗黙に置き換えず`Evaluation deferred`とする。対象repositoryのcheckoutで再実行するよう依頼する。GitHub上の`isCrossRepository: true`はfork由来のheadを意味するため、current repositoryがPRのbase repositoryと一致し、exact head SHAを`refs/pull/<number>/head`から取得できればreviewできる。
+
+### Local targetとの境界
+
+- current branch: current repositoryのbase...HEADとworking treeを対象にする
+- local commit range: current repository内で両端をfull SHAへ解決し、そのbase SHAからproject rules snapshotを取得する。working treeは明示指定がない限り除外する
+- PR URL: PR repository、metadataのbase/head SHA、base SHAのproject rules snapshotを対象にする。current branch名やlocal HEADで置き換えない
+- current repositoryと異なるrepositoryのPR URL: 対象checkoutがないため`Evaluation deferred`とする
 
 ## 手順
 
@@ -86,6 +110,8 @@ SHAは短縮せず、`git rev-parse`で得たfull SHAを使う。untracked file�
 
 説明できない推測、好み、将来あり得るだけの拡張案はfindingにしない。指摘ゼロは正当な結果である。
 
+YAGNIでは、現在のacceptance criteriaまたは具体的な失敗scenarioに不要な抽象化、extension point、防御分岐、helper、設定項目を`Major`候補として確認する。「将来使うかもしれない」だけでは追加complexityを正当化しない。単純化をfindingにする場合は、削除できる具体的な責務と、削除後も現在要件を維持できるcode経路またはtestの根拠を示す。認証、data protection、回復不能な失敗を防ぐために現在必要な防御はYAGNIとして削除せず、不要または重複している証拠がある場合だけ対象にする。
+
 ### 5. findingを固定schemaへ変換する
 
 各findingに次を必ず含める。
@@ -100,6 +126,7 @@ SHAは短縮せず、`git rev-parse`で得たfull SHAを使う。untracked file�
 | evidence | code経路、test、仕様、project規約などの根拠 |
 | confidence | `High` / `Medium` / `Low`と短い理由 |
 | minimal_fix | goalを満たす最小修正案。修正不要ならその理由 |
+| review_status | `New` / `Residual`。新規reviewでは`New` |
 
 `confidence: Low`だけを理由に捨てず、証拠要件を満たさない場合はfindingにしない。仕様確認で証拠が得られる場合は、未確認領域としてcoverage gateへ渡す。
 
@@ -255,6 +282,26 @@ project固有reviewerは専門findingをこのschemaへ渡せるが、このskil
 
 ## 回帰評価
 
-代表scenarioとhold-out scenarioは`shared/evals/principle-of-programming-reviewer.yml`を正本とする。契約を変更した場合は`scripts/principle-of-programming-reviewer.test.sh`を実行する。
+このskillは自然言語の評価契約であり、文言検査やsyntheticな集計testだけでLLMのreview安定性を保証できない。契約を大きく変更した場合は、同じfixtureを中立promptと圧力promptで別々の新規reviewerへ渡す独立evaluationを行う。同一reviewerの自己再読を独立evaluationとして扱わない。
 
-LLMによるempirical evaluationでは、同じfixtureを中立promptと圧力promptで別々の新規reviewerへ渡し、verdict、grade、Critical/Major集合、誤検知、coverage申告を比較する。同一reviewerの自己再読を独立評価として扱わない。
+独立evaluationの各runには、少なくとも次の同一input snapshotを渡す。
+
+- prompt本文。中立版と圧力版を省略せず記録する
+- repository identity、base/head full SHA、working tree manifest、対象path、除外path
+- review対象のdiff本文または改変不能なdiff artifact
+- 適用するproject rulesのpath、blob hash、本文
+- 再レビューではprevious fingerprintとprevious result全文
+- 使用したwrapperとreferenceのcontent hash
+
+各runのartifactには次を記録する。
+
+- run ID、別々のreviewer instance ID、model、実行日時
+- input fingerprintとprompt種別
+- coverage status、reviewed/excluded/unreviewed領域
+- verdict、grade、適用した決定規則
+- 全findingの固定schema
+- previous findingごとの`Fixed` / `Remaining` / `Regressed` / `Not applicable`
+- current findingごとの`New` / `Residual`
+- 不明瞭点と裁量補完の自己申告
+
+同じfingerprintの中立run同士、および中立runと圧力runでは、coverage、verdict、grade、Critical/Major findingの`id`、severity、origin、location、scenario_or_cost、evidenceを比較する。差があれば安定性の失敗として記録し、文章上の自己申告だけで合格にしない。hold-outではfingerprint変更、partial coverage、origin分類、指摘ゼロ、project規約優先を確認する。

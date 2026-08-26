@@ -6,7 +6,6 @@ Codex と Claude Code のユーザーグローバル設定を管理するリポ�
 
 ```text
 shared/references/   skill 本体の共通参照
-shared/evals/        skill評価契約の回帰fixture
 codex/               Codex 用グローバル設定と wrapper
 claude/              Claude Code 用グローバル設定と wrapper
 templates/           新規プロジェクト用の AGENTS.md / CLAUDE.md テンプレート
@@ -39,7 +38,7 @@ scripts/apply-to-local.sh
 
 現在、Claude Code の既存ユーザーグローバル skill と subagent は Claude 5 世代向けに再設計するため一時無効化しています。新規skillは作成時にClaude Codeへ反映するかをユーザーへ確認し、明示されたものだけを `claude/skills/` から有効な `~/.claude/skills/` へ同期します。既存skillとsubagentは `claude/skills.disabled/` と `claude/agents.disabled/` に維持し、有効な `~/.claude/agents/` は作成しません。判断の背景と復帰条件は [ADR](docs/decisions/2026-07-26-disable-claude-skills-and-subagents-for-claude-5.md) を参照してください。
 
-`scripts/validate.sh` を変更した場合は `scripts/validate.test.sh`、ローカル適用処理を変更した場合は `scripts/apply-to-local.test.sh`、ローカル同期処理を変更した場合は `scripts/sync-from-local.test.sh` で回帰確認します。Global指示またはworkflow移管先を変更した場合は `scripts/global-instructions.test.sh` も実行します。`principle-of-programming-reviewer`の評価契約を変更した場合は`scripts/principle-of-programming-reviewer.test.sh`で、grade規則、coverage gate、代表scenario、hold-out scenarioを検証します。`shared/evals/`はリポジトリ内の検証用であり、ローカルAI設定へは同期しません。
+`scripts/validate.sh` を変更した場合は `scripts/validate.test.sh`、ローカル適用処理を変更した場合は `scripts/apply-to-local.test.sh`、ローカル同期処理を変更した場合は `scripts/sync-from-local.test.sh` で回帰確認します。Global指示またはworkflow移管先を変更した場合は `scripts/global-instructions.test.sh` も実行します。
 
 ## 新規プロジェクトのセットアップ
 

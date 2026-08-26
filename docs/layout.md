@@ -6,8 +6,6 @@
 
 Codex と Claude Code の `SKILL.md` は、frontmatter と `shared/references/` への参照だけを持つ薄い wrapper にします。
 
-`shared/evals/`には、shared referenceの評価契約を検証するfixtureを置きます。fixtureはリポジトリ内のtest専用で、ユーザーグローバル設定へは同期しません。
-
 ## Directory Mapping
 
 ```text
