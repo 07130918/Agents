@@ -41,7 +41,7 @@ CodexとClaude Codeが共通して使う、言語・プロジェクト非依存�
 
 明示された対象を暗黙に現在branchへ置き換えない。対象を取得できない場合は推測せず`Evaluation deferred`にする。
 
-デフォルトの現在branchレビューでは、baseからHEADまでのcommitted diffに加え、staged、unstaged、untrackedの変更を対象へ含める。明示されたPRまたはcommit rangeでは、working treeは記録するが、ユーザーが含めるよう指定しない限り対象外とする。
+デフォルトの現在branchレビューでは、baseからHEADまでのcommitted diffに加え、HEAD treeをworking treeの最終的な有効file contentで上書きしたsnapshotを対象にする。同じ最終contentならstage / unstageの分割自体はtarget identityに含めない。ユーザーがstaged-onlyまたはindex状態そのものをscopeに指定した場合だけindexを対象とし、`git diff --cached --binary --full-index <head_sha> --`の出力を`git hash-object --stdin`したcached diff content hashをfingerprintへ含める。明示されたPRまたはcommit rangeでは、working treeは記録するが、ユーザーが含めるよう指定しない限り対象外とする。
 
 ### PR URLを受け取った場合
 
@@ -84,17 +84,18 @@ repository rootと変更pathに適用される`AGENTS.md`、`CLAUDE.md`、`CONTR
 - exact head SHA
 - working tree: clean / dirtyと、対象に含めるかどうか
 - working tree manifest: 対象へ含めるdirty fileごとのpathと`git hash-object`、削除fileのmarker
+- index diff: staged-onlyまたはindex状態が明示された場合だけ、cached diff content hash
 - PR remote: PR URLのrepositoryと一致したremote名と正規化前のfetch URL。PR URL以外では`not applicable`
 - 対象pathと除外path。除外には理由を付ける
 - skill version: 実行中CLIのwrapperとこのreferenceについて、pathと`git hash-object`で得たcontent hash
 - project rules: 実際に適用した`source: base:<base_sha> | head:<head_sha>`、path、`git rev-parse <source_sha>:<rules_path>`で得たblob hash
 
-SHAは短縮せず、`git rev-parse`で得たfull SHAを使う。untracked fileも`git hash-object --no-filters -- <path>`でmanifestへ含める。working tree manifestのcontent hashと、commit tree内のproject rulesを示すblob hashを混同しない。fingerprintのいずれかが変わったレビューは別対象であり、異なるfingerprintのgradeは比較しない。
+SHAは短縮せず、`git rev-parse`で得たfull SHAを使う。untracked fileも`git hash-object --no-filters -- <path>`でmanifestへ含める。通常のcurrent branchレビューではindex diffを別途fingerprintへ追加しない。working tree manifestのcontent hashと、commit tree内のproject rulesを示すblob hashを混同しない。fingerprintのいずれかが変わったレビューは別対象であり、異なるfingerprintのgradeは比較しない。
 
 ### 3. 差分を取得して分割する
 
 - committed diffは`git diff <base_sha>...<head_sha> --no-color --`で取得する
-- 対象に含めるstaged、unstaged、untracked fileも個別に取得またはReadする
+- current branchのworking treeはstage / unstageの分割ではなく、HEADに対する最終的な有効file contentを取得する。staged-onlyが明示された場合だけcached diffを使う
 - 人が書いた変更行をすべて確認する
 - 大規模差分はfile群または観点ごとに分割し、各partitionの完了を記録する
 - generated、vendored、binaryなどを読まない場合は除外pathと理由を記録する
@@ -217,6 +218,7 @@ MinorとNitは費用対効果で任意対応または別issue候補にする。�
 - head: `<full SHA>`
 - working tree: clean | dirty / included | excluded
 - working tree manifest: `<path>: <hash or deleted>`
+- index diff: `<cached diff content hash>`。staged-onlyまたはindex状態が明示された場合だけ出力
 - PR remote: `<remote name>: <fetch URL>` | not applicable
 - target paths: ...
 - excluded paths: `<path>: <reason>`
@@ -312,4 +314,6 @@ project固有reviewerは専門findingをこのschemaへ渡せるが、このskil
 - current findingごとの`New` / `Residual`
 - 不明瞭点と裁量補完の自己申告
 
-同じfingerprintの中立run同士、および中立runと圧力runでは、coverage、verdict、grade、Critical/Major findingの`id`、severity、origin、location、scenario_or_cost、evidenceを比較する。差があれば安定性の失敗として記録し、文章上の自己申告だけで合格にしない。hold-outではfingerprint変更、partial coverage、origin分類、指摘ゼロ、project規約優先を確認する。
+previous resultがある再レビューでは、同じ根本原因にexact `id`が再利用されたかを比較する。previous resultなしの独立した中立run同士、および中立runと圧力runでは`id`を対応付けの条件にせず、locationのpathとprimary symbolまたはcontract、principle、scenario_or_costとevidenceが示すroot causeを正規化してfinding集合を対応付ける。同じroot causeへ異なる同義keyを付けたという`id`差だけを安定性の失敗にしない。
+
+対応付けたCritical/Major findingの有無、severity、origin、location、scenario_or_cost、evidenceと、coverage、verdict、gradeを比較する。実質的な差があれば安定性の失敗として記録し、文章上の自己申告だけで合格にしない。hold-outではfingerprint変更、partial coverage、origin分類、指摘ゼロ、project規約優先を確認する。
