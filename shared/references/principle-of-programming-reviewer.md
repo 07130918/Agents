@@ -49,11 +49,12 @@ PR URLを受け取った場合は、URLが指すrepositoryを対象の正本と�
 
 1. URLから`owner/repository`とPR番号を特定する
 2. `gh repo view --json nameWithOwner`でcurrent repositoryを特定する
-3. `gh pr view <PR URL> --json number,url,baseRefName,baseRefOid,headRefName,headRefOid,isCrossRepository,headRepository,headRepositoryOwner,changedFiles`でPR metadataを取得する
-4. metadataの`baseRefOid`と`headRefOid`をexact SHAとして記録する
-5. base refをfetchし、head commitがlocalにない場合は`git fetch --no-tags origin refs/pull/<number>/head`で取得する。取得後のcommitがmetadataのSHAと一致することを確認する
-6. `git diff <base_sha>...<head_sha> --no-color --`をreview diffとし、`git diff --name-only`の件数がmetadataの`changedFiles`と一致することを確認する
-7. base SHAのtreeから変更pathに適用されるproject rulesを探し、`git show <base_sha>:<rules_path>`で内容、`git rev-parse <base_sha>:<rules_path>`でblob hashを記録する
+3. `git remote`と各remoteへの`git remote get-url --all <remote>`でfetch URLを列挙し、HTTPS、SSH、`git@github.com:`形式を`owner/repository`へ正規化する。PR URLのrepositoryと一致するremoteが1つならそれを`pr_remote`とし、複数ならremote名の辞書順で先頭を選んでfingerprintへ記録する。一致するremoteがなければ`Evaluation deferred`とする
+4. `gh pr view <PR URL> --json number,url,baseRefName,baseRefOid,headRefName,headRefOid,isCrossRepository,headRepository,headRepositoryOwner,changedFiles`でPR metadataを取得する
+5. metadataの`baseRefOid`と`headRefOid`をexact SHAとして記録する
+6. `git fetch --no-tags <pr_remote> refs/heads/<baseRefName>`でbase refを取得し、head commitがlocalにない場合は`git fetch --no-tags <pr_remote> refs/pull/<number>/head`で取得する。取得後のcommitがmetadataのSHAと一致することを確認する
+7. `git diff <base_sha>...<head_sha> --no-color --`をreview diffとし、`git diff --name-only`の件数がmetadataの`changedFiles`と一致することを確認する
+8. base SHAのtreeから変更pathに適用されるproject rulesを探し、`git show <base_sha>:<rules_path>`で内容、`git rev-parse <base_sha>:<rules_path>`でblob hashを記録する
 
 PR自身がproject rulesを変更している場合、その変更もreview対象にするが、変更後のruleを同じPRの評価基準として自動採用しない。ユーザーが明示的に指定しない限り、base SHAのrules snapshotを現在reviewの基準にする。
 
@@ -70,7 +71,7 @@ current repositoryとPR repositoryが一致しない場合は、現在のcheckou
 
 ### 1. Project規約を読む
 
-repository rootと変更pathに適用される`AGENTS.md`、`CLAUDE.md`、`CONTRIBUTING.md`、明示された要件や設計文書を探し、参照したpathとcontent hashを記録する。
+repository rootと変更pathに適用される`AGENTS.md`、`CLAUDE.md`、`CONTRIBUTING.md`、明示された要件や設計文書を探す。既定ではbase snapshotを適用し、各ruleを`git show <base_sha>:<rules_path>`で読み、`git rev-parse <base_sha>:<rules_path>`のblob hashと`source: base:<base_sha>`を記録する。ユーザーがhead rulesの適用を明示した場合だけ、同じ方法でhead treeを読み、`source: head:<head_sha>`を記録する。
 
 明示されたproject規約と普遍原則が直接衝突する場合は、project規約を優先する。規約の内容をこの汎用skillへ複製しない。権威が同等の仕様同士が矛盾し、指摘の正否やseverityを決められない場合は`Evaluation deferred`にする。codeとtestは現在の挙動を示す証拠であり、それだけで意図した仕様とは断定しない。
 
@@ -83,11 +84,12 @@ repository rootと変更pathに適用される`AGENTS.md`、`CLAUDE.md`、`CONTR
 - exact head SHA
 - working tree: clean / dirtyと、対象に含めるかどうか
 - working tree manifest: 対象へ含めるdirty fileごとのpathと`git hash-object`、削除fileのmarker
+- PR remote: PR URLのrepositoryと一致したremote名と正規化前のfetch URL。PR URL以外では`not applicable`
 - 対象pathと除外path。除外には理由を付ける
 - skill version: 実行中CLIのwrapperとこのreferenceについて、pathと`git hash-object`で得たcontent hash
-- project rules: 参照した各pathと`git hash-object`で得たcontent hash
+- project rules: 実際に適用した`source: base:<base_sha> | head:<head_sha>`、path、`git rev-parse <source_sha>:<rules_path>`で得たblob hash
 
-SHAは短縮せず、`git rev-parse`で得たfull SHAを使う。untracked fileも`git hash-object --no-filters -- <path>`でmanifestへ含める。fingerprintのいずれかが変わったレビューは別対象であり、異なるfingerprintのgradeは比較しない。
+SHAは短縮せず、`git rev-parse`で得たfull SHAを使う。untracked fileも`git hash-object --no-filters -- <path>`でmanifestへ含める。working tree manifestのcontent hashと、commit tree内のproject rulesを示すblob hashを混同しない。fingerprintのいずれかが変わったレビューは別対象であり、異なるfingerprintのgradeは比較しない。
 
 ### 3. 差分を取得して分割する
 
@@ -118,6 +120,7 @@ YAGNIでは、現在のacceptance criteriaまたは具体的な失敗scenarioに
 
 | field | 内容 |
 |---|---|
+| id | 検出順に依存しない安定key。再レビューで同じ根本原因に再利用する |
 | severity | `Critical` / `Major` / `Minor` / `Nit` |
 | origin | `Introduced` / `Exposed` / `Pre-existing` / `Out-of-scope` |
 | location | `path/to/file:line`。複数箇所なら主原因を先頭にする |
@@ -127,6 +130,8 @@ YAGNIでは、現在のacceptance criteriaまたは具体的な失敗scenarioに
 | confidence | `High` / `Medium` / `Low`と短い理由 |
 | minimal_fix | goalを満たす最小修正案。修正不要ならその理由 |
 | review_status | `New` / `Residual`。新規reviewでは`New` |
+
+`id`は`<repository-relative-path>#<primary-symbol-or-contract>#<principle-key>#<root-cause-key>`のtupleとする。pathは`/`区切りでline番号を含めず、symbolはcode上の識別子または`file`、principle keyとroot cause keyは小文字kebab-caseに正規化する。件数や検出順から`F001`のような連番を作らない。
 
 `confidence: Low`だけを理由に捨てず、証拠要件を満たさない場合はfindingにしない。仕様確認で証拠が得られる場合は、未確認領域としてcoverage gateへ渡す。
 
@@ -184,6 +189,8 @@ Nitの件数はverdictとgradeを変えない。Aは、記録されたfingerprin
 4. 前回findingだけにanchorせず、今回の変更行と隣接契約を独立して再走査する
 5. 今回のfindingを`New` / `Residual`に分ける
 
+同じ根本原因が残る場合は、line、severity、説明文、review statusが変わっても前回の`id`を再利用する。以前と異なるroot causeなら、近い症状でも新しいtupleを作る。
+
 前回結果を取得できない場合は新規レビューとして実行し、解消確認済みとは表現しない。同じ修正者・同じコンテキストによる自己再レビューは`self re-review`と明記し、重要な最終保証には独立した新規reviewerを使うよう提案する。
 
 ## 圧力promptへの耐性と停止条件
@@ -210,10 +217,11 @@ MinorとNitは費用対効果で任意対応または別issue候補にする。�
 - head: `<full SHA>`
 - working tree: clean | dirty / included | excluded
 - working tree manifest: `<path>: <hash or deleted>`
+- PR remote: `<remote name>: <fetch URL>` | not applicable
 - target paths: ...
 - excluded paths: `<path>: <reason>`
 - skill version: `<wrapper path>: <hash>` / `<reference path>: <hash>`
-- project rules: `<path>: <hash>`
+- project rules: `source=<base|head>:<full SHA> / <path>: <blob hash>`
 
 ## Coverage
 - status: Complete | Incomplete
