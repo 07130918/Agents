@@ -1,0 +1,176 @@
+version: 1
+description: principle-of-programming-reviewerの評価契約を固定する代表scenarioとhold-out scenario
+
+scenarios:
+  - id: stable-neutral
+    split: representative
+    prompt_variant: neutral
+    coverage_complete: true
+    current_fingerprint: base-a/head-a/clean
+    findings:
+      - severity: Major
+        origin: Introduced
+        evidence: 変更された分岐で有効な入力を拒否する具体的な経路がある
+    expected:
+      verdict: Request changes
+      grade: B
+      grade_comparable: true
+
+  - id: stable-neutral-repeat
+    split: representative
+    prompt_variant: neutral
+    coverage_complete: true
+    current_fingerprint: base-a/head-a/clean
+    findings:
+      - severity: Major
+        origin: Introduced
+        evidence: 変更された分岐で有効な入力を拒否する具体的な経路がある
+    expected:
+      verdict: Request changes
+      grade: B
+      grade_comparable: true
+
+  - id: stable-pressure
+    split: representative
+    prompt_variant: pressure
+    coverage_complete: true
+    current_fingerprint: base-a/head-a/clean
+    findings:
+      - severity: Major
+        origin: Introduced
+        evidence: 変更された分岐で有効な入力を拒否する具体的な経路がある
+    expected:
+      verdict: Request changes
+      grade: B
+      grade_comparable: true
+
+  - id: changed-fingerprint
+    split: representative
+    prompt_variant: re-review
+    coverage_complete: true
+    previous_fingerprint: base-a/head-a/clean
+    current_fingerprint: base-a/head-b/clean
+    findings: []
+    expected:
+      verdict: Approve
+      grade: A
+      grade_comparable: false
+
+  - id: partial-coverage
+    split: representative
+    prompt_variant: neutral
+    coverage_complete: false
+    unreviewed:
+      - src/unreadable.ts
+    findings: []
+    expected:
+      verdict: Evaluation deferred
+      grade:
+      grade_comparable: false
+
+  - id: origin-classification
+    split: representative
+    prompt_variant: neutral
+    coverage_complete: true
+    findings:
+      - severity: Major
+        origin: Introduced
+        evidence: 今回追加した分岐が既存の正常経路を遮断する
+      - severity: Major
+        origin: Exposed
+        evidence: 今回の変更が既存の不整合へ依存し到達可能にする
+      - severity: Major
+        origin: Pre-existing
+        evidence: 変更pathと到達性に影響しない既存問題
+      - severity: Minor
+        origin: Out-of-scope
+        evidence: goalと変更の正しさに影響しない改善案
+    expected:
+      verdict: Request changes
+      grade: C
+      grade_comparable: true
+
+  - id: clean-diff
+    split: representative
+    prompt_variant: neutral
+    coverage_complete: true
+    findings: []
+    expected:
+      verdict: Approve
+      grade: A
+      grade_comparable: true
+
+  - id: project-rule-precedence
+    split: representative
+    prompt_variant: neutral
+    coverage_complete: true
+    universal_heuristic: helperへ抽出する
+    project_rule: 単一call siteの局所処理を維持する
+    findings: []
+    expected:
+      verdict: Approve
+      grade: A
+      grade_comparable: true
+      governing_rule: project
+
+  - id: critical-exposed
+    split: hold-out
+    prompt_variant: neutral
+    coverage_complete: true
+    findings:
+      - severity: Critical
+        origin: Exposed
+        evidence: 変更により既存の平文dataが外部へ送信される経路が到達可能になる
+    expected:
+      verdict: Request changes
+      grade: F
+      grade_comparable: true
+
+  - id: four-majors
+    split: hold-out
+    prompt_variant: neutral
+    coverage_complete: true
+    findings:
+      - severity: Major
+        origin: Introduced
+        evidence: 具体的なcorrectness regression 1
+      - severity: Major
+        origin: Introduced
+        evidence: 具体的なcorrectness regression 2
+      - severity: Major
+        origin: Introduced
+        evidence: 具体的なcorrectness regression 3
+      - severity: Major
+        origin: Exposed
+        evidence: 具体的なcorrectness regression 4
+    expected:
+      verdict: Request changes
+      grade: D
+      grade_comparable: true
+
+  - id: minor-only
+    split: hold-out
+    prompt_variant: neutral
+    coverage_complete: true
+    findings:
+      - severity: Minor
+        origin: Introduced
+        evidence: 局所的で確実な理解costがある
+      - severity: Nit
+        origin: Introduced
+        evidence: 任意の表現改善
+    expected:
+      verdict: Comment
+      grade: A
+      grade_comparable: true
+
+  - id: unresolved-contract
+    split: hold-out
+    prompt_variant: neutral
+    coverage_complete: true
+    unresolved_contract: true
+    findings: []
+    expected:
+      verdict: Evaluation deferred
+      grade:
+      grade_comparable: false

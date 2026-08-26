@@ -1,7 +1,7 @@
 ---
 name: principle-of-programming-reviewer
-description: 現在の作業ブランチの変更を"Principle of Programming"の原則に基づいてレビュー。言語・技術に依存しない普遍的な原則(KISS/DRY/凝集度/結合度等)で評価し、具体的な改善提案を提供する。`/principle-of-programming-reviewer` または `/popr` で呼び出される。
-allowed-tools: Bash(git *), Read, Glob, Grep
+description: 現在の作業ブランチ、PR、またはcommit rangeを"Principle of Programming"の普遍原則(KISS/DRY/凝集度/結合度等)で再現可能にレビューする。「プログラミング原則でレビュー」、`/principle-of-programming-reviewer`、`/popr`で使う。security、domain固有監査、documentation同期の単独代替には使わない。
+allowed-tools: Bash(git *), Bash(gh pr view *), Bash(gh pr diff *), Read, Glob, Grep
 ---
 
 # principle-of-programming-reviewer
