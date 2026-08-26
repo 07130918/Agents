@@ -41,7 +41,7 @@ CodexとClaude Codeが共通して使う、言語・プロジェクト非依存�
 
 明示された対象を暗黙に現在branchへ置き換えない。対象を取得できない場合は推測せず`Evaluation deferred`にする。
 
-デフォルトの現在branchレビューでは、baseからHEADまでのcommitted diffに加え、HEAD treeをworking treeの最終的な有効file contentで上書きしたsnapshotを対象にする。同じ最終contentならstage / unstageの分割自体はtarget identityに含めない。ユーザーがstaged-onlyまたはindex状態そのものをscopeに指定した場合だけindexを対象とし、`git diff --cached --binary --full-index <head_sha> --`の出力を`git hash-object --stdin`したcached diff content hashをfingerprintへ含める。明示されたPRまたはcommit rangeでは、working treeは記録するが、ユーザーが含めるよう指定しない限り対象外とする。
+デフォルトの現在branchレビューでは、baseからHEADまでのcommitted diffに加え、HEAD treeをworking treeの最終的な有効file contentとmode / typeで上書きしたsnapshotを対象にする。同じ最終snapshotならstage / unstageの分割自体はtarget identityに含めない。通常reviewのclean / dirtyとmanifestは、宣言済みpath scope内でHEAD treeと最終filesystem snapshotを比較して算出し、indexだけに存在する差分は無視する。ユーザーがstaged-onlyまたはindex状態そのものをscopeに指定した場合だけindexを対象とし、`git diff --cached --binary --full-index <head_sha> -- <target paths>`の出力をreview diffに使い、その出力を`git hash-object --stdin`したcached diff content hashをfingerprintへ含める。明示されたPRまたはcommit rangeでは、working treeは記録するが、ユーザーが含めるよう指定しない限り対象外とする。
 
 ### PR URLを受け取った場合
 
@@ -83,19 +83,19 @@ repository rootと変更pathに適用される`AGENTS.md`、`CLAUDE.md`、`CONTR
 - base branchとexact base SHA
 - exact head SHA
 - working tree: clean / dirtyと、対象に含めるかどうか
-- working tree manifest: 対象へ含めるdirty fileごとのpathと`git hash-object`、削除fileのmarker
+- working tree manifest: 対象へ含めるdirty fileごとのpath、最終file mode / type、`git hash-object`、削除fileのmarker。通常reviewではHEAD treeと最終filesystem snapshotの差分だけを記録し、index-only差分は含めない
 - index diff: staged-onlyまたはindex状態が明示された場合だけ、cached diff content hash
 - PR remote: PR URLのrepositoryと一致したremote名と正規化前のfetch URL。PR URL以外では`not applicable`
 - 対象pathと除外path。除外には理由を付ける
 - skill version: 実行中CLIのwrapperとこのreferenceについて、pathと`git hash-object`で得たcontent hash
 - project rules: 実際に適用した`source: base:<base_sha> | head:<head_sha>`、path、`git rev-parse <source_sha>:<rules_path>`で得たblob hash
 
-SHAは短縮せず、`git rev-parse`で得たfull SHAを使う。untracked fileも`git hash-object --no-filters -- <path>`でmanifestへ含める。通常のcurrent branchレビューではindex diffを別途fingerprintへ追加しない。working tree manifestのcontent hashと、commit tree内のproject rulesを示すblob hashを混同しない。fingerprintのいずれかが変わったレビューは別対象であり、異なるfingerprintのgradeは比較しない。
+SHAは短縮せず、`git rev-parse`で得たfull SHAを使う。untracked fileも最終file mode / typeと`git hash-object --no-filters -- <path>`をmanifestへ含める。通常のcurrent branchレビューではindex diffを別途fingerprintへ追加せず、clean / dirty判定にも使わない。working tree manifestのcontent hashと、commit tree内のproject rulesを示すblob hashを混同しない。fingerprintのいずれかが変わったレビューは別対象であり、異なるfingerprintのgradeは比較しない。
 
 ### 3. 差分を取得して分割する
 
 - committed diffは`git diff <base_sha>...<head_sha> --no-color --`で取得する
-- current branchのworking treeはstage / unstageの分割ではなく、HEADに対する最終的な有効file contentを取得する。staged-onlyが明示された場合だけcached diffを使う
+- current branchのworking treeはstage / unstageの分割ではなく、HEADに対する最終的な有効file contentとmode / typeを宣言済みpath scope内で取得する。staged-onlyが明示された場合だけ、同じpath scopeを渡したcached diffを使う
 - 人が書いた変更行をすべて確認する
 - 大規模差分はfile群または観点ごとに分割し、各partitionの完了を記録する
 - generated、vendored、binaryなどを読まない場合は除外pathと理由を記録する
