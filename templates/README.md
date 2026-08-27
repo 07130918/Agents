@@ -10,8 +10,6 @@
 |---|---|
 | AGENTS.md | Codex が読むプロジェクト共通指示 (フル内容) |
 | CLAUDE.md | Claude Code が読むプロジェクト共通指示 (フル内容) |
-| REVIEW_HARNESS.md | Review-remediation Harnessのproject-local entrypoint兼manifest |
-| .review-harness/contracts/ | CLI非依存contractのreview済みexact snapshot |
 
 - 2 ファイルは**意図的な対称配置**。冗長になるが、各ツールがネイティブに読むファイルを
   それぞれ完全な形で用意する。ラッパー・@import・symlink は使わない
@@ -30,18 +28,6 @@ cp ~/Desktop/Agents/templates/AGENTS.md ~/Desktop/Agents/templates/CLAUDE.md <�
 2. もう片方へ同じ内容を反映し、ツール固有の行だけ調整する
 3. 記入基準はファイル冒頭のコメント参照 (200 行以内 / 「消したらエージェントがミスするか?」テスト)
 4. 記入が終わったら説明コメントを削除する
-
-## Portable review Harness
-
-Independent reviewerを含むreview、修正、検証workflowをproject-local contractとして固定する場合は、entrypointとcontract directoryを必ず同時にコピーする。
-
-```bash
-cp ~/Desktop/Agents/templates/REVIEW_HARNESS.md <プロジェクトルート>/
-mkdir -p <プロジェクトルート>/.review-harness
-cp -R ~/Desktop/Agents/templates/.review-harness/contracts <プロジェクトルート>/.review-harness/
-```
-
-実行前に`REVIEW_HARNESS.md`のintegrity手順で全memberのSHA-256を照合する。Snapshotをproject側で直接編集せず、project固有のsource of truth、command、gateは任意の`.review-harness/profile.yaml`へ分離する。Profileがなくてもrepository情報から必須inputを一意に解決できれば実行でき、曖昧なら推測せず停止する。
 
 ## 書いてはいけないもの
 

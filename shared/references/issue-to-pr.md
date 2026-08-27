@@ -25,9 +25,9 @@ GitHub issue を起点に、調査・実装計画・実装・品質ゲート・�
 このworkflowには次の2経路があり、Harnessの有無だけでIssue intake、scope、permission、PR提出policyを変えない。
 
 - 通常経路: 従来どおり手順1-8を実行し、手順9で`create-pr`のdefault経路へ委譲する。
-- Harness委譲経路: 手順1-3でintakeを固定した後、手順4-8に相当するreview/fix/verify subflowをportable Harnessまたは任意のpersonal adapterへ委譲する。`READY`なら`publish_exact_candidate`へ進み、blockerならHuman handoffで停止する。
+- Harness委譲経路: 手順1-3でintakeを固定した後、手順4-8に相当するreview/fix/verify subflowをpersonal `review-remediation-harness`へ委譲する。`READY`なら`publish_exact_candidate`へ進み、blockerならHuman handoffで停止する。
 
-Harness委譲はinstalled skill名に依存しない。Repository内のportable contract、Human承認済みの同一snapshot、personal adapterのいずれから呼び出す場合も、次の入力と出力が一致すれば同じinterfaceとして扱う。Harnessを利用できない、または利用しない場合は通常経路を継続できる。
+Harness委譲はwrapper内部のcommand名に依存せず、次の入力と出力が一致するsemantic interfaceとして扱う。Personal Harnessを利用できない、または利用しない場合は通常経路を継続できる。
 
 ### Harness delegation interface
 
@@ -82,7 +82,7 @@ Harnessへ委譲する場合は、ここでHarness delegation interfaceの入力
 
 - プロジェクトの `CLAUDE.md` / `AGENTS.md` に記載されたコマンド (例: `make check`、`npm run lint`、`uv run pytest` 等) で lint / format / 型チェック / テストをすべて通す
 - 通常経路でproject固有のコマンドが見つからない場合は、リポジトリの`package.json` scriptsや`Makefile`から変更scopeに妥当なコマンドを特定する
-- Harness委譲経路ではportable contractのfail-closed resolverへ従う。複数候補から変更scopeとの対応を一意に説明できないcommandは推測実行せず、候補と不足根拠をblockerとして返す
+- Harness委譲経路ではpersonal Harness contractのfail-closed resolverへ従う。複数候補から変更scopeとの対応を一意に説明できないcommandは推測実行せず、候補と不足根拠をblockerとして返す
 
 ### 6. 実装とドキュメントを同期する
 

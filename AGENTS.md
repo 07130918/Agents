@@ -10,7 +10,6 @@
 - 明示確認されていない既存の Claude Code 用 wrapper は、Opus 5 向けの再設計が完了するまで `claude/skills.disabled/*/SKILL.md` に退避する。
 - Claude Code 用 subagent は、Opus 5 向けの再設計が完了するまで `claude/agents.disabled/*.md` に退避する。
 - 新規プロジェクト用の AGENTS.md / CLAUDE.md テンプレートは `templates/` に置き、2 ファイルを同一内容で対称管理する (ラッパー・@import は使わない)。ローカル同期の対象外で、このリポジトリが正本。
-- Portable Harness templateは`templates/REVIEW_HARNESS.md`と`templates/.review-harness/contracts/`を正本とする。Contract memberは対応する`shared/references/`のexact snapshotとし、更新時はmanifestのSHA-256も同時に更新する。
 - 認証情報、履歴、SQLite、cache、file-history は管理しない。
 - `tp-management-nippo-insight` を含む `tp-*` で始まる skill / agent / reference は、会社に関する情報を含み得るためこの GitHub リポジトリでは管理しない。
 - ローカルで設定を更新したら `scripts/sync-from-local.sh` でこのリポジトリへ同期する。

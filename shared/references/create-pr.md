@@ -28,7 +28,7 @@
 
 ## 公開phase interface
 
-`create-pr`は次の2 phaseを公開する。これはinstalled skill固有のcommandではなく、portable caller、personal adapter、Humanのいずれも同じ入力、禁止事項、出力を使えるsemantic interfaceである。
+`create-pr`は次の2 phaseを公開する。これはinstalled skill内部のcommand名ではなく、personal HarnessまたはHumanが同じ入力、禁止事項、出力を使えるsemantic interfaceである。
 
 - `prepare_candidate`: context固定、品質gate、documentation同期、stage確認、commit作成を行い、cleanなexact candidate SHAを返す。
 - `publish_exact_candidate`: Harness経路の`READY`または通常経路の`DEFAULT_SUBMISSION_READY`に固定されたexact base/head SHAを照合し、同じSHAのpushとPR作成またはmetadata更新だけを行う。

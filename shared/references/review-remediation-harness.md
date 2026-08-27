@@ -6,7 +6,7 @@
 
 - Issueまたは明示された変更scopeをreviewし、blocking findingだけを修正してPR提出可能なcandidateへ収束させるとき。
 - ImplementerとFinal reviewerを分離し、test、documentation、securityなどのrequired gateを同じtargetで照合するとき。
-- Personal/global skillがない環境で、repository rootの`REVIEW_HARNESS.md`からportableに実行するとき。
+- Project profileや専用project reviewerがないrepositoryを、personal/global Harnessから汎用context解決で扱うとき。
 
 対象外:
 
@@ -17,7 +17,7 @@
 
 ## 正本と責務境界
 
-このcontractはstage接続、state、artifact、permission、retry、stop、resumeを所有する。次の意味を再定義せず、bundle memberまたは同じsemantic contractの結果を参照する。
+このcontractはstage接続、state、artifact、permission、retry、stop、resumeを所有する。次の意味を再定義せず、対応するpersonal/global skillまたは同じsemantic contractの結果を参照する。
 
 | Capability | Contract | Harnessでの扱い |
 | --- | --- | --- |
@@ -29,7 +29,7 @@
 | Security | `security-audit`または同じsemantic contract | Risk trigger時だけrequired gateとして要求する |
 | Merge、仕様、risk受容 | Human | Harnessから実行または代行しない |
 
-Skill名はcapability実装の名前であり、installed skillを必須にしない。Bundle memberのcontract本文を直接実行して同じartifactを返せればよい。Required contractまたはcapabilityがなく同等性を確認できない場合は停止する。
+このHarness自身はpersonal/global skillとして利用する。関連capabilityは実際に利用したskill/referenceのversionとcontent hashを記録し、required contractまたは実行capabilityがなければ別の一般reviewへ読み替えず停止する。Project repositoryへHarness skillやcontract全文を複製しない。
 
 ## 入力
 
@@ -37,28 +37,19 @@ Run開始前に次を固定する。
 
 - Repository identity、base ref、full base SHA、作業branch、headまたはworking tree fingerprint。
 - Issueまたは明示scope、acceptance criteria、非目標、取得したexternal recordのrevisionとcontent hash。
-- Base側portable bundle、任意profile、project instruction、CI/manifest。
+- Harness contractと利用するskill/referenceのversion、任意profile、project instruction、CI/manifest。
 - Permission、deadline、retry/cost limit、許可されたwrite pathとdiff上限。
 - Runtimeが発行したactor、session、thread、jobの識別情報。
 
 Issue、comment、PRなど外部sourceを取得するには、source identifier、host、credential scope、network、paid-call costを固定した`read_external_source`が必要である。Read permissionはrecordを規範入力へ採用するauthorityを与えない。
 
-## Portable bundleを固定する
+## Personal contractを固定する
 
-現在runではtargetのbase SHAにある`REVIEW_HARNESS.md`と`.review-harness/contracts/`を使う。Candidate側がbundle、profile、policyを変更しても、同じrunの権限やREADY条件を弱める入力へ昇格させない。Baseにentrypointがない場合は、Humanが内容、hash、適用runを承認したrun-local snapshotだけを代替にできる。
+Run開始時に、実際に読み込んだHarness wrapperとこのreferenceのpath、contract version、content hashを`input_snapshot`へ保存する。関連skill/referenceも実行時のpath、version、content hashを記録し、run中に値が変わった場合は既存のreview、verification、gate、READYを流用せず`CONTEXT_RESOLVING`から再開する。
 
-Contract本文を読む前に次を順に確認する。
+Project repositoryのcandidateがHarness contract、permission、READY条件を変更または置換することはできない。Project側の入力はbase SHAにあるinstruction、任意profile、CI/manifest、policyへ限定し、同じrunでcandidateが追加したprofileやpolicyを権限縮小またはgate省略へ使わない。
 
-1. Manifestの`contract_version`を実行側が対応できる。
-2. Member pathがrepository-relativeで`.review-harness/contracts/`配下にあり、path traversalと重複がない。
-3. 宣言memberがすべてregular fileとして存在し、symlinkがない。
-4. Contracts directoryに未宣言fileがない。
-5. 各memberをUTF-8 bytesとしてSHA-256計算し、manifestの`content_sha256`と一致する。
-6. Required memberがHarness、neutral review、docs gate、Issue intake、candidate prepare/publishをすべて提供する。
-
-欠落、重複、未宣言member、path traversal、symlink、version不一致、hash不一致が1つでもあればcontractを実行せず`EVALUATION_DEFERRED`にする。結果はmemberごとのpath、expected hash、observed hash、statusを持つ`context_resolution.bundle_integrity`へ保存する。自動validatorがなくても省略しない。
-
-Bundle memberをpersonal wrapperなしで実行する場合、artifactのcontract/skill versionには`invocation_source: portable_bundle`、entrypointのpathとcontent hash、member pathとcontent hashを記録する。存在しないwrapper pathやpersonal skill versionを捏造せず、wrapper不在だけをblockerにしない。
+Harness wrapper、reference、required capabilityのpathまたはhashを固定できない、対応外version、読込失敗、run中のdriftがある場合は`EVALUATION_DEFERRED`にする。Project-localなHarness skill、`REVIEW_HARNESS.md`、contract snapshotの有無は検査せず、存在を要求しない。
 
 ## Project contextを解決する
 
@@ -67,7 +58,7 @@ Bundle memberをpersonal wrapperなしで実行する場合、artifactのcontrac
 Context解決前は次の固定read-only inspectionだけを許可する。
 
 - Base SHAのtree、blob、tracked path、file mode、Git objectの参照。
-- Repository instruction、CI設定、manifest、lockfile、documentation、bundle、profileの読取。
+- Repository instruction、CI設定、manifest、lockfile、documentation、任意profileの読取。
 - 許可済みexternal sourceのread-only取得。
 
 Project script、package manager、build tool、test、hook、external diff/textconv、index refreshは実行しない。必要ならcontext解決後のexact commandとしてeffectとpermissionを判定する。
@@ -76,16 +67,17 @@ Project script、package manager、build tool、test、hook、external diff/text
 
 次の順に確認し、後順位のsourceで上順位の明示値を黙って上書きしない。
 
-1. Base側portable bundle。
-2. Base側の任意`.review-harness/profile.yaml`。
-3. `AGENTS.md`、`CLAUDE.md`、承認済み設計書などのrepository instruction。
-4. CI設定、package manifest、Makefileなどの決定的情報。
-5. Authorityを確認したIssue、PR、外部decision。
-6. Human承認run-local input。
+1. Base側の任意`.review-harness/profile.yaml`。
+2. `AGENTS.md`、`CLAUDE.md`、承認済み設計書などのrepository instruction。
+3. CI設定、package manifest、Makefileなどの決定的情報。
+4. Authorityを確認したIssue、PR、外部decision。
+5. Human承認run-local input。
 
 最低限、source of truth、review scope、required lens、exact verification command、required gateとtrigger、permission、limitを解決する。各commandはexact text、effect、timeout、required servicesを持つ。複数候補からscopeとの対応を一意に説明できなければ推測実行しない。
 
 Profile不在は`profile_status: absent`として記録するが、それだけでblockerにしない。Base側情報から全fieldを決定的に解決できれば`context_status: resolved`にできる。必須field不足は候補と不足根拠を記録して`EVALUATION_DEFERRED`、権威が同等の正本矛盾は`HUMAN_DECISION_REQUIRED`とする。
+
+`resolution_mode`は`profile|repository_baseline|human_approved_run_local|mixed`のいずれかとする。Profile不在でbase側情報だけから解決した場合は`repository_baseline`を使う。
 
 ### External record authority
 
@@ -137,7 +129,7 @@ Target、Issue input、scope、permission、project rule、contract hashが変�
 
 ### 必須payloadとcheckpoint
 
-`input_snapshot.payload`は`input_kind`、`trust_source`、`source_identifier`、`source_sha`、`source_revision`、`content_sha256`、秘密情報を除いたexact `content`を持つ。External recordには`authority_status`と`authority_basis`も必要である。Portable contract、profile、project ruleはbase SHAとGit blob hashも記録する。
+`input_snapshot.payload`は`input_kind`、`trust_source`、`source_identifier`、`source_sha`、`source_revision`、`content_sha256`、秘密情報を除いたexact `content`を持つ。External recordには`authority_status`と`authority_basis`も必要である。Personal Harness contractは実際のlocal path、contract version、content hashを、profileとproject ruleはbase SHAとGit blob hashを記録する。
 
 `target.payload`はpoprのtarget fingerprintを正本とし、repository identity、target source、exact base ref/SHA、head SHA、working tree status/mode/manifest、対象ならindex diff hash、PR remote、include/exclude scope、実際に使ったskill version、project ruleのsource/path/blob hashを持つ。Harness metadataとして`generation`、`previous_target_ref`、`transition_reason`を追加するが、popr fingerprintの意味は変更しない。
 
@@ -156,11 +148,11 @@ Stage artifactの必須payloadは次の通りとする。
 | `final_review` | `blind_review_ref`、`reconciliation`、`popr_result`、`previous_review_ref`、`remediation_status`、`remediation_refs`、`independence_check` |
 | `decision` | `decision_kind`と、その判断を再現する観測値、根拠ref、blocker、Human action。Context解決では下記の専用field |
 
-Context解決の`decision.payload`は`decision_kind: context_resolution`、`resolution_mode`、`bundle_integrity`、`considered_sources`、`selected_sources`、`authority_decisions`、`resolved_commands`、`resolved_gates`、`unresolved_inputs`を持つ。各selected source、command、gateは対応するinput/evidence refとcontent hashを含める。候補を無視して空の`unresolved_inputs`を返さない。
+Context解決の`decision.payload`は`decision_kind: context_resolution`、`resolution_mode`、`contract_status`、`contract_ref`、`considered_sources`、`selected_sources`、`authority_decisions`、`resolved_commands`、`resolved_gates`、`unresolved_inputs`を持つ。各selected source、command、gateは対応するinput/evidence refとcontent hashを含める。候補を無視して空の`unresolved_inputs`を返さない。
 
-`run_manifest.payload`は`revision`、`previous_manifest_ref`、`state`、`previous_state`、`transition_id`、`transition_cause_ref`、`current_target_generation`、`current_target_ref`、`input_refs`、`artifact_refs`と各refの`current|historical|invalidated`、`permissions`、`limits`、`counters`、`input_source`、`context_status`、`resolution_mode`、`project_context_refs`、`context_resolution_ref`、`profile_status`、`profile_ref`、`last_completed_stage`、`resume_state`、`blocker`を持つ。最初のrevisionだけ`previous_manifest_ref: null`を許し、以後は直前manifestのpathとhashを参照する。
+`run_manifest.payload`は`revision`、`previous_manifest_ref`、`state`、`previous_state`、`transition_id`、`transition_cause_ref`、`current_target_generation`、`current_target_ref`、`input_refs`、`artifact_refs`と各refの`current|historical|invalidated`、`permissions`、`limits`、`counters`、`input_source`、`contract_status`、`contract_ref`、`context_status`、`resolution_mode`、`project_context_refs`、`context_resolution_ref`、`profile_status`、`profile_ref`、`last_completed_stage`、`resume_state`、`blocker`を持つ。最初のrevisionだけ`previous_manifest_ref: null`を許し、以後は直前manifestのpathとhashを参照する。
 
-`input_source: issue`では`issue_ref`を必須にして`scope_input_ref: null`、`explicit_scope`では`scope_input_ref`を必須にして`issue_ref: null`とする。`context_status: resolved`にはbundle integrity成功、external authority確定、必須fieldの完全解決、空でない`project_context_refs`、`context_resolution_ref`を要求する。`profile_status: resolved`では`profile_ref`、`absent`では`profile_ref: null`と`profile_absence_reason`、`invalid`では`profile_ref: null`と`profile_error_ref`を要求し、`invalid`のcontextを`resolved`にしない。各state遷移、target generation変更、stage完了、blocker、外部副作用の前後で新revisionをappend-only保存する。
+`input_source: issue`では`issue_ref`を必須にして`scope_input_ref: null`、`explicit_scope`では`scope_input_ref`を必須にして`issue_ref: null`とする。`contract_status`は`resolved|unavailable|drifted`とし、`resolved`だけhash付き`contract_ref`を持てる。`context_status: resolved`には`contract_status: resolved`、external authority確定、必須fieldの完全解決、空でない`project_context_refs`、`context_resolution_ref`を要求する。`profile_status: resolved`では`profile_ref`、`absent`では`profile_ref: null`と`profile_absence_reason`、`invalid`では`profile_ref: null`と`profile_error_ref`を要求し、`invalid`のcontextを`resolved`にしない。各state遷移、target generation変更、stage完了、blocker、外部副作用の前後で新revisionをappend-only保存する。
 
 Orchestratorはtarget依存stageの開始前と完了後、外部writeの前後、resume、Final review開始前、READY判定前に`target_check`を保存する。Publish前はfetch後のbase refも、PR作成後はremoteのexact base/headも照合する。Checkは保存済みtargetだけでなく、input refs、contract/profile/project rule hash、external source revisionも現在値と比較する。差分または再取得不能があれば旧artifactをREADY根拠へ使わず、該当blockerを記録する。
 
@@ -203,7 +195,7 @@ External writeはidempotency keyがあるかread-backで未実行を証明でき
 
 次の正常系を順に実行する。各遷移はprevious state、state、stable transition ID、cause artifact、counter snapshotを持つ新しいrun manifest revisionとして保存する。
 
-1. `CONTEXT_RESOLVING`: Bundle、input、target、project context、permission、limitを固定する。
+1. `CONTEXT_RESOLVING`: Harness contract、input、target、project context、permission、limitを固定する。
 2. `REVIEW_PENDING`: Fresh Initial reviewerがneutral reviewとrequired gate候補を返す。
 3. CriticalまたはMajorがあれば`CHANGES_REQUESTED`を作り、scope/permission内だけ`FIXING`する。なければ`VERIFYING`へ進む。
 4. `VERIFYING`: Working tree targetでrequired verificationを実行する。
@@ -222,7 +214,7 @@ Targetを変更したstageは`TARGET_MUTATED`相当の結果を返し、影響�
 
 次を全て満たす場合だけ`READY`にする。
 
-- Bundle integrityとproject contextがresolved。
+- Harness contract hashとproject contextがresolved。
 - Exact base/head SHAとclean working treeを持つcandidate targetが固定済み。
 - Review coverageがCompleteで、Introduced/ExposedのCriticalとMajorが0件。
 - Required verification、docs/security/project gate、project lensが同じcandidate targetで成功。
@@ -256,7 +248,7 @@ Resumeでは次を順に行う。
 
 ## Fallback
 
-- Personal/global Harness skillなし: Root `REVIEW_HARNESS.md`を明示promptで実行する。
+- Project-local Harness skill/entrypointなし: 正常系。Personal/global Harnessを使い、project側に複製しない。
 - Project profileなし: Base instruction、CI/manifest、Issue、Human承認inputから必須fieldを決定的に解決する。解決できればREADYへ進める。
 - Codex subagentなし: 過去会話を渡さない新しいtask/sessionまたはHuman reviewerへhandoff bundleを渡す。
 - Claude Code subagentなし: 別session、別CLI、Human reviewerのいずれかを使う。
@@ -275,7 +267,7 @@ Fallbackで独立性、coverage、gate成功を偽装しない。
 
 ## 検証
 
-- Bundle memberとmanifest hashを照合した。
+- Harness wrapper/referenceのversionとcontent hashを固定した。
 - 全artifactが同じrunと正しいtarget generationへ接続され、参照graphが非循環である。
 - Required verificationとgateがcandidate SHAへ結び付く。
 - ImplementerとFinal reviewerのinstanceが分離され、blind scanの受領artifactが制限されている。
