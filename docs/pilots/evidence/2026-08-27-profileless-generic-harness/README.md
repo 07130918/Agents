@@ -14,11 +14,35 @@ FareHuntは次を保存した。
 - Verification attempt 1 / 2
 - Attempt 2のremediation plan
 - Budget停止decision
+- Terminal manifest
 - Generation 2のworking tree patch
 
 word-pop-quizは、訂正済みcontext decisionとterminal manifestを保存した。Local user pathは`~`へ置換したが、判断に使ったrepository SHA、Git blob hash、target hashは変更していない。
 
-元の32 JSONすべては保存しない。選択したcheckpointでIssue #42の受入判断を監査でき、残りは非canonicalな中間manifestと重複情報である。Bundle追加時の総量は約42 KiBである。
+元の32 JSONすべては保存しない。選択したcheckpointでIssue #42の受入判断を監査でき、残りは非canonicalな中間manifestと重複情報である。Bundle追加時は13 files、約48 KiBである。
+
+## Provenance
+
+Source rootは次のauthor-local run storeである。
+
+- FareHunt: `.git/review-harness/07130918-FareHunt/agents-42-farehunt-20260827T065752Z/`
+- word-pop-quiz: `.git/review-harness/07130918-word-pop-quiz/agents-42-word-pop-holdout-20260827T071340Z/`
+
+| Extract | Source SHA-256 | Extract SHA-256 | Transform |
+| --- | --- | --- | --- |
+| `farehunt/006-context-resolution.json` | `23c79fbef014bdd873476b8ebb93db71f7c086b328e4c184bee404259298d91b` | `23c79fbef014bdd873476b8ebb93db71f7c086b328e4c184bee404259298d91b` | exact copy |
+| `farehunt/009-initial-review.json` | `9bf968162bfa0f49bf8ab0cd311174dec19ad1b0d0b4f221939502450771e964` | `9bf968162bfa0f49bf8ab0cd311174dec19ad1b0d0b4f221939502450771e964` | exact copy |
+| `farehunt/016-target-generation-1.json` | `3cb06d378533345206a432a3c995913eed9caa4164f5f63e6ea41e9f70d0ea64` | `3cb06d378533345206a432a3c995913eed9caa4164f5f63e6ea41e9f70d0ea64` | exact copy |
+| `farehunt/018-verification-attempt-1.json` | `6fd695e0fd616412296329b33d9841af84d4e54cfafad7dc32e30dd94e5ff8c1` | `6fd695e0fd616412296329b33d9841af84d4e54cfafad7dc32e30dd94e5ff8c1` | exact copy |
+| `farehunt/020-remediation-plan-attempt-2.json` | `52ea863a2fb0d76ca940684828263a2c7259f626dccf731e8cf9db1f40444a77` | `52ea863a2fb0d76ca940684828263a2c7259f626dccf731e8cf9db1f40444a77` | exact copy |
+| `farehunt/021-target-generation-2.json` | `06099f70164683dbc65ee066448c66be559824fbcfab50d0ea63a0361ea775df` | `06099f70164683dbc65ee066448c66be559824fbcfab50d0ea63a0361ea775df` | exact copy |
+| `farehunt/025-verification-attempt-2.json` | `06ddc95008f801cf35a44b9db34532c9f7124c4678a03f6a1b90824f6b655da5` | `06ddc95008f801cf35a44b9db34532c9f7124c4678a03f6a1b90824f6b655da5` | exact copy |
+| `farehunt/026-budget-exhausted.json` | `58fd5a11fffc07e04cc045fa8f9934558ac788b594fce9dd25b80882064655c3` | `58fd5a11fffc07e04cc045fa8f9934558ac788b594fce9dd25b80882064655c3` | exact copy |
+| `farehunt/027-manifest-r8.json` | `c9d2527bc940b2f27e5357d5186150018392e51698e63b8b7d7561c1652f09d3` | `c9d2527bc940b2f27e5357d5186150018392e51698e63b8b7d7561c1652f09d3` | exact copy |
+| `word-pop-quiz/004-context-deferred-corrected.json` | `8863fcf04b2dae6e1b3825f12d54d43d2f10a9f4b5f8935ade3137b90a80018e` | `abae1b6bf62effc634b29fbd9fa432b9238cbbf302c4d1590455dc451b3b0844` | local user pathを`~`へ置換 |
+| `word-pop-quiz/005-manifest-r1.json` | `a325626dc019fced5e81fee9b8bbc0f4b11c2dcb38ffbb9271b499cf091eb1b8` | `155cd04ac736ebe05ac694fc4fedb355340a378a5705dc8aed7857a37bd7ca80` | local user pathを`~`へ置換 |
+
+Pilot reportのFinal manifest SHA-256はsource artifactのhashである。FareHunt terminal manifestはexact copyのためextractから同じ値を検証できる。Hold-out terminal manifestはpath-redacted extractなので、reportの`a325626...`はSource SHA-256、committed fileのhashは`155cd04...`となる。
 
 ## 重要な制限
 

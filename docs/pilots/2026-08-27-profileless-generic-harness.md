@@ -127,7 +127,7 @@ CONTEXT_RESOLVING
 
 契約ではartifact graph違反をREADY根拠へ使わず`EVALUATION_DEFERRED`にする。このため、最後のmanifestが記録した`BUDGET_EXHAUSTED`は実行時のbudget guard観測として保持するが、run全体の契約適合を示す最終stateには使わない。JSONを上書きして履歴を整形することもしていない。
 
-Merge後も監査できるように、context、Initial review、target generation、verification、budget decisionとgeneration 2 patchをpersistent evidenceへ抽出した。全artifactを複製せず、約42 KiBの最小bundleに限定した。Generation 1 patchとcommandのfull stdout/stderrはpilot中に保持していなかったため、後から補作せずbundleの制限として明記した。
+Final manifest hashはlocal storeのsource artifactを指し、persistent evidenceには同じbyte列をexact copyとして保存した。Merge後も監査できるように、context、Initial review、target generation、verification、budget decision、terminal manifestとgeneration 2 patchをpersistent evidenceへ抽出した。全artifactを複製せず、13 files、約48 KiBの最小bundleに限定した。Generation 1 patchとcommandのfull stdout/stderrはpilot中に保持していなかったため、後から補作せずbundleの制限として明記した。
 
 ## Hold-out run: word-pop-quiz
 
@@ -148,6 +148,8 @@ Manual artifact作成時にtarget hashのplaceholderを含むdecisionを一度�
 - Artifact数: 5 JSON、20 KiB
 - Artifact ledger aggregate SHA-256: `e56b37662305d9ccda819cd897f7d0b35c7a6ce00005d5e2259041d29292182d`
 - Final manifest SHA-256: `a325626dc019fced5e81fee9b8bbc0f4b11c2dcb38ffbb9271b499cf091eb1b8`
+
+Hold-outのFinal manifest hashもlocal storeのsource artifactを指す。Persistent extractはlocal user pathを`~`へ置換したため別hashになり、source/extract両hashと変換内容をevidence READMEへ記録した。
 
 ## Scenario結果
 
