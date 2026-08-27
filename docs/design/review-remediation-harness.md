@@ -21,7 +21,7 @@ v1では次を行わない。
 - prompt文言を固定するtestを作らない
 - `principle-of-programming-reviewer`のfingerprint、finding、severity、grade、coverage契約を複製しない
 - project固有のlens、test command、E2E、運用規約をpersonal Harnessが推測しない
-- Uka-Route固有の規約をpersonal Harnessへ埋め込まない
+- プロジェクト固有の規約をpersonal Harnessへ埋め込まない
 - Harness skill、entrypoint、contract snapshotを各projectへ複製しない
 - Claude Codeのglobal skillまたはsubagentを有効化しない
 - 指摘が0件になるまで自動反復しない
