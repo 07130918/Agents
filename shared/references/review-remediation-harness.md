@@ -110,7 +110,7 @@ Run store用repository identityはpopr fingerprintへ暗黙に含めない。Boo
 ```json
 {
   "schema_version": "2.0",
-  "artifact_type": "input_snapshot|target|evidence|target_check|review|change_request|remediation|verification|gate|blind_review|final_review|external_operation|decision|run_manifest",
+  "artifact_type": "input_snapshot|target|evidence|target_check|review|change_request|remediation|verification|gate|blind_review|final_review|decision|run_manifest",
   "artifact_id": "<run_id>/<stage>/<monotonic_sequence>",
   "run_id": "<stable_run_id>",
   "monotonic_sequence": 0,
@@ -164,7 +164,7 @@ Artifact参照は次の非循環layerに限定する。
 
 1. Rootの`input_snapshot`は`input_refs: []`とし、他artifactを参照しない。`target`の`input_refs`はcurrent `repository_identity` inputのcommon ref 1件だけを持ち、`payload.repository_identity_ref`とexactに一致させる。Stage、Evidence、Manifestは参照しない。両typeの`target_ref`は必ずnullにする。
 2. Evidenceの`evidence`はRootだけを参照できる。
-3. Stageの`target_check`、`review`、`change_request`、`remediation`、`verification`、`gate`、`blind_review`、`final_review`、`external_operation`、`decision`は、Root、Evidence、自分より小さい`monotonic_sequence`のStageだけを参照できる。
+3. Stageの`target_check`、`review`、`change_request`、`remediation`、`verification`、`gate`、`blind_review`、`final_review`、`decision`は、Root、Evidence、自分より小さい`monotonic_sequence`のStageだけを参照できる。
 4. Manifestの`run_manifest`は確定済みRoot、Evidence、Stageを`artifact_refs`へ列挙し、直前Manifestだけを専用の`previous_manifest_ref`で参照できる。他artifactからManifestは参照されず、Manifestを`artifact_refs`へ含めない。
 
 同一artifact、前方参照、自分を含むManifest、別transactionの未確定artifactは参照しない。例外として、同じimmutable transaction descriptorのwrite set内で、参照先が参照元より小さい`write_index`と`monotonic_sequence`を持ち、canonical destination、exact bytes、hash、lengthがdescriptorに固定されたRoot、Evidence、Stageへのcommon refを許可する。これにより次generationのtarget/inputを先にstageし、それを参照する`target_check`と、そのcheckをcauseにするManifestを同一transactionでcommitできる。Writerはinstall前にwrite set全体のtype layer、順序、common ref、hash、cycleを検証し、1件でも不一致ならtransaction全体を拒否する。
@@ -224,8 +224,6 @@ Target、Issue input、scope、permission、project rule、contract hashが変�
 
 `issue_bundle`はrun開始時に明示されたIssueのstable ID、number、title、exact body/acceptance criteriaだけを持つgoverning projectionであり、comment、PR、review、linked Issueを含めない。`source_revision`はsourceがtitle/body専用のimmutable revisionを返す場合はその値、返さない場合はstable Issue ID、title、bodyを持つJCS valueのSHA-256を`sha256:<小文字16進64文字>`で保存する。各comment、PR、review、linked Issueは1 recordにつき1つの`external_record`へstable ID、revision、record type、author、author role、exact body、`authority_status`、`authority_basis`を保存する。`governing|pending`のrecordだけgeneration inputへ含め、`evidence_only` recordの追加、更新、削除はIssue bundleのbytes、revision、generation inputを変更しない。Authority statusが変わった場合は新しいexternal record inputとgenerationを作る。Git SHA/object IDはrepository object formatに一致する小文字16進40または64文字とする。
 
-`BUDGET_EXHAUSTED`がpublishの未完了operation中に発生した場合、`prior_run_handoff.content.publish_resume_snapshot`は専用のvalue schemaを使う。Operation ID、desired submissionとhash、fetch/push transport locator、transport execution context hash、same-repository identity、base/head branchとSHA、旧runのlast attempt/result/step results/effect provenance/external-effect flag/remote head/observed PR stateを値として持ち、provenanceは元intentと最新observationのartifact ID/hash scalarだけにする。旧payloadの`intent_ref`、`previous_observation_ref`、`transport_execution_context_ref`、`read_back_evidence_refs`、artifact path、common refはcopyしない。新runはtransport contextを再解決して新しいEvidence refと同じhashを確認し、このsnapshotを成功根拠にせずremote/PRを再取得する。Hashが変われば同じoperationとして再開せずHumanへhandoffし、一致した場合だけ別のoperation IDを作らず、同じdesired operationの安全な未完了stepを再開する。
-
 `stable_approval_id`はruntimeが返すimmutable event/message IDを優先する。取得不能時は、Humanのexact approval text、actor ID、対象run ID、approval scope、承認対象のcontent hashをJCS化したSHA-256を`sha256-<小文字16進64文字>`として使い、そのJCS value自体をHuman inputの`approval_evidence`へ保存する。Timestamp、表示名、連番だけからIDを補作しない。
 
 Permission setは`input_kind: permission_set`の`input_snapshot`として、permission名、boolean、対象identity、allowed path/ref/source/host、effects、approval scopeをexact `content`へ保存する。Run開始時のdefaultもHumanによる追加・縮小も新しいimmutable snapshotにし、inline値だけを正本にしない。Human承認は先に`human_approved_run_local` input snapshotへ固定し、それを参照するdecisionを保存する。Permission setが変わった場合は新generationを作り、必ず`CONTEXT_RESOLVING`からcontext、review、verification、gateを再評価する。
@@ -251,7 +249,6 @@ Stage artifactの必須payloadは次の通りとする。
 | `gate` | `gate_name`、`declared_version`、`capability_revision`、`content_sha256`、`execution_status`、`decision_status`、`decision_policy`、`acceptance_policy_ref`、`evidence_ref`、`pre_target_check_ref`、`post_target_check_ref`、`mutated_target` |
 | `blind_review` | `blind_result`、`generic_risk_result`、`generic_coverage_status`、`blind_received_artifacts`、`project_results`、`project_coverage_status`、`required_gates`、`independence_check` |
 | `final_review` | `blind_review_ref`、`reconciliation`、`popr_result`、`previous_review_ref`、`remediation_status`、`remediation_refs`、`independence_check` |
-| `external_operation` | `operation_kind: publish_exact_candidate`、`record_kind: intent|observation`、`operation_id`、`execution_key`、`intent_ref`、`previous_observation_ref`、`fetch_transport_locator`、`push_transport_locator`、`transport_execution_context_ref`、`transport_execution_context_sha256`、`remote_repository_identity`、`expected_base_repository_identity`、`expected_head_repository_identity`、`expected_base_sha`、`expected_head_sha`、`remote_name`、`base_branch`、`head_branch`、`desired_submission`、`desired_submission_sha256`、`attempt`、`result`、`step_results`、`effect_provenance`、`external_effect_observed`、`remote_head_status`、`remote_head_sha`、`pr_identifier`、`observed_pr_state`、`read_back_evidence_refs`、`hook_postcondition_refs`、`started_at`、`observed_at` |
 | `decision` | `decision_kind`と、その判断を再現する観測値、根拠ref、blocker、Human action。Context解決では下記の専用field |
 
 `change_request.requests`は空でない配列とし、各要素を次のdiscriminated unionで検証する。
@@ -280,14 +277,6 @@ Manifest envelopeとpayloadの重複bindingはvalidatorがexact一致を要求�
 
 Security gateは常に`decision_policy: project_or_human`とし、上記Evidence、前後target check、`mutated_target`をgate artifactへ接続する。Base側のgoverning acceptance policyがstable rule IDと、security resultのseverity/count/score/category fieldから`PASS|BLOCKED`を決める完全な規則を持つ場合だけ機械適用できる。Policyがない、不完全、複数解釈、またはHumanのrisk判断が必要なら、監査完了やfinding 0件をPASSへ変換せず`decision_status: HUMAN_DECISION_REQUIRED`にする。Humanが判断する場合も、exact result、対象run/target、受容scopeを固定したHuman inputを`acceptance_policy_ref`へ保存する。`mutated_target: true`または前後check不一致はdecision statusにかかわらずsame-target成功として扱わない。
 
-`desired_submission`は`title`、exact `body`、`draft`、loginのUTF-8 byte順で重複ない`assignees`、label名の同順で重複ない`labels`を持つ。`desired_submission_sha256`はそのJCS bytesのSHA-256とする。`external_operation`の`intent`は外部call前に保存し、`intent_ref: null`、各runの初回は`previous_observation_ref: null`、`result: pending`、全stepが`pending`の`step_results`、`effect_provenance: {"push":"not_performed","pull_request":"not_performed"}`、`external_effect_observed: false`、`remote_head_status: null`、`remote_head_sha: null`、`pr_identifier: null`、`observed_pr_state: null`、空の`read_back_evidence_refs`、空の`hook_postcondition_refs`、`observed_at: null`にする。Observationの`hook_postcondition_refs`はcreate-prが同attemptで完了まで観測した全Git network callのpostcondition Evidenceをcall sequence順で持ち、callを開始した可能性があるのに対応refが欠落、またはstatusが`changed|unresolved`なら`result: unknown`にして自動retryしない。Prior run handoffがある初回intentは、cross-run common refを作らず、self-contained handoff inputをenvelopeの`input_refs`へ含める。同じrunの2回目以降のintentだけが、直前observationのcommon refを`previous_observation_ref`へ持つ。
-
-`operation_id`はfetch/push transport locator、`transport_execution_context_sha256`、remoteとexpected base/head repository identity、base/head SHA、remote name、base/head branch、operation kind、`desired_submission_sha256`のJCS valueをSHA-256化した`sha256-<小文字16進64文字>`、`execution_key`はrun ID、operation ID、run-local attempt、permission set hashのJCS valueから同形式で作る。Transport locatorはcreate-prが解決したexact effective URLを保持する。`transport_execution_context_ref`は同referenceが定義するEvidenceを指し、そのJCS content hashが`transport_execution_context_sha256`と一致しなければならない。両locator、remote、expected base/head repository identityはcreate-prが定義する同じcanonical repository objectへ解決されず、またはcontextの再取得、permission照合、実行前後hash照合ができなければintentを作らない。`attempt`は1始まりのI-JSON exact integerで、intentを保存するManifestの予約後`external_write_attempts_by_operation_id[operation_id]`と一致させ、`max_external_write_attempts_per_operation`以下にする。Observationは対応intentと同じattemptを持ち、同じrunの次attemptは直前attempt + 1かつ直前observationのcommon refを持つ。新runへhandoffしたoperationは同じoperation IDを保つがattemptを1から数え直し、run IDを含むexecution keyによって旧runのattemptと衝突させない。Observationは同じoperation/execution key、desired submissionと先行intent refを持ち、`result: succeeded|not_performed|partially_performed|unknown|ready_invalidated`、`push: pending|not_needed_exact|performed|not_performed|unknown|ready_invalidated`、`pull_request: pending|created|updated|not_performed|partial|unknown`、`read_back: pending|exact|mismatch|unknown`の`step_results`、`push|pull_request`ごとの`performed|not_performed|unknown`を持つ`effect_provenance`、外部effectの有無、`remote_head_status: absent|exact|ancestor|diverged_or_ahead|unresolved`、remote head、PR identifier、`observed_pr_state`、full evidence refs、`observed_at`を保存する。Durableなcall結果がなければ、current stateがexactでもprovenanceを`performed`へ変更しない。`observed_pr_state`は`{"status":"absent"}`、`{"status":"present","identifier":"<id>","state":"OPEN","base_repository_identity":<canonical-object>,"base_branch":"<branch>","base_sha":"<oid>","head_repository_identity":<canonical-object>,"head_branch":"<branch>","head_sha":"<oid>","title":"<exact>","body":"<exact>","draft":<boolean>,"assignees":[...],"labels":[...]}`、`{"status":"conflicting","identifiers":[...]}`、`{"status":"unresolved","reason":"<reason>"}`のunionとし、配列はdesired submissionと同じ順序、identifierはUTF-8 byte順にする。Remote head statusが`absent|unresolved`な場合は`remote_head_sha: null`、それ以外は観測したfull OIDを必須にし、再取得不能の理由をread-back evidenceに保存する。
-
-Observationの`result`と次の安全なstepはcreate-prのpublish observation tableを正本とし、`SUCCEEDED|NOT_PERFORMED|PARTIALLY_PERFORMED|RESULT_UNKNOWN|READY_INVALIDATED`をそれぞれ`succeeded|not_performed|partially_performed|unknown|ready_invalidated`へ対応させる。Artifact validatorはremote/PR current state、effect provenance、external effect、`push|pull_request|read_back`の組、attempt、previous observationが同表と上記規則へ一致する場合だけresultを受理する。Intentを含むManifestとobservationを含むManifestはいずれも`previous_state: READY`、`state: READY`の非状態変更checkpointにする。ただし`ready_invalidated`は続けてinvalidation decisionを保存し`CONTEXT_RESOLVING`へ、`unknown`は自動retryせず`HUMAN_DECISION_REQUIRED`へ遷移する。
-
-Resumeでobservationのないpublish intentを見つけた場合、まず同attemptでGit network callが開始された可能性と対応するhook postcondition Evidenceを照合する。開始済みの可能性を否定できずpostconditionが欠落する場合は、現在状態から過去のpostconditionを補作せず`unknown` observationを保存してHumanへhandoffする。欠落がない場合だけ、同じoperationを再実行する前にremote headとopen PRのbase/head repository identity、branch、SHA、title、body、draft、assignee、labelをread-backし、callのdurable evidenceがないstepは`effect_provenance: unknown`のまま、create-prのpublish observation tableでcurrent stateからresultと次stepを分類する。`succeeded`ならprovenanceを補作せず完了を保存し、`not_performed|partially_performed`なら同表が許すstepだけをretry budget内の次attemptと新しいexecution keyで再開する。Current stateが不明な`unknown`または`ready_invalidated`では推測retryしない。
-
 `target_check.status`は、全componentを観測でき差分がなければ`unchanged`、全componentを観測でき差分が1件以上あれば`changed`、1件でも再取得または比較できなければ`unresolved`とする。`unresolved`では`unresolved_components`へcomponent、理由、観測証拠refを記録し、既存artifactを再利用せず`EVALUATION_DEFERRED`にする。`changed`と`unresolved`を相互に丸めない。
 
 `target_check` envelopeの`target_ref`は常に`expected_target_ref`と同じ旧/current targetを指す。`unchanged`では`observed_target_status: resolved`かつ`observed_target_ref`をexpectedと同じcommon ref、`changed`では事前にexact bytesを固定した次generationのtarget common refとする。`unresolved`では`observed_target_status: unresolved`、`observed_target_ref: null`、空でない`observed_target_absence_reason`を要求し、新targetを補作しない。
@@ -298,7 +287,7 @@ Resumeでobservationのないpublish intentを見つけた場合、まず同atte
 
 Working tree manifestのtracked/untracked file追加、変更、削除、file modeまたはtype変更で`target_check.status: changed`になった場合は`transition_diff_ref`を必須にする。参照先は`evidence_kind: target_transition_diff`のcanonical JSONとし、`expected_target_ref`、`observed_target_ref`、各pathのchange kindと`before`、`after`を持つ。`before|after`は`{"status":"absent"}`または`{"status":"present","mode":"<mode>","type":"regular|symlink","byte_length":<integer>,"content_sha256":"<hash>","content_source":<source>}`のdiscriminated unionとする。追加はbeforeだけ`absent`、削除はafterだけ`absent`、空fileは`present`かつ`byte_length: 0`とし、欠落や取得失敗を`absent`へ丸めない。`content_source`は`{"kind":"git_object","object_id":"<oid>"}`または`{"kind":"target_attachment","target_id":"<target_artifact_id>","content_path":"<run_relative_path>"}`とする。Before contentはexpected targetのsnapshotまたはimmutable Git object、after contentはobserved targetのsnapshotまたはimmutable Git objectへ結び付ける。Validatorは両target refのhash、attachment metadataとraw bytesのhash/length、entryのtarget IDを照合する。Text、binary、symlinkを同じmanifest deltaで表し、binary bytesをtext化しない。EvidenceからEvidenceへの参照は追加しない。新generationへ進むManifestは、その`target_check`またはtargetを変更したStage artifactを`transition_cause_ref`で参照する。
 
-Orchestratorはtarget依存stageの開始前と完了後、外部writeの前後、resume、Final review開始前、READY判定前に`target_check`を保存する。Publish前はfetch後のbase refも、PR作成後はremoteのexact base/headも照合する。Checkは保存済みtargetだけでなく、generation input refs、permission set、contract/project rule hash、governing/pending external source revisionも現在値と比較する。Evidence-only recordはauthority判定を再実行するために取得できるが、そのcontent driftだけをgeneration driftへ含めない。差分または必要な再取得不能があれば旧artifactをREADY根拠へ使わず、該当blockerを記録する。
+Orchestratorはtarget依存stageの開始前と完了後、resume、Final review開始前、READY判定前、`create-pr`へ渡す直前に`target_check`を保存する。Checkは保存済みtargetだけでなく、generation input refs、permission set、contract/project rule hash、governing/pending external source revisionも現在値と比較する。Evidence-only recordはauthority判定を再実行するために取得できるが、そのcontent driftだけをgeneration driftへ含めない。差分または必要な再取得不能があれば旧artifactをREADY根拠へ使わず、該当blockerを記録する。
 
 ## Roleを分離する
 
@@ -322,13 +311,12 @@ Run開始時に次を個別に記録する。
 
 - `read_repository`: 初期true。固定read-only inspectionだけ。
 - `write_run_store`: 初期true。Candidate外のappend-only ledger、transaction、ledger外recovery reportだけ。
-- `read_external_source`: 明示source/hostだけtrue。Authorityは別判定。PR依頼ではcreate-prのidentity解決、fixed push locatorのexact head refに対するpre-write lookup、same-repository open PR検索、post-write read-backに必要なGitHub API/transport sourceだけを追加できる。
-- `inspect_git_transport_context`: 初期false。CommitまたはPR依頼で、現在repository identity、選択remote、config scope/key pattern、environment名、Git/helper executable metadata、`read_config|read_environment|resolve_executable|execute_git_version` effectを固定した範囲だけtrueにできる。Gitのread-only照会と固定済みGit executableのversion取得だけを許可し、helper、askpass、credential provider、network transportを実行しない。Secret raw valueとそのhashは永続化しない。
-- `fetch_remote_refs`: 初期false。CommitまたはPR依頼で明示されたexact fetch transport locator、remote、base refspec、prune範囲と、publish時にfixed push locatorのexact head refをancestor判定用にsource-only fetchする範囲だけtrueにできる。GitHub API identityはprepare-only fetchの要件にしない。
+- `read_external_source`: 明示source/hostだけtrue。Authorityは別判定。
+- `fetch_remote_refs`: 初期false。CommitまたはPR依頼で明示されたrepository identity、remote、refspec、prune範囲だけtrueにできる。
 - `write_worktree`: 変更依頼かつallowed path/limitがある場合だけtrue。
 - `run_local_commands`: 解決済みexact commandだけtrue。
 - `commit`、`push`、`create_or_update_pr`: 明示されたcommitまたはPR依頼の範囲だけtrue。
-- `write_external_system`: 初期false。明示的なPR作成または更新依頼がある場合だけ、`publish_exact_candidate`のexact fetch/push transport locator、transport execution context、remote、同一であるbase/head canonical repository identity、branch、SHAとcreate-pr metadata policyに限定してtrueにできる。
+- `write_external_system`: 初期false。PR作成など外部writeは既存の`create-pr` contractへ委譲し、Harnessのartifact writer/validatorでは実行しない。
 - `merge`、`deploy_or_production_write`、`accept_risk_or_spec`: 初期false。Harnessはtrueにしない。
 
 この集合全体をpermission set input snapshotとしてManifestの`permission_set_ref`へ固定する。Permissionの追加・縮小、対象identity、allowed path/ref/source/host、effects、approval scopeの変更はすべてgoverning input変更であり、途中stageへ直接resumeせず`CONTEXT_RESOLVING`へ戻る。単なるservice復旧などpermission setのbytesが不変な場合だけ、記録済みresume stateへ戻れる。
@@ -345,21 +333,13 @@ Run開始時に次を個別に記録する。
 
 Declared effectsはpermissionの下限であり、command自身が権限を弱めるauthorityではない。Orchestratorは実行tool metadata、network access、filesystem/endpointのread/write先を独立に分類し、観測または可能なeffectをdeclared setへ加えた累積effective setで判定する。Network endpoint、credential、paid cost、local/repository write先、effect集合のいずれかを実行前に一意に分類できないcommandは権限を昇格して推測実行せず停止する。Coverage upload、外部DB変更、Issue/comment/SaaS更新は`external_write`として検出するが、v1 Harnessのverification/gate commandでは許可せず、専用artifactを補作せず停止する。認証付きAPIやpackage auditのnetwork readは`external_read`を含める。Deployまたはproduction writeを含むcommandもHarness内で実行しない。Context resolutionにないcommandも実行しない。Context前の固定bootstrap inspectionはproject commandではなく`read_repository`だけで実行する。
 
-明示的なPR作成または更新依頼は、そのexact request、actor、run、exact fetch/push transport locator、transport execution context hash、remote、same-repositoryのbase/head canonical identity、branch、SHA、create-pr標準templateと許可assignee/labelを含むmetadata policyをHuman input snapshotへ固定し、`inspect_git_transport_context`、`push`、`create_or_update_pr`、このoperationだけの`write_external_system`を同じpermission setでtrueにするためのapprovalとして扱う。同時に`read_external_source`を、両locatorのcanonical identity解決、fixed push locatorのexact head refに対するpre-write lookup、同じrepositoryのopen PR検索、post-write read-backに必要なGitHub host/API/transport locator、credential scope、network、timeout、paid-call budgetだけへ限定してtrueにできる。Exact `desired_submission`はこのpolicyとcandidate差分から外部write前に生成しintentで固定するが、その生成だけでpermission inputを差し替えない。この専用publishはresolved project commandの`external_write`例外ではなく、READY後に`external_operation`とcreate-pr contractでのみ実行できる。他のremote、branch、permission外PR metadata、Issue comment、SaaS operationへ承認を流用しない。
+Limitsには`max_remediation_cycles: 2`、`max_same_request_attempts: 2`、`max_transient_stage_retries: 1`、required deadline、token meter値または`unsupported`、paid external call budget、allowed write paths、max changed files、max diff linesを含める。
 
-Limitsには`max_remediation_cycles: 2`、`max_same_request_attempts: 2`、`max_transient_stage_retries: 1`、`max_external_write_attempts_per_operation: 2`、required deadline、token meter値または`unsupported`、paid external call budget、allowed write paths、max changed files、max diff linesを含める。
+Remediation cycleは`FIXING`直前、request別attemptは対象requestの最初のworktree変更前、transient retryは再実行前にcounterを予約する。予約した試行はcrash時に戻さず、同じexecution keyを重複実行しない。Counterが上限と等しくなっただけでは進行中の試行を停止せず、その試行後も未解消で次の試行が必要になった時点で`BUDGET_EXHAUSTED`にする。
 
-Remediation cycleは`FIXING`直前、request別attemptは対象requestの最初のworktree変更前、transient retryは再実行前、external write attemptは外部call前にcounterを予約する。予約した試行はcrash時に戻さず、同じexecution keyを重複実行しない。Counterが上限と等しくなっただけでは進行中の試行を停止せず、その試行後も未解消で次の試行が必要になった時点で`BUDGET_EXHAUSTED`にする。
+`fetch_remote_refs`はcandidate準備に必要なnetwork readとlocal Git metadata更新専用である。実行前にnormalized repository identity、remote名とURL、source/destination refspec、`prune`の有無、credential scope、timeoutをallowlistへ固定する。Fetchは`--no-tags`かつ自動maintenance無効で実行し、許可するlocal writeはGit object database、fetch中のlock/temporary metadata、`FETCH_HEAD`、宣言したremote-tracking ref namespaceだけとする。Working tree、index、local branch、tag、Git configを変更しない。`run_local_commands`や`read_repository`へ暗黙に含めない。Permissionがfalse、remote identityまたはrefspecが不一致、credentialまたはnetworkが利用不能ならfetchせず、前2者は`HUMAN_DECISION_REQUIRED`、後者は`EVALUATION_DEFERRED`にする。
 
-External write attempt counterはoperation IDごとに専用`publish_exact_candidate`の外部call前だけ予約する。`counter < max_external_write_attempts_per_operation`の場合だけ1増やして開始し、実行済み範囲は`external_operation` observationでread-backする。Create-pr tableの`NOT_PERFORMED|PARTIALLY_PERFORMED`に一意に一致する場合だけ次attemptを開始できる。成功不明のtimeoutは自動retryせず、read-backで確定できなければ`HUMAN_DECISION_REQUIRED`にする。Prior run handoff後は新runのcounterと明示された新上限を使い、旧runの消費数を同じrunの余力として戻さない。
-
-`READY`中のpublish observationが`not_performed|partially_performed`で、次のexternal write attempt予約がbudgetにより拒否された場合は、`limit_observation`をcauseに`READY -> BUDGET_EXHAUSTED`へ遷移する。同じrunでretryまたは上限変更を行わず、継続時は上記のself-contained `prior_run_handoff`で新runを開始する。
-
-`inspect_git_transport_context`は`read_repository`、`run_local_commands`、`fetch_remote_refs`へ含めない。Create-pr schema 1.0の論理値を作る前に、permission snapshotの対象repository、remote、config scope/key pattern、environment名、Git/helper executable metadata、effectを照合する。Helper commandはpathとhashの解決だけを行い、credential helper、askpass、transportを実行しない。Permissionがfalseまたはallowlist外なら`HUMAN_DECISION_REQUIRED`、設定source、environment、executable metadataを秘密値なしで安全に取得できない、unknown helper/inputが残る場合は`EVALUATION_DEFERRED`にする。確定したpermission snapshot hashをtransport contextへ含め、外部操作前後で両方を再照合する。
-
-`fetch_remote_refs`は`prepare_candidate`と`publish_exact_candidate`が要求するnetwork readとlocal Git metadata更新専用である。実行前にcreate-prが定義するexact fetch transport locator、transport execution context hash、remote名、base source/destination refspec、publish時のfixed push locatorとexact head source ref、`prune`の有無、credential scope、timeoutをallowlistへ固定する。Base fetchはlocatorとexact refspecを、headのancestor判定fetchはpush locatorとsource-only exact head refをcommand引数にし、`--no-tags`かつ自動maintenance無効で実行する。許可するlocal writeはGit object database、fetch中のlock/temporary metadata、`FETCH_HEAD`、宣言したremote-tracking ref namespaceだけとする。Working tree、index、local branch、tag、Git configを変更しない。`run_local_commands`や`read_repository`へ暗黙に含めない。Permissionがfalse、locator、transport contextまたはrefspecが不一致、credentialまたはnetworkが利用不能ならfetchせず、前2者は`HUMAN_DECISION_REQUIRED`、後者は`EVALUATION_DEFERRED`にする。
-
-Fetchのtimeoutまたはtransient failureでは、許可したrefをread-backして要求されたobjectとref更新が完了済みなら成功として再実行しない。未完了を確認でき、同じallowlistとexecution keyを使う場合だけ`max_transient_stage_retries`の範囲で1回retryできる。Fetch後にbaseまたはinput refが変わった場合は成功を流用せず`CONTEXT_RESOLVING`へ戻る。READY後のpublish checkpointではcreate-pr phase resultとして`READY_INVALIDATED`を受け取り、同名のManifest stateは作らない。
+Fetchのtimeoutまたはtransient failureでは、許可したrefをread-backして要求されたobjectとref更新が完了済みなら成功として再実行しない。未完了を確認でき、同じallowlistとexecution keyを使う場合だけ`max_transient_stage_retries`の範囲で1回retryできる。Fetch後にbaseまたはinput refが変わった場合は成功を流用せず`CONTEXT_RESOLVING`へ戻る。
 
 ## Stateと実行順
 
@@ -370,15 +350,15 @@ Fetchのtimeoutまたはtransient failureでは、許可したrefをread-backし
 3. CriticalまたはMajorがあれば`CHANGES_REQUESTED`を作り、scope/permission内だけ`FIXING`する。なければ`VERIFYING`へ進む。
 4. `VERIFYING`: Working tree targetでrequired verificationを実行する。
 5. `PRECOMMIT_DOCS_PENDING`: `sync-docs-code`を実行する。Mutationがあれば新targetでverificationからやり直す。
-6. `CANDIDATE_COMMIT_PENDING`: `inspect_git_transport_context`、`fetch_remote_refs`、commit permissionを確認し、`prepare_candidate`を使いcleanなcandidate SHAを固定する。
+6. `CANDIDATE_COMMIT_PENDING`: `fetch_remote_refs`とcommit permissionを確認し、`prepare_candidate`を使いcleanなcandidate SHAを固定する。
 7. `TARGET_VERIFYING`: Exact candidate SHAでrequired verificationを再実行する。
 8. `GATES_PENDING`: Docs、security、project gateを同じcandidate SHAで実行する。
 9. `REREVIEW_PENDING`: Fresh Final reviewerのpoprとgeneric comprehensive blind scan、必要なproject lens、reconciliationを行う。
 10. READY条件を全て満たせば`READY`を記録する。
-11. PR提出が許可されていれば、`inspect_git_transport_context`、`fetch_remote_refs`、push、PR、operation限定の`write_external_system` permissionを確認し、exact desired submissionのpublish intent checkpointを保存してから`publish_exact_candidate`だけを実行する。Read-back後にobservation checkpointを保存し、Defaultのmonolithic `create-pr`を再実行しない。
+11. PR提出が許可されていれば、既存の`create-pr` contractへcandidate SHAとHarnessのREADY結果を渡す。Push前のproject hookを含む同contractの確認を省略しない。
 12. Humanがreviewしてmergeする。
 
-Targetを変更したstageは`TARGET_MUTATED`相当の結果を返し、影響するartifactをinvalidateする。Publish前後にbase/head/input driftを検出した場合、create-prはphase result `READY_INVALIDATED`を返す。Orchestratorはexpected/observed値と外部操作の有無を持つ`decision_kind: ready_invalidation`を保存し、そのdecisionをtransition causeにしてManifest stateを`READY -> CONTEXT_RESOLVING`へ遷移させる。新targetのverification、gate、Final reviewが終わるまでpublishを再開しない。
+Targetを変更したstageは`TARGET_MUTATED`相当の結果を返し、影響するartifactをinvalidateする。PR提出前にbase/head/input driftを検出した場合はREADYを失効し、`CONTEXT_RESOLVING`から新targetを作る。新targetのverification、gate、Final reviewが終わるまで提出しない。
 
 各stageの失敗と差戻しは次のように一意に扱う。
 
@@ -424,7 +404,7 @@ Resumeでは次を順に行う。
 4. Issue governing projectionと`governing|pending` external inputをsourceから再取得し、revisionとcontent hashを照合する。新規recordもauthority判定し、新たに`governing|pending`となる場合はinput driftとする。Evidence-only recordのcontent driftだけではgenerationを変えない。必要なinputの権限または安定したrevisionがなく再検証できなければ成功扱いしない。
 5. 新しい`target_check`をexpected/observed target、generation input、permission set、contract/project rule、governing/pending external revisionへ接続して保存する。
 6. Manifestのcurrent target generationと再取得値を比較し、driftがあれば新target/input snapshotを作る。許可済み変更か想定外driftかをtransition evidenceで分類し、上記lifecycle表に従って旧artifactを`historical|invalidated`へ遷移させて`CONTEXT_RESOLVING`へ戻す。
-7. Driftがない場合だけ、同じtarget generation、input refs、permission set、contract hashを持つ完了artifactを再利用する。外部副作用もbranch、commit、PRの実状態をread-onlyで照合する。
+7. Driftがない場合だけ、同じtarget generation、input refs、permission set、contract hashを持つ完了artifactを再利用する。
 8. `last_completed_stage`を単独cursorにせず、manifest stateと確定済みtransitionから状態機械を再評価する。検証不能、manifest chain破損、曖昧な実状態は`EVALUATION_DEFERRED`または`HUMAN_DECISION_REQUIRED`にする。
 
 ## Fallback
@@ -436,7 +416,7 @@ Resumeでは次を順に行う。
 - Claude Code subagentなし: 別session、別CLI、Human reviewerのいずれかを使う。
 - Fresh sessionなし: `INDEPENDENCE_BLOCKED`。
 - Required gate実装なし: 同じsemantic contractの別実装をHumanが用意する。用意できなければ停止する。
-- Git remote fetch不可: 許可済みremote/refへのnetwork、credential、Git metadata writeを回復して再開する。Base/ref一致を再検証できなければcandidate準備またはpublishを続けない。
+- Git remote fetch不可: 許可済みremote/refへのnetwork、credential、Git metadata writeを回復して再開する。Base/ref一致を再検証できなければcandidate準備またはPR提出を続けない。
 - Worktreeなし: Cleanな単独checkoutだけを使う。Dirty共有checkoutや並行runでは停止する。
 - Token meterなし: `unsupported`を記録し、cycle、retry、deadline、cost limitを適用する。
 
@@ -447,8 +427,6 @@ Fallbackで独立性、coverage、gate成功を偽装しない。
 - `READY`: Exact base/head、target ref、artifact hash、gate status、Final review、permission使用状況を返す。Mergeは実行しない。
 - Blocker: State、原因artifact、観測値、完了済みartifact、invalidated artifact、必要なHuman action、resume stateを返す。
 - `READY_INVALIDATED`: create-prのphase result。Manifest stateではない。Publishを行わずexpected/observed base/head、外部操作の有無を返し、Harnessはdecision保存後に`READY -> CONTEXT_RESOLVING`へ遷移する。
-- `NOT_PERFORMED|PARTIALLY_PERFORMED`: create-prのphase result。Manifest stateではない。Exact targetを保った安全な未実行または中間状態とstep別read-backをobservationへ保存し、READYを失効させずbudget内の次attemptまたは`BUDGET_EXHAUSTED`を選ぶ。
-- `RESULT_UNKNOWN`: create-prのphase result。Manifest stateではない。Read-backで一意に分類できない結果を`unknown` observationへ保存し、自動retryせず`HUMAN_DECISION_REQUIRED`へ遷移する。
 
 ## 検証
 
@@ -461,7 +439,7 @@ Fallbackで独立性、coverage、gate成功を偽装しない。
 - ImplementerとFinal reviewerのinstanceが分離され、blind scanの受領artifactが制限されている。
 - Critical/Major 0、poprとgeneric comprehensive coverage Complete、unresolved blockerなしを確認した。
 - Retry、scope、permission、cost上限を超えた副作用がない。
-- Publish時は`create-pr`のexact phase境界を使い、target mutationを行っていない。
+- PR提出時は既存の`create-pr` contractを使い、project hookと同contractの検証を省略していない。
 
 ## 関連skill
 
