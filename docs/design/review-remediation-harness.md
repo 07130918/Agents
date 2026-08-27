@@ -206,6 +206,8 @@ Schema 2.0のexact envelope、共通ref、path grammar、lifecycle、DAG、nulla
 
 Targetのfieldと意味はpoprのtarget fingerprint契約、Harness metadataとtransition payloadはshared referenceを正本とする。HarnessはsnapshotをJSON化するだけでfingerprint規則を再定義せず、generation metadataをpopr fingerprintの構成要素へ混ぜない。
 
+Generationはrun内で0から開始し、targetまたはgoverning inputが変わるたびに1だけ増やす。飛越しと番号の再利用を許さず、exact integerの範囲と`target_check`の検証規則はshared referenceを正本とする。
+
 Dirty working treeをtargetに含める場合、Git objectから復元できないraw bytesをtarget確定時にrun storeへimmutable attachmentとして先に保存する。Attachmentはtarget metadataのpath、mode/type、length、hashで固定し、独立Evidence nodeにはしない。保存不能または保存後のhash不一致はtarget unresolvedとして停止する。これにより後から削除・変更されたuntracked、binary、symlinkもbefore contentを復元でき、RootからEvidenceへの逆参照やEvidence間参照を増やさずtransitionを証明できる。
 
 Personal Harness wrapper/referenceは`input_snapshot`としてpath、`declared_version`、`capability_revision`、content hashを固定し、実際に使用したskillだけをpoprの既存`skill_versions`へ記録する。Instructionとpolicyのhashは`project_rules`と`input_refs`でtarget/input consistencyへ含める。
@@ -313,7 +315,7 @@ Run開始時に次のpermissionを個別に記録する。
 | `read_repository` | true | reviewer、tester、gate、orchestrator | Orchestratorはcontext解決前に9.1の固定bootstrap inspectionを実行可。対象scope外への探索は正本確認に必要な最小範囲だけ |
 | `write_run_store` | true | orchestrator | Candidate worktree外のappend-only storeだけ。各roleのresultをruntime metadata付きで保存する |
 | `read_external_source` | 明示されたIssue/PR/source identifier/hostだけtrue | orchestrator、tester、CI、gate | `allowed_source_identifiers`、host、credential scope、network、paid-call costを固定。Read-only APIだけを許可し、規範authorityは与えない |
-| `fetch_remote_refs` | false | orchestrator、create-pr phase担当 | CommitまたはPR依頼で明示されたrepository identity、remote、base refspec、prune範囲だけtrueにできる。Network readとGit object database、`FETCH_HEAD`、fetch metadata、許可済みremote-tracking refの更新だけを許可 |
+| `fetch_remote_refs` | false | orchestrator | Harnessのcandidate準備について、明示されたrepository identity、remote、base refspec、prune範囲だけtrueにできる。提出時のfetchは呼び出し元が別の`caller_submission_permissions`として保持する |
 | `write_worktree` | 変更依頼時だけtrue | implementer、更新を許可されたtester/docs/gate | Reviewerは常にfalse。Resolved commandのallowed pathとfile/diff limitを超えない |
 | `run_local_commands` | 解決済みproject contextの宣言分だけtrue | tester、CI、gate | 累積effectsが不明なら停止 |
 | `commit` | false | create-pr contractに従う提出担当 | 明示的なcommitまたはPR依頼でtrueにできる |
@@ -324,7 +326,7 @@ Run開始時に次のpermissionを個別に記録する。
 | `deploy_or_production_write` | false | Humanが別workflowで実行 | Harnessのscope外 |
 | `accept_risk_or_spec` | false | Human | agentへ委譲しない |
 
-IssueからPRまで明示された依頼でも、Harnessが使うのは現在scopeのcommitとcandidate準備に必要な限定fetchまでとする。Push、PR作成、project hookは`READY`後に呼び出し元が既存の`create-pr` contractで実行し、Harness permissionを流用しない。Verificationまたはgate commandがexternal writeを必要とする場合はv1 Harnessで実行せず`EVALUATION_DEFERRED`にする。
+IssueからPRまで明示された依頼でも、Harnessが使うのは現在scopeのcommitとcandidate準備に必要な限定fetchまでとする。Push、PR作成、project hookは`READY`後に呼び出し元が既存の`create-pr` contractで実行し、Harness permissionを流用しない。Verificationまたはgate commandがexternal writeを必要とする場合は本contractのHarnessで実行せず`EVALUATION_DEFERRED`にする。
 
 `fetch_remote_refs`は`read_repository`または`run_local_commands`へ含めない。実行前にrepository identity、remote名とURL、base source/destination refspec、`prune`の有無、credential scope、timeoutをrun manifestへ固定する。Fetchは`--no-tags`かつ自動maintenance無効で実行し、許可するlocal writeはGit object database、fetch中のlock/temporary metadata、`FETCH_HEAD`、宣言したremote-tracking ref namespaceだけとする。Working tree、index、local branch、tag、Git configへの変更は禁止する。Permissionがfalseまたはallowlist外なら`HUMAN_DECISION_REQUIRED`、network、credential、Git capabilityが利用不能なら`EVALUATION_DEFERRED`にする。
 
@@ -364,7 +366,7 @@ stateDiagram-v2
     VERIFYING --> PRECOMMIT_DOCS_PENDING: pre-commit verification成功
     VERIFYING --> VERIFYING: 許可済みlocal write、新working-tree target固定
     VERIFYING --> CHANGES_REQUESTED: testが修正可能な失敗を検出
-    VERIFYING --> EVALUATION_DEFERRED: v1非対応のexternal writeが必要
+    VERIFYING --> EVALUATION_DEFERRED: Harness非対応のexternal writeが必要
     VERIFYING --> VERIFICATION_BLOCKED: 環境、権限、serviceで実行不能
     VERIFYING --> BUDGET_EXHAUSTED: run-wide budget guard
     PRECOMMIT_DOCS_PENDING --> CANDIDATE_COMMIT_PENDING: PASSまたはsame-target UPDATED
@@ -381,7 +383,7 @@ stateDiagram-v2
     TARGET_VERIFYING --> CANDIDATE_COMMIT_PENDING: 許可済みlocal writeでtarget変更
     TARGET_VERIFYING --> CONTEXT_RESOLVING: base、scope、rule、input変更
     TARGET_VERIFYING --> CHANGES_REQUESTED: testが修正可能な失敗を検出
-    TARGET_VERIFYING --> EVALUATION_DEFERRED: v1非対応のexternal writeが必要
+    TARGET_VERIFYING --> EVALUATION_DEFERRED: Harness非対応のexternal writeが必要
     TARGET_VERIFYING --> VERIFICATION_BLOCKED: 環境、権限、serviceで実行不能
     TARGET_VERIFYING --> BUDGET_EXHAUSTED: run-wide budget guard
     GATES_PENDING --> CANDIDATE_COMMIT_PENDING: 許可済みgateがtargetを更新
@@ -420,6 +422,8 @@ stateDiagram-v2
 | `BUDGET_EXHAUSTED` | しない | なし(新runのみ) | 現runの上限へ到達 |
 
 Blocker stateからの再開は、既存runのlimitを黙って増やさない。Humanがscopeまたはpermissionを変更して同じrunを再開する場合はdecisionと新input snapshotを追加し、`CONTEXT_RESOLVING`へ戻る。`BUDGET_EXHAUSTED`だけは現在runのterminal stateとし、budget変更後の継続はprior runを参照する新しい`run_id`で開始する。`EVALUATION_DEFERRED`からは常に`CONTEXT_RESOLVING`へ戻し、target、Issue、personal Harness contract、project contextのinput hashを再固定してからreviewを再開する。
+
+Manifestの`state`、`resume_state`、`blocker`はshared referenceのdiscriminated unionを正本とする。通常進行stateと`READY`はblockerを持たず、`READY`と`BUDGET_EXHAUSTED`は同じrunへresumeしない。各blockerは分類、原因Stage、観測Evidence、必要なHuman action、許可されたresume先を一組で固定し、自由文のlogから再開先を推測しない。
 
 9.1の必要条件を満たして`context_status: resolved`になったrunだけが通常の`REVIEW_PENDING`以降へ進める。必須fieldを解決できないrunは`CONTEXT_RESOLVING`からreviewへ進めず、不足情報またはcapabilityに対応するblockerを返す。
 
@@ -514,7 +518,7 @@ Counterはappend-onlyなrun manifest revisionで更新する。各state遷移も
 
 ### 15.1 Failure artifact
 
-失敗は自由文のlogだけで残さず、現在state、失敗分類、target ref、attempt、実行commandまたはtool、終了code、再開条件をrun manifestとstage artifactへ記録する。秘密情報をartifactへ保存しない。
+失敗は自由文のlogだけで残さず、現在state、失敗分類、target ref、attempt、実行commandまたはtool、終了code、観測Evidence、必要なHuman action、再開条件をrun Manifestと原因Stageへ記録する。既存Stageが完全な値を持たない場合は`decision_kind: blocker_observation`を原因artifactにし、Manifestのblocker unionとexactに一致させる。秘密情報をartifactへ保存しない。
 
 ただしcanonical ledger自体がinvalidでhead CASのexpected valueを確定できない場合は、そのledgerへblocker Manifestを追記しない。Runtime state rootのledger外へappend-only recovery reportを保存し、観測head、違反invariant、transaction descriptor hash、必要なHuman actionを返して停止する。このreportはartifact、state transition、READY根拠ではなく、同じrunを自動修復または古いrevisionへrollbackする権限を与えない。
 
@@ -531,7 +535,7 @@ Counterはappend-onlyなrun manifest revisionで更新する。各state遷移も
 ### 15.3 Idempotency
 
 - Stage artifactはappend-onlyとし、同じ`artifact_id`を上書きしない。
-- Commit、push、PR作成のidempotencyは既存の`create-pr` contractへ委譲し、Harnessは提出直前のtarget一致だけを再確認する。
+- Commit、push、PR作成のidempotencyと提出直前のtarget照合は既存の`create-pr` contractへ委譲する。Harnessが行う最後の照合はterminalな`READY`を呼び出し元へ返す直前であり、返却後の結果を旧runへ追記しない。
 - Resume時にtargetが変わっていた場合は、以前のverification、gate、Final reviewを成功扱いしない。
 
 ## 16. 正常系とblocker系
@@ -598,7 +602,7 @@ Fallbackは独立性やcoverageを偽装するために使わない。同じagen
 
 `issue-to-pr`と`create-pr`の正本は次のdelegation境界を公開する。Personal Harnessはinstalled skill名だけでなく、入力、禁止されたtarget mutation、出力artifactが一致することを要件にする。
 
-- `issue-to-pr`: Issue intake、scope、branch、permissionを固定した後、review/fix/verify subflowをHarnessへ委譲する。Harnessからterminalな`READY`またはblockerを受け取り、PR提出またはHuman handoffへ戻る。READY後の提出ownerは`issue-to-pr`であり、同じHarness runへ提出結果を戻さない。
+- `issue-to-pr`: Issue intake、scope、branch、Harness実行permissionを固定し、提出permissionはHarness外で保持した後、review/fix/verify subflowをHarnessへ委譲する。Harnessからterminalな`READY`またはblockerを受け取り、PR提出またはHuman handoffへ戻る。READY後の提出ownerは`issue-to-pr`であり、同じHarness runへ提出結果を戻さない。
 - `prepare_candidate`: `create-pr`の品質確認、documentation同期、stage確認、commit分割とmessage規約をstate machineへ個別stepとして公開し、steps 5-7全体を担う。入力には`fetch_remote_refs`とallowlistを含める。Default経路でbase未指定なら、許可済みremoteのdefault、`develop`、`main`をread-only解決してbase refとfetch前SHAを固定してからexact base refをfetchする。既に確定したsame-target artifactを二重実行せず、各stepの結果またはtarget mutationをHarnessへ返し、最後にcleanなexact candidate SHAを返す。
 - `publish_exact_candidate`: READY済みcandidate SHAとbase SHA、repository/remote identity、`fetch_remote_refs`とallowlistを入力にし、base fetch後の一致確認、exact head SHAのnon-force push、PR作成または更新だけを行う。File編集、targetを変更し得る品質gate、stage、追加commitは禁止する。Projectのpre-push hookを既定どおり実行し、`--no-verify`を使わない。
 
@@ -608,7 +612,7 @@ Issue #39ではproject-local distributionを不採用とし、`shared/references
 
 ### 18.2 実行順
 
-1. `issue-to-pr` skillがIssue、acceptance criteria、scope、branch、permissionを固定する。
+1. `issue-to-pr` skillがIssue、acceptance criteria、scope、branch、Harness実行permissionを固定し、提出permissionをHarness外で保持する。
 2. Harnessがpersonal contractとbase側repository情報からproject contextと初期targetを解決する。不足fieldだけをHuman承認run-local inputで補完する。
 3. Initial reviewerと、利用可能または必須な場合のProject reviewerがfindingとrequired gateを返し、poprの共通schemaとrubricで確定する。
 4. Implementerが確定したblocking findingだけをscope内で修正する。

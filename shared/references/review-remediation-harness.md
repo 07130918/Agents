@@ -230,6 +230,8 @@ Permission setは`input_kind: permission_set`の`input_snapshot`として、perm
 
 `target.payload`は`popr_target_fingerprint`、`repository_identity_ref`、`generation`、`transition_reason`、`mutable_content_snapshots`だけを持つ。`popr_target_fingerprint`のvalueにpoprのmachine-readable fingerprint objectをそのまま保存し、Harness独自のfieldへflattenまたは変換しない。`repository_identity_ref`はcurrent repository identity inputを参照し、popr結果に存在しないidentityをpopr fingerprintの一部と表現しない。Targetから旧targetへの`previous_target_ref`は持たせず、generation lineageと変更証拠は`target_check`と、それを指すManifestの`transition_cause_ref`だけに保存する。
 
+`generation`は0以上9007199254740991以下のI-JSON exact integerとする。Runの最初にcurrentになるtargetは0、`target_check.status: unchanged`ではexpectedとobservedのgenerationを同値、`changed`でcurrentへ切り替えるtargetはexpected generation + 1とする。Generationの飛越し、同じrunで過去にcurrentだった番号の再利用、上限を超える更新をvalidatorは拒否する。`unresolved`ではobserved targetとgenerationを補作しない。
+
 Target作成時、working tree manifestのうちimmutable Git objectからexact bytesを再取得できない各entryは、targetを確定する前にtarget所有の`mutable_content_snapshots`へ保存する。対象なしは空配列とし、対象ありは`{"path":"<repository_relative_path>","mode":"<git_mode>","type":"regular|symlink","byte_length":<integer>,"content_sha256":"<lowercase_hex_64>","content_path":"<run_relative_path>"}`をpathのUTF-8 byte順で一意に並べる。Raw binary bytesは変換せず、symlinkはlink targetのraw bytesを保存する。`content_path`はtarget artifact自身が所有するappend-only attachmentであり、共通artifact refでもEvidence graph nodeでもない。Targetのcanonical JSONがattachment metadataをhashで固定し、validatorはattachment pathがrun directory内にあり、通常fileとして保存され、bytesとlength/hashが一致することを検証する。秘密情報、storage limit、raceなどによりexact bytesを安全に保存または再読込できない場合はtargetを確定せず`EVALUATION_DEFERRED`にする。
 
 各target generationの`generation_input_refs`は、そのgenerationの実行判定を決めるまたは停止させるcurrent `input_snapshot`のcommon ref全件とする。Repository identity、Issueまたはexplicit scope、personal contract/required capability、project rule/acceptance policy、permission set、governingまたはpendingのexternal record、Human run-local input、新runを開始した場合の`prior_run_handoff`を該当する場合に含め、`evidence_only`のexternal recordは含めない。そのgenerationをcurrentにした最初のManifestの`input_refs`を正本とし、`artifact_id`順の重複なし配列にする。`repository_identity_ref`、`permission_set_ref`、`contract_ref`、`issue_ref`または`scope_input_ref`、およびinput snapshotを指す`project_context_refs`はすべてこの集合の要素でなければならない。
@@ -268,6 +270,32 @@ Context解決の`decision.payload`は`decision_kind: context_resolution`、`reso
 Manifest envelopeとpayloadの重複bindingはvalidatorがexact一致を要求する。Envelope `input_refs`とpayload `input_refs`は同じ順序の同一配列である。`target_status: resolved`では`target_absence_reason: null`、envelope `target_ref`とpayload `current_target_ref`を同じ非null common refにし、`current_target_generation`を参照先targetの`payload.generation`と一致させる。両input配列はそのtarget generationの`generation_input_refs`と一致し、targetと各input refが`artifact_refs`で`current`になっていなければならない。`target_status: unresolved`では`target_absence_reason`を空でないstring、envelope `target_ref`とpayload `current_target_ref`と`current_target_generation`をすべてnullにする。Unresolvedでも両input配列の一致を要求し、存在するcurrent inputだけを`artifact_refs`で`current`にする。Resolved/unresolved以外、target ref、input集合、generationの交差、payloadだけの更新を拒否する。
 
 `input_source: issue`では`issue_ref`を必須にして`scope_input_ref: null`、`explicit_scope`では`scope_input_ref`を必須にして`issue_ref: null`とする。`contract_status`は`resolved|unavailable|drifted`とし、`resolved`だけhash付き`contract_ref`を持てる。`context_status`は`resolved|pending|conflicted`とし、`resolved`だけ`resolution_mode: repository_baseline|human_approved_run_local|mixed`を持ち、`pending_reason_refs`と`conflict_refs`は空配列にする。`pending`は`resolution_mode: null`、空でない`pending_reason_refs`、空の`conflict_refs`を、`conflicted`は`resolution_mode: null`、空の`pending_reason_refs`、空でない`conflict_refs`を要求する。各要素は未解決または矛盾を記録したartifactのcommon refとする。`context_status: resolved`には`contract_status: resolved`、validな`permission_set_ref`、external authority確定、全`resolved_*` fieldの存在と根拠ref、空の`unresolved_inputs`、空でない`project_context_refs`、`context_resolution_ref`を要求する。各state遷移、target generation変更、stage完了、blocker、外部副作用の前後で新revisionをappend-only保存する。
+
+`state`、`resume_state`、`blocker`は次のdiscriminated unionとして検証する。
+
+| `state` | `resume_state` | `blocker` |
+| --- | --- | --- |
+| `CONTEXT_RESOLVING|REVIEW_PENDING|CHANGES_REQUESTED|FIXING|VERIFYING|PRECOMMIT_DOCS_PENDING|CANDIDATE_COMMIT_PENDING|TARGET_VERIFYING|GATES_PENDING|REREVIEW_PENDING` | null | null |
+| `READY` | null | null |
+| `EVALUATION_DEFERRED` | `CONTEXT_RESOLVING` | 下記blocker object |
+| `VERIFICATION_BLOCKED` | `VERIFYING`または`TARGET_VERIFYING` | 下記blocker object。停止したverification stateと一致させる |
+| `SCOPE_CHANGE_REQUIRED` | `CONTEXT_RESOLVING` | 下記blocker object |
+| `HUMAN_DECISION_REQUIRED` | `CONTEXT_RESOLVING` | 下記blocker object |
+| `INDEPENDENCE_BLOCKED` | `REREVIEW_PENDING` | 下記blocker object |
+| `BUDGET_EXHAUSTED` | null | 下記blocker object |
+
+Blocker objectは`failure_classification`、`cause_ref`、空でない`observed_evidence_refs`、`required_human_action`、`resume_requirement`を持つ。`cause_ref`はManifestの`transition_cause_ref`と同じcurrent Stage ref、`observed_evidence_refs`はそのStageから到達するcurrent Evidence refに限定する。Stateごとの許容値は次に固定し、それ以外の組合せ、null、空配列を拒否する。
+
+| `state` | `failure_classification` | `required_human_action` | `resume_requirement` |
+| --- | --- | --- | --- |
+| `EVALUATION_DEFERRED` | `target_unresolved|context_unresolved|capability_unavailable|coverage_incomplete|gate_unavailable|artifact_invalid|input_revalidation_failed|external_write_unsupported` | `provide_or_restore_required_input_or_capability` | `revalidate_context_and_target` |
+| `VERIFICATION_BLOCKED` | `environment_unavailable|permission_unavailable|required_service_unavailable` | `restore_verification_environment_or_permission` | `revalidate_same_permission_and_environment` |
+| `SCOPE_CHANGE_REQUIRED` | `scope_expansion` | `approve_scope_change_or_split_issue` | `record_scope_decision_and_revalidate_context` |
+| `HUMAN_DECISION_REQUIRED` | `specification_ambiguous|risk_acceptance_required|authority_pending|permission_decision_required|side_effect_decision_required` | `record_spec_risk_or_permission_decision` | `record_human_decision_and_revalidate_context` |
+| `INDEPENDENCE_BLOCKED` | `fresh_reviewer_unavailable|independence_unverifiable` | `provide_fresh_reviewer` | `record_fresh_reviewer_identity` |
+| `BUDGET_EXHAUSTED` | `deadline_exhausted|token_budget_exhausted|paid_call_budget_exhausted|remediation_cycle_exhausted|same_request_attempt_exhausted|transient_retry_exhausted|diff_limit_exhausted` | `start_new_run` | `new_run_with_prior_run_handoff` |
+
+Blockerを起こした既存Stageが上記観測値を完全に持たない場合は、先に`decision_kind: blocker_observation`のdecision artifactを保存する。そのpayloadは`blocked_state`、`target_ref`、`failure_classification`、`attempt`、`command_or_tool`、`exit_code`、空でない`observed_evidence_refs`、`required_human_action`、`resume_requirement`、`resume_state`を持ち、Manifestのblockerとexactに一致させる。`target_ref`はManifestの`current_target_ref`と同値にし、target unresolvedだけnullを許す。`attempt`は実行試行がある場合の0以上のI-JSON exact integer、それ以外はnull、`command_or_tool`は実行したstable IDまたはnull、`exit_code`はprocessが終了codeを返した場合のI-JSON exact integer、それ以外はnullとする。`observed_evidence_refs`は`artifact_id`順の重複なし配列にする。Manifestはこのdecisionを`transition_cause_ref`と`blocker.cause_ref`で参照する。これにより自由文のlogだけからblockerまたはresume先を復元しない。
 
 `final_review.remediation_status`は`required|not_required`のいずれかとする。Current targetのgeneration lineageでoriginを問わず`change_request`が`FIXING`を1回でも発生させた場合は`required`とし、`remediation_refs`へ対応する全remediation artifactを含める。Lineage全体に該当change requestがない場合だけ`not_required`と空の`remediation_refs`を許可する。
 
@@ -329,9 +357,9 @@ Run開始時に次を個別に記録する。
 | `local_write` | `run_local_commands`、許可されたlocal destination | 同じ入力から安全に再実行できるdeclared commandだけ1回 |
 | `repository_write` | `run_local_commands`、`write_worktree`、allowed paths、file/diff limit | 同じ入力から安全に再実行できるdeclared commandだけ1回 |
 | `external_read` | `run_local_commands`、`read_external_source`、source/host、credential scope、network、paid-call budget | 同じsourceへの未完了transient failureだけ1回 |
-| `external_write` | v1のverification/gate commandではunsupported。Permissionを追加せず実行前に`EVALUATION_DEFERRED` | 自動retryなし |
+| `external_write` | 本contractのverification/gate commandではunsupported。Permissionを追加せず実行前に`EVALUATION_DEFERRED` | 自動retryなし |
 
-Declared effectsはpermissionの下限であり、command自身が権限を弱めるauthorityではない。Orchestratorは実行tool metadata、network access、filesystem/endpointのread/write先を独立に分類し、観測または可能なeffectをdeclared setへ加えた累積effective setで判定する。Network endpoint、credential、paid cost、local/repository write先、effect集合のいずれかを実行前に一意に分類できないcommandは権限を昇格して推測実行せず停止する。Coverage upload、外部DB変更、Issue/comment/SaaS更新は`external_write`として検出するが、v1 Harnessのverification/gate commandでは許可せず、専用artifactを補作せず停止する。認証付きAPIやpackage auditのnetwork readは`external_read`を含める。Deployまたはproduction writeを含むcommandもHarness内で実行しない。Context resolutionにないcommandも実行しない。Context前の固定bootstrap inspectionはproject commandではなく`read_repository`だけで実行する。
+Declared effectsはpermissionの下限であり、command自身が権限を弱めるauthorityではない。Orchestratorは実行tool metadata、network access、filesystem/endpointのread/write先を独立に分類し、観測または可能なeffectをdeclared setへ加えた累積effective setで判定する。Network endpoint、credential、paid cost、local/repository write先、effect集合のいずれかを実行前に一意に分類できないcommandは権限を昇格して推測実行せず停止する。Coverage upload、外部DB変更、Issue/comment/SaaS更新は`external_write`として検出するが、本contractのverification/gate commandでは許可せず、専用artifactを補作せず停止する。認証付きAPIやpackage auditのnetwork readは`external_read`を含める。Deployまたはproduction writeを含むcommandもHarness内で実行しない。Context resolutionにないcommandも実行しない。Context前の固定bootstrap inspectionはproject commandではなく`read_repository`だけで実行する。
 
 Limitsには`max_remediation_cycles: 2`、`max_same_request_attempts: 2`、`max_transient_stage_retries: 1`、required deadline、token meter値または`unsupported`、paid external call budget、allowed write paths、max changed files、max diff linesを含める。
 
@@ -357,7 +385,7 @@ Fetchのtimeoutまたはtransient failureでは、許可したrefをread-backし
 10. READY条件を全て満たせば`READY`を記録する。
 11. `READY`またはblockerを呼び出し元へ返す。Harnessはpush、PR作成、提出結果の再開を実行しない。
 
-Targetを変更したstageは`TARGET_MUTATED`相当の結果を返し、影響するartifactをinvalidateする。PR提出前にbase/head/input driftを検出した場合はREADYを失効し、`CONTEXT_RESOLVING`から新targetを作る。新targetのverification、gate、Final reviewが終わるまで提出しない。
+Targetを変更したstageは`TARGET_MUTATED`相当の結果を返し、影響するartifactをinvalidateする。Harnessが`READY`を記録して呼び出し元へ返す前にbase/head/input driftを検出した場合はREADYを作らず、同じrunの`CONTEXT_RESOLVING`から新targetを作る。`READY`返却後の提出時照合と`READY_INVALIDATED`は`issue-to-pr` / `create-pr`だけが所有し、旧runへ追記せずintakeから新しいHarness runを開始する。
 
 各stageの失敗と差戻しは次のように一意に扱う。
 

@@ -44,7 +44,7 @@
 
 ### Fetch permissionと共通failure
 
-`prepare_candidate`と`publish_exact_candidate`はfetch前に`fetch_remote_refs`とallowlistを検証する。通常のPR依頼では共通契約の範囲だけをpermissionへ固定し、Harness callerはrun manifestのより狭いpermissionをそのまま渡す。Fetchは`git -c maintenance.auto=false fetch --no-tags`相当とし、Git object database、fetch中のlock/temporary metadata、`FETCH_HEAD`、許可済みremote-tracking ref以外を変更しない。
+`prepare_candidate`と`publish_exact_candidate`はfetch前に`fetch_remote_refs`とallowlistを検証する。通常のPR依頼では共通契約の範囲だけをpermissionへ固定する。Harness経路の`prepare_candidate`はHarness execution permissionを使い、`publish_exact_candidate`はHarness artifactを流用せず、呼び出し元がHarness外で保持して開始直前に再検証した`caller_submission_permissions`を使う。Fetchは`git -c maintenance.auto=false fetch --no-tags`相当とし、Git object database、fetch中のlock/temporary metadata、`FETCH_HEAD`、許可済みremote-tracking ref以外を変更しない。
 
 - Permissionがfalse、repository identity、remote、refspec、prune範囲がallowlist外: `HUMAN_DECISION_REQUIRED`。
 - Network、credential、Git capabilityが利用不能: `EVALUATION_DEFERRED`。
@@ -123,8 +123,8 @@
 - Repository、許可されたremoteとそのrepository identity、作業branch、PRのbase/head ref
 - Full `base_sha`とfull `head_sha`
 - Harness経路では同じbase/headに結び付く`READY` statusと根拠artifactへの参照、通常経路では`DEFAULT_SUBMISSION_READY`と提出前条件の結果
-- `fetch_remote_refs` permissionと、remoteの設定済みsource/destination refspec、prune範囲、credential scope、timeoutを持つallowlist
-- Push、PR作成またはmetadata更新のpermission
+- `caller_submission_permissions`として固定した`fetch_remote_refs` permissionと、remoteの設定済みsource/destination refspec、prune範囲、credential scope、timeoutを持つallowlist
+- 同じ`caller_submission_permissions`に含まれるPush、PR作成またはmetadata更新のpermission
 
 ### 禁止事項
 
@@ -136,7 +136,7 @@
 ### 手順
 
 1. Harness経路の`READY`または通常経路の`DEFAULT_SUBMISSION_READY`が入力のbase/head SHAと同じtargetに結び付き、fetch、push、PR操作が許可されていることを確認する。
-2. 入力remoteのrepository identityと設定済みfetch refspecがpermission対象と一致することを確認し、`git -c maintenance.auto=false fetch --no-tags --prune <remote>`後、local `HEAD`、作業branch先端、`<remote>/<base>`、working tree、indexをread-onlyで照合する。Harness callerは`fetch_remote_refs` permissionでremote、設定済みsource/destination refspec、prune範囲を許可していなければ実行しない。
+2. 入力remoteのrepository identityと設定済みfetch refspecが`caller_submission_permissions`の対象と一致することを確認し、`git -c maintenance.auto=false fetch --no-tags --prune <remote>`後、local `HEAD`、作業branch先端、`<remote>/<base>`、working tree、indexをread-onlyで照合する。Remote、設定済みsource/destination refspec、prune範囲が許可されていなければ実行しない。
 3. Local `HEAD`または作業branch先端が`head_sha`と異なる、working treeまたはindexがdirty、`<remote>/<base>`が`base_sha`と異なる場合はpushしない。
 4. Remote headを`absent`、`exact`、`ancestor`、`diverged_or_ahead`に分類する。`ancestor`はremote headが入力`head_sha`のancestorである場合だけとし、`diverged_or_ahead`ではforce pushせず停止する。
 5. Remote headが`absent`または`ancestor`の場合だけ、sourceをexact `head_sha`に固定して入力remoteの同名branchへnon-force pushする。`exact`ならpushを省略する。いずれもremote headをread-backし、`head_sha`との一致を確認する。
