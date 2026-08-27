@@ -27,6 +27,20 @@ if [ ! -f "${TEST_CONFIG_ROOT}/.agents/references/grilling.md" ]; then
   exit 1
 fi
 
+if [ ! -f "${TEST_CONFIG_ROOT}/.agents/skills/review-remediation-harness/pyproject.toml" ] ||
+  [ ! -f "${TEST_CONFIG_ROOT}/.agents/skills/review-remediation-harness/uv.lock" ] ||
+  [ ! -f "${TEST_CONFIG_ROOT}/.agents/skills/review-remediation-harness/src/review_harness_artifacts/cli.py" ]; then
+  echo "Review Harness artifact tool must be applied with its locked environment." >&2
+  exit 1
+fi
+
+for runtime_cache in .venv .pytest_cache .ruff_cache .mypy_cache __pycache__; do
+  if [ -e "${TEST_CONFIG_ROOT}/.agents/skills/review-remediation-harness/${runtime_cache}" ]; then
+    echo "Python runtime cache must not be applied: ${runtime_cache}" >&2
+    exit 1
+  fi
+done
+
 if [ ! -f "${TEST_CONFIG_ROOT}/.agents/references/grill-with-docs-context-format.md" ] ||
   [ ! -f "${TEST_CONFIG_ROOT}/.agents/references/grill-with-docs-adr-format.md" ]; then
   echo "Shared grill-with-docs formats must be applied to local settings." >&2

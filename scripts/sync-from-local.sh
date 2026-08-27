@@ -22,7 +22,15 @@ for configuration_name in skills agents; do
 done
 
 rsync -a --delete --delete-excluded --exclude 'tp-*.md' "${LOCAL_CONFIG_ROOT}/.agents/references/" "${ROOT}/shared/references/"
-rsync -a --delete --delete-excluded --exclude 'tp-*' "${LOCAL_CONFIG_ROOT}/.agents/skills/" "${ROOT}/codex/skills/"
+rsync -a --delete --delete-excluded \
+  --exclude 'tp-*' \
+  --exclude '__pycache__/' \
+  --exclude '*.py[cod]' \
+  --exclude '.venv/' \
+  --exclude '.pytest_cache/' \
+  --exclude '.ruff_cache/' \
+  --exclude '.mypy_cache/' \
+  "${LOCAL_CONFIG_ROOT}/.agents/skills/" "${ROOT}/codex/skills/"
 mkdir -p "${ROOT}/claude/skills"
 rsync -a --delete --delete-excluded --exclude 'tp-*' "${LOCAL_CONFIG_ROOT}/.claude/skills/" "${ROOT}/claude/skills/"
 rsync -a --delete --delete-excluded --exclude 'tp-*' "${LOCAL_CONFIG_ROOT}/.claude/skills.disabled/" "${ROOT}/claude/skills.disabled/"

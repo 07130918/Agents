@@ -182,13 +182,15 @@ Codexでfresh subagentを使える場合は、過去会話をforkせず、必要
 
 - Agentが生成するcanonical run artifactはJSONとする。曖昧な型変換を避け、将来のvalidatorとCIで同じ内容を検証できるためである。
 - Markdownはgoverning contract、PR本文、human向けreportに使えるが、run stateとresumeの正本にしない。
-- Run artifactはcandidate worktree外のharness管理storeへ保存する。論理pathは`<runtime_state_root>/review-harness/<repository_id>/<run_id>/`とし、`repository_id`はshared referenceのrepository identity inputから決定的に導出する。Stage完了後のartifactは上書きせずappend-onlyにする。
+- Run artifactはcandidate worktree外のharness管理storeへ保存する。既定のruntime state rootは`~/.agents/state`、論理pathは`<runtime_state_root>/review-harness/<repository_id>/<run_id>/`とし、`repository_id`はshared referenceのrepository identity inputから決定的に導出する。Testまたは明示的なrun-local隔離だけ`--state-root`で変更できる。Stage完了後のartifactは上書きせずappend-onlyにする。
 - Canonical ledgerへのcommit pointはManifest headのCAS更新とし、single-writerのimmutable transaction descriptorからだけcrash recoveryする。Head未到達のcontent-addressed objectはartifact/lifecycleへ昇格させない。Crash、fork、invalid latestを古いvalid Manifestへのrollbackで隠さない。Exact protocolとpath grammarは実行正本へ集約する。
-- Personal Harness wrapper/referenceはrun artifactではないが、実際に読み込んだpath、`declared_version`、`capability_revision`、content hashを`input_snapshot`へ固定する。
+- Personal Harness wrapper/referenceはrun artifactではないが、実際に読み込んだpath、capability identity、`declared_version`、capability revision、content hashを`input_snapshot`へ固定する。Required capabilityのexact identityとversion有無のunionはshared referenceを正本とする。
 - Storeへappendできるのは`write_run_store`を持つOrchestratorだけとする。各roleはresultを返し、Orchestratorがruntime由来のproducer metadata、hash、sequenceを付けて保存する。Implementerとcandidate processにはstoreの書込権限を与えない。
-- Issue #40では上記storeを実装しない。最小writer/validatorは#49で別に実装する。
+- Artifact tool (#49)はpersonal Codex skill配下へ配置する。`canonicalize`、`append`、read-only `validate`、書込みを伴う`recover`へ責務を分け、Full runner、state選択、agent起動、target drift取得は含めない。Tool-owned batch、descriptor、commit markerのexact schemaとPOSIX durability要件はshared referenceを正本とする。
+- Writer/validatorは保存済みfingerprintとattachmentの構造・hash bindingを検証するが、poprのtarget意味論やcurrent repositoryからの再取得を複製しない。#50のtarget checker導入前は、writer/validator単独の成功をexact targetまたはREADYの保証にしない。
+- Transition Evidenceの`git_object` sourceは#49でobject IDと内部refを検証し、HEAD treeのpath/blob bindingは#50がread-only Git inspectionで照合する。Popr fingerprintへclean tree全entryを複製しない。Run storeにraw bytesを持つ`target_attachment`は#49で完全に検証する。
 
-会話内だけのstateはresumeできず、PR commentだけのstateはPR作成前に使えず外部APIにも依存するためcanonical storeにしない。PRへはREADY判定と主要artifactのhashを要約できるが、PR本文をrun stateとして読み戻さない。
+会話内だけのstateはresumeできず、PR commentだけのstateはPR作成前に使えず外部APIにも依存するためcanonical storeにしない。PRへはREADY判定と主要artifactのhashを要約できるが、PR本文をrun stateとして読み戻さない。Run storeはGit管理、local設定同期、candidate PRの対象外とし、秘密情報、会話全文、agentの内部思考を保存しない。
 
 ### 8.2 共通envelope
 
@@ -212,7 +214,7 @@ Dirty working treeをtargetに含める場合、Git objectから復元できな�
 
 Staged-onlyまたはindex指定targetでは、popr contractが固定したenvironment/argvで生成したcached diffのraw bytesもtarget-owned attachmentへ保存する。Raw bytesからrepository object formatのGit blob OIDを再計算し、fingerprintの`index_diff.content_oid`へbindする。Working tree attachmentも同様にraw bytesからGit blob OIDを再計算し、同じpath/mode/typeのfingerprint entryへ一対一でbindする。Index diffだけが変わるgeneration transitionもbefore/after attachmentを持つcanonical deltaを必須にし、hash値だけの差分へ縮退させない。
 
-Personal Harness wrapper/referenceは`input_snapshot`としてpath、`declared_version`、`capability_revision`、content hashを固定し、実際に使用したskillだけをpoprの既存`skill_versions`へ記録する。Instructionとpolicyのhashは`project_rules`と`input_refs`でtarget/input consistencyへ含める。
+Personal Harness wrapper/referenceは`input_snapshot`としてpath、capability name、`declared_version`、revision、content hashを固定し、実際に使用したskillだけをpoprの既存`skill_versions`へ記録する。Instructionとpolicyのhashは`project_rules`と`input_refs`でtarget/input consistencyへ含める。
 
 Initial reviewでは明示されたworking treeを含められる。READY候補とFinal reviewでは`working_tree.status == clean`、`working_tree.mode == excluded`、`head.sha == candidate commit`でなければならない。
 
@@ -234,13 +236,15 @@ Schema 2.0のartifact type別required payload、conditional ref、Manifest lifec
 
 Working tree manifestのtracked/untracked file追加、変更、削除、file modeまたはtype変更は、text、binary、symlinkを同じcanonical manifest deltaで記録する。Before/afterは`absent|present`のdiscriminated unionとし、file追加・削除、空file、取得失敗を区別する。Immutable Git objectから再取得できないpresent contentは、旧/new target所有のraw attachmentへtarget ID、run directory相対path、hashで接続し、binary bytesをtext化しない。新generationのManifestは、差分を観測したtarget checkまたはtargetを変更したStageをtransition causeとして参照する。
 
-`change_request` union、stable request ID、expected behavior/raw Evidence ref、`remediation.decision` enumとseverity制約はshared referenceを唯一の実行正本とする。本設計では、観測済みfailureだけをimmutableな期待値へ接続し、仕様不明を修正requestへ変換しないinvariantだけを所有する。
+`change_request` union、stable request ID、expected behavior/raw Evidence ref、`remediation.decision` enumとseverity制約はshared referenceを唯一の実行正本とする。本設計では、観測済みfailureだけをimmutableな期待値へ接続し、仕様不明を修正requestへ変換しないinvariantだけを所有する。Remediationを再試行した場合は全attemptをappend-onlyでFinal reviewへ残し、最新のexact 1件だけをcurrentかつREADY判定対象にする。
 
 ### 8.5 Required gate result
 
-各`required_gates`はgate名、発火理由、許容decision status、target refを持つ。同名gateでもtarget refが違えば未実行として扱う。Gate artifactのexact payload、前後target check、native statusとproject/Human policyの分離、security-audit adapterはshared referenceを唯一の実行正本とする。
+各`required_gates`は`gate_name`、`trigger_reason`、`accepted_decision_statuses`、`target_ref`を持ち、accepted statusは成功を表す`PASS|UPDATED`だけに制限する。同名gateでもtarget refが違えば未実行として扱う。Gate artifactは実行したrequired capabilityのname、declared version、revision、hashを同じinput exact 1件へ結び、`pre target check < Evidence < post target check < gate`の順序を満たす。Exact payload、native statusとproject/Human policyの分離、security-audit adapterはshared referenceを唯一の実行正本とする。
 
 `sync-docs-code`の`decision_status`と`mutated_target`は直交する。`UPDATED`は必要なdocumentation更新がrunまたはcandidateに含まれるnative status、`mutated_target`は当該gate実行がtarget contentを実際に変更したかを表す。Docs gateは`PASS|UPDATED`を許容できるが、`mutated_target: true`なら新しいtargetを固定してverificationとrequired gateを再実行する。
+
+Context resolutionはproject reviewを`required|not_required`へgrounding ref/hash付きで確定する。`required`ならInitial/Blind reviewともproject coverageを`Complete`かつ結果非空にし、`not_required`ならcoverageを`not_required`かつ結果空にする。Final reconciliationの各current findingはHarness-owned `blocking: bool`を持ち、`blocking_finding_ids`をtrueのexact集合とする。各reviewのblocking findingはreview finding、change request、FIXING遷移、current final remediation、reconciliation Evidenceへ同じstable IDで接続し、Final reviewにcurrent blockerがあればREADYにしない。
 
 `security-audit`は監査reportとscoreを所有し、Harnessはseverity thresholdやrisk基準を新設しない。監査結果を機械的に採用できるのはbase側governing policyが完全な判定規則を持つ場合だけとし、それ以外はHuman判断へ送る。監査完了、finding 0件、scoreだけを自動PASSへ読み替えない。
 
@@ -440,7 +444,7 @@ Run-wide budget guardは全自動継続stateでstage開始前と完了後に評�
 - Immediate resource limit: deadline到達、観測済みtoken超過、または次のpaid external call予約がbudgetを超える場合は、その時点で停止する。
 - Attempt limit: remediation cycle、same-request attempt、transient retryは、次の試行開始前に`counter >= max`なら追加試行を拒否する。`counter < max`なら先にcounterを増やしてその試行を開始し、対応するverificationまたはre-reviewまで完了させる。試行完了時にcounterがmaxと等しいだけでは停止せず、結果が未解消でさらに試行が必要になった時点で`BUDGET_EXHAUSTED`にする。
 
-Guardが停止を決めたら、Orchestratorは先に`decision_kind: limit_observation`のStage artifactへlimit、`hard_exceeded|next_reservation_rejected|next_attempt_rejected`の`limit_event`、観測値、counter snapshot、直前manifestのrevisionとhashを確定する。次のrun manifest revisionがそのartifactを`transition_cause_ref`として`BUDGET_EXHAUSTED`へ遷移する。Manifest自身または別Manifestを`artifact_refs`へ含めず、Manifest間の接続には直前revisionだけを指す`previous_manifest_ref`を使う。`READY`はterminalであり、提出時にtargetまたはinput不一致が判明した場合は呼び出し元が新しいHarness runを開始する。
+Guardが停止を決めたら、Orchestratorは先に`decision_kind: limit_observation`のStage artifactへlimit、`hard_exceeded|next_reservation_rejected|next_attempt_rejected`の`limit_event`、観測値、counter snapshot、直前manifestのrevisionとhashを確定する。Classification、limit、event、keyed counter、観測値のexact対応はshared referenceを正本とする。次のrun manifest revisionがそのartifactを`transition_cause_ref`として`BUDGET_EXHAUSTED`へ遷移し、直前snapshotからcounterを変更しない。Manifest自身または別Manifestを`artifact_refs`へ含めず、Manifest間の接続には直前revisionだけを指す`previous_manifest_ref`を使う。`READY`はterminalであり、提出時にtargetまたはinput不一致が判明した場合は呼び出し元が新しいHarness runを開始する。
 
 ## 13. READY条件と自動loop停止条件
 
@@ -697,7 +701,7 @@ Issue #40の成果物は設計、実行contract、採否decisionだけとし、r
 
 - CLI非依存のpersonal/global運用契約: `shared/references/review-remediation-harness.md`
 - Codex wrapper: `codex/skills/review-remediation-harness/SKILL.md`。Personal contractへの薄い起動adapterとする
-- #49: Candidate worktree外のappend-only artifact writer/validator。Full runnerやagent起動を含めない
+- #49 (実装済み): Candidate worktree外のappend-only artifact writer/validator。Full runnerやagent起動を含めない
 - #50: Popr fingerprintを再定義しないdeterministic target checker。#49のartifact interfaceを使う
 - #51: #49と#50を使うprofileless再pilot。Pilot evidenceはproject mainへ恒久commitしない
 - Claude Code wrapper: ユーザーが明示的に有効化を承認した場合だけ`claude/skills/`へ追加
