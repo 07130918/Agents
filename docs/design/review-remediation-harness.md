@@ -229,68 +229,7 @@ Schema 2.0のartifact type別required payload、conditional ref、Manifest lifec
 
 Working tree manifestのtracked/untracked file追加、変更、削除、file modeまたはtype変更は、text、binary、symlinkを同じcanonical manifest deltaで記録する。Before/afterは`absent|present`のdiscriminated unionとし、file追加・削除、空file、取得失敗を区別する。Immutable Git objectから再取得できないpresent contentは、旧/new target所有のraw attachmentへtarget ID、run directory相対path、hashで接続し、binary bytesをtext化しない。新generationのManifestは、差分を観測したtarget checkまたはtargetを変更したStageをtransition causeとして参照する。
 
-`change_request.requests`は次の形でreview findingとverification failureを区別する。
-
-```json
-{
-  "requests": [
-    {
-      "id": "<review_finding_id>",
-      "source_type": "review_finding",
-      "source_ref": {
-        "artifact_id": "<review_artifact_id>",
-        "artifact_path": "<path>",
-        "sha256": "<hash>"
-      },
-      "source_item_id": "<finding_id>"
-    },
-    {
-      "id": "verification/<command_id>/<stable_failure_signature>",
-      "source_type": "verification_failure",
-      "source_ref": {
-        "artifact_id": "<verification_artifact_id>",
-        "artifact_path": "<path>",
-        "sha256": "<hash>"
-      },
-      "command_id": "<resolved_command_id>",
-      "expected_behavior_ref": {
-        "artifact_id": "<input_snapshot_artifact_id>",
-        "artifact_path": "<path>",
-        "sha256": "<hash>"
-      },
-      "observed_failure": "<observable_result>",
-      "output_ref": {
-        "artifact_id": "<evidence_artifact_id>",
-        "artifact_path": "<path>",
-        "sha256": "<hash>"
-      }
-    },
-    {
-      "id": "gate/<gate_name>/<stable_failure_signature>",
-      "source_type": "gate_failure",
-      "source_ref": {
-        "artifact_id": "<gate_artifact_id>",
-        "artifact_path": "<path>",
-        "sha256": "<hash>"
-      },
-      "expected_behavior_ref": {
-        "artifact_id": "<acceptance_policy_input_snapshot_id>",
-        "artifact_path": "<path>",
-        "sha256": "<hash>"
-      },
-      "evidence_ref": {
-        "artifact_id": "<evidence_artifact_id>",
-        "artifact_path": "<path>",
-        "sha256": "<hash>"
-      }
-    }
-  ]
-}
-```
-
-`expected_behavior_ref`は要件、test contract、またはacceptance policyの`input_snapshot`、`output_ref`と`evidence_ref`はraw outputの`evidence`を参照する。Verification failure IDは連番にせず、resolved command IDと正規化したassertion、exit分類、主要error signatureから作る。Gate failure IDもgate名、stable policy rule ID、主要failure signatureから作る。Testerとgateは観測結果と既存の期待値参照を記録するだけで、severityや仕様を新設しない。Expected behaviorをimmutableな正本へ結び付けられない失敗はchange requestにせず`HUMAN_DECISION_REQUIRED`へ送る。Gateの実行失敗または利用不能は修正requestへ変換せず`EVALUATION_DEFERRED`にする。
-
-`remediation.decision`は`fix`、`defer_minor`、`not_applicable`、`human_decision`のいずれかとする。`defer_minor`はMinorまたはNitのreview findingだけに使える。Critical、Major、required verification failure、required gate failureを`defer_minor`に変更できない。Findingのseverityを変更する必要がある場合はreviewerへ差し戻す。
+`change_request` union、stable request ID、expected behavior/raw Evidence ref、`remediation.decision` enumとseverity制約はshared referenceを唯一の実行正本とする。本設計では、観測済みfailureだけをimmutableな期待値へ接続し、仕様不明を修正requestへ変換しないinvariantだけを所有する。
 
 ### 8.5 Required gate result
 
@@ -384,7 +323,7 @@ Run開始時に次のpermissionを個別に記録する。
 | `deploy_or_production_write` | false | Humanが別workflowで実行 | Harnessのscope外 |
 | `accept_risk_or_spec` | false | Human | agentへ委譲しない |
 
-IssueからPRまで明示された依頼は、現在scopeのcommit、現在repositoryの解決済みfetch transport locator/base refspecとfixed push locator/exact head source refに限定した`fetch_remote_refs`、push、PR作成と、create-pr metadata policyの範囲だけの`write_external_system`を許可する。Canonical identity解決、fixed push locatorのexact head refに対するpre-write lookup、same-repository open PR検索、post-write read-backに限定した`read_external_source`も同じpermission snapshotへ固定する。V1はfetch/push transport locator、base repository、head repositoryのcanonical identityが同じPRだけをpublishし、fork PRは将来の複数repository operationまで`EVALUATION_DEFERRED`で停止する。Push URLは1件に限定し、URL rewriteがfixed pointでない場合は停止する。Git transportへ影響するconfig、environment、helper、proxy、credential/trust providerは同じexecution contextとして固定し、未知またはdriftしたcontextではnetwork call前に停止する。Pushはfixed locatorへのexact refspecと`--no-verify`を必須にしてpre-push hookを起動しない。Exact requestとmetadata policyはHuman input/permission snapshotへ固定し、desired submissionは外部write前のintentでexactに固定する。別remote、tag、merge、deploy、Issueへのcomment、別SaaS operation、risk受容は許可しない。Verificationまたはgate commandがexternal writeを必要とする場合はv1 Harnessで実行せず`EVALUATION_DEFERRED`にする。
+IssueからPRまで明示された依頼は、現在scopeのcommit、現在repositoryの解決済みfetch transport locator/base refspecとfixed push locator/exact head source refに限定した`fetch_remote_refs`、push、PR作成と、create-pr metadata policyの範囲だけの`write_external_system`を許可する。Canonical identity解決、fixed push locatorのexact head refに対するpre-write lookup、same-repository open PR検索、post-write read-backに限定した`read_external_source`も同じpermission snapshotへ固定する。V1はfetch/push transport locator、base repository、head repositoryのcanonical identityが同じPRだけをpublishし、fork PRは将来の複数repository operationまで`EVALUATION_DEFERRED`で停止する。Push URLは1件に限定し、URL rewriteがfixed pointでない場合は停止する。Git transportへ影響するconfig、environment、helper、proxy、credential/trust providerは同じexecution contextとして固定し、未知またはdriftしたcontextではnetwork call前に停止する。Fetch、ls-remote、pushなどGit network transport callはcommand-scopedな検証済みnull/empty hooks pathで全local hookを無効化し、commit hookは通常どおり維持する。Pushはfixed locatorへのexact refspecと`--no-verify`も必須にする。Exact requestとmetadata policyはHuman input/permission snapshotへ固定し、desired submissionは外部write前のintentでexactに固定する。別remote、tag、merge、deploy、Issueへのcomment、別SaaS operation、risk受容は許可しない。Verificationまたはgate commandがexternal writeを必要とする場合はv1 Harnessで実行せず`EVALUATION_DEFERRED`にする。
 
 `fetch_remote_refs`は`read_repository`または`run_local_commands`へ含めない。実行前にcreate-prのexact fetch/push transport locator、transport execution context hash、remote名、base source/destination refspec、ancestor判定用head source ref、`prune`の有無、credential scope、timeoutをrun manifestへ固定する。Base fetchはfetch locatorとexact refspec、head object取得はpush locatorとsource-only exact refをcommand引数にし、`--no-tags`かつ自動maintenance無効で実行する。許可するlocal writeはGit object database、fetch中のlock/temporary metadata、`FETCH_HEAD`、宣言したremote-tracking ref namespaceだけとし、working tree、index、local branch、tag、Git configへの変更は禁止する。`prepare_candidate`ではbase refの最新化、`publish_exact_candidate`では明示base refspecのfetch/pruneと、必要時のhead ancestor判定だけに使う。Permissionがfalseまたはallowlist外なら`HUMAN_DECISION_REQUIRED`、network、credential、Git capabilityが利用不能なら`EVALUATION_DEFERRED`にする。
 
