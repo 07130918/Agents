@@ -142,7 +142,8 @@ Lifecycleは直前Manifestから次のManifestへ不可逆に遷移させる。`
 | 同じtarget/inputでstageを意図的に再実行 | supersedeされたattemptと専用evidence | `historical` |
 | 許可済みremediationなど、完全なtransition evidenceを伴うtarget generation更新 | 旧generationのtarget、review、change request、remediationとreconciliationに必要なevidence | `historical` |
 | 上記generation更新 | 旧generationのverification、gate、blind/final review、READY decisionと、その成功だけを支えるevidence | `invalidated` |
-| Governing input、contract、project rule、scope、permissionの変更 | 変更値へ依存するartifact | `invalidated` |
+| Governing input、contract、project rule、scope、permissionの変更 | 旧input snapshotと旧target | `historical` |
+| 上記変更 | 旧generationへ属するすべてのtarget依存EvidenceとStage | `invalidated` |
 | 想定外drift、観測不能、hash/schema/DAG不整合 | 影響を受けるartifactとその依存artifact | `invalidated` |
 
 `historical`へ送らなかった旧generation artifactを暗黙に再利用しない。`invalidated`への遷移は原因を記録した先行StageまたはEvidenceの`invalidation_reason_ref`を必須とする。`historical`への遷移理由はManifestの`transition_cause_ref`で示す。Validatorは直前Manifestとの差分、artifact type、event、target/input dependencyを照合して表以外の遷移を拒否する。
@@ -191,7 +192,7 @@ Context解決の`decision.payload`は`decision_kind: context_resolution`、`reso
 
 各verification commandの`stdout_ref`と`stderr_ref`は、出力が空でも空bytesをhashした個別`evidence`を参照する。秘密情報はredaction位置と理由を記録できるが、単なる切詰めを`full`または`redacted`と表現しない。`completeness: truncated`のevidenceはHuman向けpreviewに限定し、READYまたはresumeの根拠へ常に使わない。完全なbytesを保存できる場合は別の`completeness: full|redacted` artifactとして保存し、Stageからそのartifactを参照する。各`content_sha256`は同じartifactの`content_path`またはinline `content`のbytesだけをhashする。`remediation.decision: fix`で変更した場合は`patch_ref`、`mutated_target: true`のstageは`mutation_patch_ref`を必須にする。
 
-Working tree manifestのtracked/untracked file追加、変更、削除、file modeまたはtype変更で`target_check.status: changed`になった場合は`transition_diff_ref`を必須にする。参照先は`evidence_kind: target_transition_diff`のcanonical JSONとし、path、change kind、before/afterのmode/type、byte length、content hash、content sourceを持つ。Before contentは旧targetの`mutable_content_snapshots`またはimmutable Git object、after contentは新targetのsnapshotまたはimmutable Git objectへ、artifact refではないtarget ID、`content_path`またはGit object ID、content hashの組で結び付ける。Text、binary、symlinkを同じmanifest deltaで表し、binary bytesをtext化しない。EvidenceからEvidenceへの参照は追加しない。新generationへ進むManifestは、その`target_check`またはtargetを変更したStage artifactを`transition_cause_ref`で参照する。
+Working tree manifestのtracked/untracked file追加、変更、削除、file modeまたはtype変更で`target_check.status: changed`になった場合は`transition_diff_ref`を必須にする。参照先は`evidence_kind: target_transition_diff`のcanonical JSONとし、各pathのchange kindと`before`、`after`を持つ。`before|after`は`{"status":"absent"}`または`{"status":"present","mode":"<mode>","type":"file|symlink","byte_length":<integer>,"content_sha256":"<hash>","content_source":<source>}`のdiscriminated unionとする。追加はbeforeだけ`absent`、削除はafterだけ`absent`、空fileは`present`かつ`byte_length: 0`とし、欠落や取得失敗を`absent`へ丸めない。`content_source`は`{"kind":"git_object","object_id":"<oid>"}`または`{"kind":"target_attachment","target_id":"<target_artifact_id>","content_path":"<run_relative_path>"}`とする。Before contentは旧targetのsnapshotまたはimmutable Git object、after contentは新targetのsnapshotまたはimmutable Git objectへ結び付ける。Text、binary、symlinkを同じmanifest deltaで表し、binary bytesをtext化しない。EvidenceからEvidenceへの参照は追加しない。新generationへ進むManifestは、その`target_check`またはtargetを変更したStage artifactを`transition_cause_ref`で参照する。
 
 Orchestratorはtarget依存stageの開始前と完了後、外部writeの前後、resume、Final review開始前、READY判定前に`target_check`を保存する。Publish前はfetch後のbase refも、PR作成後はremoteのexact base/headも照合する。Checkは保存済みtargetだけでなく、input refs、contract/project rule hash、external source revisionも現在値と比較する。差分または再取得不能があれば旧artifactをREADY根拠へ使わず、該当blockerを記録する。
 

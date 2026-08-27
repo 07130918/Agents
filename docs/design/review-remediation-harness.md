@@ -333,7 +333,7 @@ Schema 2.0のartifact type別required payload、conditional ref、Manifest lifec
 
 `completeness: truncated`のevidenceはHuman向けpreviewに限定し、READYまたはresumeの根拠へ使わない。完全なbytesを保存する場合は別の`full|redacted` artifactにし、Stageからそのartifactを参照する。
 
-Working tree manifestのtracked/untracked file追加、変更、削除、file modeまたはtype変更は、text、binary、symlinkを同じcanonical manifest deltaで記録する。Immutable Git objectから再取得できないbefore/after contentは、旧/new target所有のraw attachmentへtarget ID、run directory相対path、hashで接続し、binary bytesをtext化しない。新generationのManifestは、差分を観測したtarget checkまたはtargetを変更したStageをtransition causeとして参照する。
+Working tree manifestのtracked/untracked file追加、変更、削除、file modeまたはtype変更は、text、binary、symlinkを同じcanonical manifest deltaで記録する。Before/afterは`absent|present`のdiscriminated unionとし、file追加・削除、空file、取得失敗を区別する。Immutable Git objectから再取得できないpresent contentは、旧/new target所有のraw attachmentへtarget ID、run directory相対path、hashで接続し、binary bytesをtext化しない。新generationのManifestは、差分を観測したtarget checkまたはtargetを変更したStageをtransition causeとして参照する。
 
 `change_request.requests`は次の形でreview findingとverification failureを区別する。
 
