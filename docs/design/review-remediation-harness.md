@@ -192,127 +192,18 @@ Codexでfresh subagentを使える場合は、過去会話をforkせず、必要
 
 ### 8.2 共通envelope
 
-各artifactは次のenvelopeを持つ。
+Schema 2.0のexact envelope、共通ref、path grammar、lifecycle、DAG、nullable union、transaction protocolは`shared/references/review-remediation-harness.md`の「Artifactを保存する」を唯一の実行正本とする。本設計では次のinvariantだけを所有する。
 
-```json
-{
-  "schema_version": "2.0",
-  "artifact_type": "input_snapshot|target|evidence|target_check|review|change_request|remediation|verification|gate|blind_review|final_review|decision|run_manifest",
-  "artifact_id": "<run_id>/<stage>/<monotonic_sequence>",
-  "run_id": "<stable_run_id>",
-  "stage": "<state_name>",
-  "target_ref": {
-    "artifact_id": "<target_artifact_id>",
-    "artifact_path": "<relative_path>",
-    "sha256": "<artifact_content_hash>"
-  },
-  "producer": {
-    "role": "orchestrator|initial_reviewer|project_reviewer|implementer|tester|final_reviewer|docs_gate|security_gate|ci|human",
-    "instance_id": "<tool_or_human_instance_id>",
-    "context_id": "<session_or_job_id>",
-    "parent_context_id": null,
-    "fresh_context": false,
-    "model": null,
-    "received_artifacts": []
-  },
-  "input_refs": [],
-  "created_at": "<RFC3339_timestamp>",
-  "payload": {}
-}
-```
-
-`input_snapshot`と`target`は`target_ref`を`null`にする。Target未解決中に保存する`run_manifest`と`decision`も、payloadに`target_status: unresolved`と`target_absence_reason`を持つ場合だけ`target_ref: null`にできる。その他のartifactは必ず1つのtargetを参照する。異なる`target_ref.sha256`のverification、gate、blind reviewを同じREADY判定の成功根拠へ混ぜない。Previous reviewとremediationはtarget generation chainでcandidateへ到達できる場合だけreconciliation用のhistorical refとして許可し、その成功statusをcurrent targetへ流用しない。
-
-`target_ref`、`input_refs`、payload内の`*_ref`はすべて次の共通型を使い、`*_refs`はこの共通型の配列とする。例外は後述する`run_manifest.artifact_refs`のlifecycle wrapperだけである。Hashは保存済みfileのbytesに対するSHA-256とし、参照時に再計算する。Run-store pathは正本のgrammarとcontainment規則に従い、absolute path、traversal、symlink経由、別run参照をwriter/validatorの両方で拒否する。
-
-```json
-{
-  "artifact_id": "<stable_artifact_id>",
-  "artifact_path": "<run_directory_relative_path>",
-  "sha256": "<artifact_content_hash>"
-}
-```
-
-`run_manifest.artifact_refs`は、共通refを変更せずlifecycleを外側へ付ける。
-
-```json
-{
-  "ref": {
-    "artifact_id": "<stable_artifact_id>",
-    "artifact_path": "<run_directory_relative_path>",
-    "sha256": "<artifact_content_hash>"
-  },
-  "lifecycle_status": "current|historical|invalidated",
-  "invalidation_reason_ref": null
-}
-```
-
-`invalidated`だけ`invalidation_reason_ref`へ共通refを必須にし、`current|historical`ではnullにする。Lifecycleの許可遷移とevent別分類は実行正本へ集約する。少なくとも`invalidated`は終端、`historical`は監査とreconciliation専用であり、どちらも`current`またはREADY根拠へ復帰できない。
-
-Issue本文と受入条件、全comment、仕様として参照する関連Issueまたはdecision、personal Harness contract、base側instructionとproject rule、run-local input、acceptance policy、Humanが提供した追加仕様は`input_snapshot`として保存し、run manifestと依存stageの`input_refs`へ加える。Issue bundleはtitle、body、updated revisionに加え、各commentのstable ID、revision、author、author role、bodyと、関連sourceのidentifier/revisionを保持する。External recordごとに`authority_status: governing|evidence_only|pending`と`authority_basis`を記録し、どのcommentまたは関連sourceを要件として採用したかを`context_resolution.authority_decisions`へ残す。未採用の情報を暗黙に仕様へ昇格させない。
-
-`input_snapshot.payload`は`input_kind`、`trust_source`、`source_identifier`、`source_sha`、`source_revision`、`content_sha256`、秘密情報を除いたexact `content`を持つ。`trust_source`は`personal_contract`、`base`、`human_approved_run_local`、`external_authoritative`、`external_observed`のいずれかとする。`personal_contract`はwrapper/referenceのlocal path、`declared_version`、`capability_revision`、content hashを持ち、`source_sha`は`null`と不在理由を記録できる。Sourceがversionを明示する場合は`capability_revision: version:<declared_version>`、明示しない場合は`declared_version: null`と`capability_revision: sha256:<content_sha256>`を使い、versionを補作しない。この規則は関連するrequired skill/referenceにも適用する。`external_authoritative`は`authority_status: governing`のrecordだけ、`external_observed`は`evidence_only|pending`のrecordだけに使う。Git管理されたinstructionとpolicyでは`source_sha`とGit blob hashも記録する。同じtarget SHAでもinput hashが変われば、変更されたinputに依存するreview、verification、gate、Final reviewを無効化し、`CONTEXT_RESOLVING`から再開する。参照先artifactのhash不一致は破損として`EVALUATION_DEFERRED`にする。
-
-Permissionはinlineな可変stateにせず、集合全体を`input_kind: permission_set`のimmutable snapshotとしてManifestとtarget checkから参照する。Humanがpermission、対象identity、allowed path/ref/source、effect、approval scopeを変更した場合は新しいgoverning inputとtarget generationを作り、常に`CONTEXT_RESOLVING`から再評価する。
-
-Artifact graphは次の非循環layerに固定する。
-
-1. Root: `input_snapshot`と`target`。Stage artifactを参照しない。
-2. Evidence: command output、log、diff、report、environment snapshotを保持する`evidence`。Rootだけを参照でき、Stage artifactを参照しない。
-3. Stage: `target_check`、`review`、`change_request`、`remediation`、`verification`、`gate`、`blind_review`、`final_review`、`decision`。Root、Evidence、または自分より小さい`monotonic_sequence`のStage artifactだけを参照できる。
-4. Manifest: `run_manifest`。確定済みRoot、Evidence、Stageを`artifact_refs`へ列挙し、2 revision目以降は専用の`previous_manifest_ref`で直前Manifestだけを参照する。他artifactからManifestは参照されない。
-
-自己参照と前方参照は禁止する。最初のManifestだけ`previous_manifest_ref: null`とし、以後は直前revisionの共通ref型だけを許可する。Manifestを`artifact_refs`へ含めたり、revisionを飛び越えて参照したりしない。`evidence`はそれを消費するStage artifactより先に確定する。Initial resultは`review`、blind resultとcandidate project resultは`blind_review`、reconciliationと最終popr resultは`final_review`へ埋め込み、別のresult artifactを相互参照しない。`blind_review`をappend-onlyで確定してhashを検証するまではprevious reviewとremediationをFinal reviewerへ開示せず、`final_review.blind_review_ref`から先行artifactを参照する。埋め込むresultは元producerのrecordとcontent hashを保持する。未reviewのrun artifactをacceptance policyやその他のgoverning sourceへ自動昇格させない。
-
-正規に存在しない参照は、空objectや架空IDではなく次のstate付きunionで表す。
-
-- `run_manifest.input_source`は`issue`または`explicit_scope`とし、前者は`issue_ref`、後者は`scope_input_ref`を必須にして他方を`null`にする。
-- `run_manifest.contract_status`は`resolved|unavailable|drifted`とし、`resolved`ではpersonal contractの`contract_ref`を必須にする。`run_manifest.context_status`は`resolved|pending|conflicted`、`resolution_mode`は`repository_baseline|human_approved_run_local|mixed`とする。`context_status: resolved`には`contract_status: resolved`、external authorityの確定、全`resolved_*` fieldの存在と根拠ref、空の`unresolved_inputs`を要求し、`project_context_refs`と入力解決根拠を記録した`context_resolution_ref`を必須にする。
-- `final_review.remediation_status`は`required|not_required`とする。Candidateのtarget generation lineageでoriginを問わず`change_request`が一度でも`FIXING`を発生させた場合は`required`とし、`remediation_refs`へ対応する全artifactを含める。Lineage全体にchange requestがない場合だけ`not_required`と空の`remediation_refs`を許可する。
-- `acceptance_policy_ref`は`native_status`の場合だけ`null`にできる。その他のnullable refは各payload contractが状態と不在理由を明示しない限り禁止する。
-
-`READY`ではunresolved target、`context_status: pending|conflicted`、必要なIssueまたはscope inputの欠落を許可しない。Project contextは`repository_baseline|human_approved_run_local|mixed`のいずれかで完全に解決する。
+- Target依存artifactは1つのexact target、governing input、permission setへ結び付け、別generationの成功をREADYへ流用しない。
+- Governing inputはauthority、revision、exact contentをimmutable snapshotへ固定し、未採用recordを暗黙に仕様へ昇格させない。
+- Artifact参照はRoot、Evidence、Stage、Manifestの非循環layerを守り、Final reviewerのblind scan確定前にprevious findingやremediationを開示しない。
+- Permission変更は新しいgoverning inputとgenerationを作り、`CONTEXT_RESOLVING`から再評価する。
+- 不在、未解決、conflictは状態付きで表し、空objectや架空refで成功扱いしない。
+- `historical|invalidated`はREADY根拠へ復帰させず、Manifest headから到達しないobjectをartifactとして扱わない。
 
 ### 8.3 Target artifact
 
-Targetのfieldと意味はpoprのtarget fingerprint契約を正本とする。HarnessはそのsnapshotをJSON化し、独自のfingerprint規則を加えない。
-
-```json
-{
-  "repository": {"id": "owner/name", "root": "/absolute/path"},
-  "source": "current_branch|pull_request|commit_range",
-  "base": {"branch": "main", "sha": "<40_char_sha>"},
-  "head_sha": "<40_char_sha>",
-  "working_tree": {
-    "status": "clean|dirty",
-    "mode": "include|exclude",
-    "manifest": [
-      {
-        "path": "<repository_relative_path>",
-        "mode_or_type": "<git_mode_or_file_type>",
-        "content_hash_or_deleted": "<canonical_hash_or_deleted>"
-      }
-    ]
-  },
-  "index_diff_hash": null,
-  "pr_remote": null,
-  "scope": {
-    "include": ["<path>"],
-    "exclude": [{"path": "<path>", "reason": "<reason>"}]
-  },
-  "skill_versions": [{"path": "<path>", "content_hash": "<hash>"}],
-  "project_rules": [
-    {
-      "source": "base|head",
-      "source_sha": "<40_char_sha>",
-      "path": "<path>",
-      "blob_hash": "<git_blob_hash>"
-    }
-  ]
-}
-```
-
-Target artifactはfingerprintと別のHarness metadataとして`generation`、`previous_target_ref`、`transition_reason`を持つ。初期targetは`generation: 0`かつ`previous_target_ref: null`、変更後targetはgenerationを1増やして直前targetを参照する。Generation変更の観測証拠はRootからEvidenceへの逆参照を作らず、直前の`target_check`またはtargetを変更したStage artifactと、それを指すManifestの`transition_cause_ref`へ保存する。Run manifestは`current_target_generation`と各artifactの`current|historical|invalidated`を記録し、target変更の履歴と現在再利用できるartifactを区別する。このmetadataをpopr fingerprintの構成要素へ混ぜない。
+Targetのfieldと意味はpoprのtarget fingerprint契約、Harness metadataとtransition payloadはshared referenceを正本とする。HarnessはsnapshotをJSON化するだけでfingerprint規則を再定義せず、generation metadataをpopr fingerprintの構成要素へ混ぜない。
 
 Dirty working treeをtargetに含める場合、Git objectから復元できないraw bytesをtarget確定時にrun storeへimmutable attachmentとして先に保存する。Attachmentはtarget metadataのpath、mode/type、length、hashで固定し、独立Evidence nodeにはしない。保存不能または保存後のhash不一致はtarget unresolvedとして停止する。これにより後から削除・変更されたuntracked、binary、symlinkもbefore contentを復元でき、RootからEvidenceへの逆参照やEvidence間参照を増やさずtransitionを証明できる。
 
