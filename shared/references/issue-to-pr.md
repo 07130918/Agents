@@ -33,7 +33,7 @@ Harness委譲はwrapper内部のcommand名に依存せず、次の入力と出�
 
 委譲前に次を固定する。
 
-- Issueのsource identifier、取得した本文と全comment、取得時点のrevisionまたはcontent hash
+- Issueのsource identifier、title/body/acceptanceだけのgoverning projectionとrevision/hash、各commentを分離したstable ID/revision/body/authority status。Harness generation inputには`governing|pending` recordだけを渡す
 - acceptance criteria、宣言済みscope、非目標
 - base ref、base SHA、作業branch、委譲時点のheadまたはworking tree状態
 - 許可されたfile変更、commit、scoped remote fetch、push、PR更新、外部read/writeのpermission
