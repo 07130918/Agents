@@ -411,7 +411,8 @@ stateDiagram-v2
     CONTEXT_RESOLVING --> BUDGET_EXHAUSTED: run-wide budget guard
     REVIEW_PENDING --> CHANGES_REQUESTED: CriticalまたはMajorあり
     REVIEW_PENDING --> VERIFYING: CriticalとMajorなし
-    REVIEW_PENDING --> EVALUATION_DEFERRED: coverage不足または仕様矛盾
+    REVIEW_PENDING --> EVALUATION_DEFERRED: coverage不足
+    REVIEW_PENDING --> HUMAN_DECISION_REQUIRED: materialな仕様矛盾
     REVIEW_PENDING --> BUDGET_EXHAUSTED: run-wide budget guard
     CHANGES_REQUESTED --> FIXING: scopeとpermission内
     CHANGES_REQUESTED --> SCOPE_CHANGE_REQUIRED: scope外修正が必要
@@ -474,7 +475,7 @@ stateDiagram-v2
 
 | State | 自動継続 | Resume可能 | 意味 |
 | --- | --- | --- | --- |
-| `READY` | publishの安全な部分完了だけbudget内で継続 | publish前後にtarget/input driftを検出した場合 | merge可能性の必要条件を満たした。mergeを実行する意味ではなく、drift時は失効する |
+| `READY` | publishの安全な未実行または部分完了だけbudget内で継続 | publish前後にtarget/input driftを検出した場合 | merge可能性の必要条件を満たした。mergeを実行する意味ではなく、drift時は失効する |
 | `EVALUATION_DEFERRED` | しない | 不足artifact解消後 | target、coverage、gate、project context、capabilityの不足 |
 | `VERIFICATION_BLOCKED` | しない | 環境回復後 | test/E2Eを実行できない |
 | `SCOPE_CHANGE_REQUIRED` | しない | Humanのscope判断後 | 元Issueへ混ぜられない変更が必要 |
@@ -495,7 +496,7 @@ Blocker stateからの再開は、既存runのlimitを黙って増やさない�
 Run-wide budget guardは全自動継続stateでstage開始前と完了後に評価し、他の成功遷移より優先する。Limitは次の2種類に分ける。
 
 - Immediate resource limit: deadline到達、観測済みtoken超過、または次のpaid external call予約がbudgetを超える場合は、その時点で停止する。
-- Attempt limit: remediation cycle、same-request attempt、transient retryは、次の試行開始前に`counter >= max`なら追加試行を拒否する。`counter < max`なら先にcounterを増やしてその試行を開始し、verificationまたはre-reviewまで完了させる。試行完了時にcounterがmaxと等しいだけでは停止せず、結果が未解消でさらに試行が必要になった時点で`BUDGET_EXHAUSTED`にする。
+- Attempt limit: remediation cycle、same-request attempt、transient retry、operation別external write attemptは、次の試行開始前に`counter >= max`なら追加試行を拒否する。`counter < max`なら先にcounterを増やしてその試行を開始し、対応するverification、re-review、またはpublish observationまで完了させる。試行完了時にcounterがmaxと等しいだけでは停止せず、結果が未解消でさらに試行が必要になった時点で`BUDGET_EXHAUSTED`にする。
 
 Guardが停止を決めたら、Orchestratorは先に`decision_kind: limit_observation`のStage artifactへlimit、`hard_exceeded|next_reservation_rejected|next_attempt_rejected`の`limit_event`、観測値、counter snapshot、直前manifestのrevisionとhashを確定する。次のrun manifest revisionがそのartifactを`transition_cause_ref`として`BUDGET_EXHAUSTED`へ遷移する。Manifest自身または別Manifestを`artifact_refs`へ含めず、Manifest間の接続には直前revisionだけを指す`previous_manifest_ref`を使う。`READY`は通常は自動継続しないが、publish前後のcheckpointでtargetまたはinput不一致を検出した場合だけ失効して`CONTEXT_RESOLVING`へ戻る。
 
@@ -547,6 +548,7 @@ Run manifestは次のlimitを持つ。
     "max_remediation_cycles": 2,
     "max_same_request_attempts": 2,
     "max_transient_stage_retries": 1,
+    "max_external_write_attempts_per_operation": 2,
     "deadline_at": "<required_RFC3339_timestamp>",
     "token_budget": "<integer_or_unsupported>",
     "paid_external_call_budget": 0,
@@ -565,7 +567,7 @@ Run manifestは次のlimitを持つ。
 }
 ```
 
-Counterはappend-onlyなrun manifest revisionで更新する。各state遷移も`previous_state`、`state`、stable `transition_id`、`transition_cause_ref`を持つ新revisionとして保存し、更新済みcounterと遷移を1つの確定単位にする。Budget停止だけは先行するimmutableな`limit_observation`をcauseとし、その次のmanifest revisionでcounter snapshotとの一致を検証して遷移する。途中で停止したobservationは同じtransaction descriptorのwrite setとexpected headが一致する場合だけcommitを再開し、不一致のuncommitted objectをhistorical artifactへ昇格させない。Remediation cycleは`FIXING`へ入る直前、request別attemptは対象requestの最初のworktree変更前、transient retryは再実行前、external write attemptは外部call前に増やす。Attempt counterの増加は許可済み試行の予約であり、その試行の検証完了前に上限到達として停止しない。Crash時に予約を未消費へ戻さず、同じexecution keyを重複実行しない。Execution keyは`stage`、target hash、input set hash、command/tool IDから作り、targetやinputが変わった実行と混ぜない。Tokenとpaid callはruntimeの観測値を保存し、paid callは予算を先に予約してから実行する。Counter更新を保存できなければ副作用を開始しない。
+Counterはappend-onlyなrun manifest revisionで更新する。各state遷移も`previous_state`、`state`、stable `transition_id`、`transition_cause_ref`を持つ新revisionとして保存し、更新済みcounterと遷移を1つの確定単位にする。Budget停止だけは先行するimmutableな`limit_observation`をcauseとし、その次のmanifest revisionでcounter snapshotとの一致を検証して遷移する。途中で停止したobservationは同じtransaction descriptorのwrite setとexpected headが一致する場合だけcommitを再開し、不一致のuncommitted objectをhistorical artifactへ昇格させない。Remediation cycleは`FIXING`へ入る直前、request別attemptは対象requestの最初のworktree変更前、transient retryは再実行前、external write attemptは外部call前に増やす。Attempt counterの増加は許可済み試行の予約であり、その試行の検証完了前に上限到達として停止しない。Crash時に予約を未消費へ戻さず、同じexecution keyを重複実行しない。Local verification/gateのexecution keyは`stage`、target hash、input set hash、command/tool IDから作り、targetやinputが変わった実行と混ぜない。Publish operationのexecution keyは実行正本のrun ID、operation ID、run-local attempt、permission set hashへ従う。Tokenとpaid callはruntimeの観測値を保存し、paid callは予算を先に予約してから実行する。Counter更新を保存できなければ副作用を開始しない。
 
 - Test failure、review finding、仕様矛盾はtransient failureではない。同じstageをそのままretryせず、対応するstateへ遷移する。
 - Read-onlyまたは安全に再実行できるlocal commandのnetwork timeoutと一時的なtool errorだけを1回retryできる。External writeはidempotency keyがあるか、read-backで未実行を証明できる場合に限る。それ以外のtimeoutは直ちに`HUMAN_DECISION_REQUIRED`とする。
@@ -598,7 +600,7 @@ Counterはappend-onlyなrun manifest revisionで更新する。各state遷移も
 - Stage artifactはappend-onlyとし、同じ`artifact_id`を上書きしない。
 - Commit、push、PR作成には対象branch、SHA、既存PRを照合してから実行する。
 - 同じSHAが既にpush済みなら再pushを成功条件にしない。
-- 同じhead branchのopen PRが存在すれば新規PRを重複作成しない。
+- create-prのcanonical base/head repository identity、ref、head SHAに一致するopen PRが一意に存在すれば新規PRを重複作成しない。別forkの同名branchを同一視しない。
 - External writeはREADY後の`publish_exact_candidate`だけを扱う。Exact desired PR metadata、operation/attempt ID、push/PR/read-backの各statusをartifactへ記録し、確定できない操作を自動再実行しない。
 - Resume時にtargetが変わっていた場合は、以前のverification、gate、Final reviewを成功扱いしない。
 
@@ -620,7 +622,7 @@ Head SHAが変わったら新しいtarget artifactを作る。以前のgradeと�
 
 ### 16.4 仕様矛盾
 
-Issue、ADR、仕様文書、実装のmaterialな矛盾をagentが補完しない。`HUMAN_DECISION_REQUIRED`またはpoprの`EVALUATION_DEFERRED`へ遷移し、正本と選択肢をdecision artifactへ記録する。
+Issue、ADR、仕様文書、実装のmaterialな矛盾をagentが補完しない。Poprのresultは`Evaluation deferred`として保存し、Harness stateは`HUMAN_DECISION_REQUIRED`へ遷移して、正本と選択肢をdecision artifactへ記録する。Targetまたはcoverageを取得できない`Evaluation deferred`は`EVALUATION_DEFERRED`へ分ける。
 
 ### 16.5 Scope拡大
 
@@ -670,7 +672,7 @@ Fallbackは独立性やcoverageを偽装するために使わない。同じagen
 - `prepare_candidate`: `create-pr`の品質確認、documentation同期、stage確認、commit分割とmessage規約をstate machineへ個別stepとして公開し、steps 5-7全体を担う。入力には`fetch_remote_refs`とremote/refspec allowlistを含める。Default経路でbase未指定なら、許可済みremoteのdefault、`develop`、`main`をread-only解決してbase refとfetch前SHAを固定してからexact base refをfetchする。既に確定したsame-target artifactを二重実行せず、各stepの結果またはtarget mutationをHarnessへ返し、最後にcleanなexact candidate SHAを返す。
 - `publish_exact_candidate`: READY済みcandidate SHAとbase SHA、`fetch_remote_refs`と設定済みrefspec/prune allowlistを入力にし、fetch後の一致確認、既存remote/PR確認、同じSHAのpush、PR作成または更新だけを行う。File編集、targetを変更し得る品質gate、stage、追加commitは禁止する。
 
-両referenceはIssue #38でこのphase interfaceを実行可能なsemantic contractとして定義した。Harnessを使わない通常経路は後方互換のdefault経路を継続し、Harness経路は`READY`後にmonolithicな`create-pr`を再実行せず`publish_exact_candidate`だけを使う。Target driftではcreate-prがphase result `READY_INVALIDATED`を返し、Harnessはinvalidation decisionを保存してManifest stateを`READY -> CONTEXT_RESOLVING`へ遷移させ、新しいtargetのverification、gate、Final reviewを完了する。Exact targetを保ったPR未作成または更新可能metadataだけの不一致は`PARTIALLY_PERFORMED`としてREADYを保ち、同じoperationのread-back済みstepからbudget内で再開する。Publish retry budgetを使い切ったrunは`READY -> BUDGET_EXHAUSTED`で停止し、self-contained handoffを入力にした新runだけが再開できる。
+両referenceはIssue #38でこのphase interfaceを実行可能なsemantic contractとして定義した。Harnessを使わない通常経路は後方互換のdefault経路を継続し、Harness経路は`READY`後にmonolithicな`create-pr`を再実行せず`publish_exact_candidate`だけを使う。Target driftではcreate-prがphase result `READY_INVALIDATED`を返し、Harnessはinvalidation decisionを保存してManifest stateを`READY -> CONTEXT_RESOLVING`へ遷移させ、新しいtargetのverification、gate、Final reviewを完了する。Exact targetを保った安全な未実行または中間状態は`NOT_PERFORMED|PARTIALLY_PERFORMED`としてREADYを保ち、同じoperationのread-back済みstepからbudget内で再開する。一意に分類できない`RESULT_UNKNOWN`は自動retryせずHumanへhandoffする。Publish retry budgetを使い切ったrunは`READY -> BUDGET_EXHAUSTED`で停止し、self-contained handoffを入力にした新runだけが再開できる。
 
 Issue #39ではproject-local distributionを不採用とし、`shared/references/review-remediation-harness.md`とpersonal Codex skillを導入した。Issue #40ではHarness専用project profileも不採用とし、Project repositoryへHarness entrypoint、contract snapshot、専用metadataを追加しない単一経路へ改訂する。Personal contractと既存workflowが衝突する場合は、その場で都合のよい規則を選ばず`EVALUATION_DEFERRED`とする。
 

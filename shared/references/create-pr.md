@@ -118,6 +118,12 @@
 
 ## `publish_exact_candidate`
 
+### Remote repository identity
+
+V1のremote repository identityはGitHub APIが返すimmutable node IDを使い、RFC 8785 JCS object `{"provider":"github","host":"<normalized-host>","repository_node_id":"<immutable-node-id>"}`として固定する。`host`は認証先APIに対応するASCII hostnameを小文字化し、末尾dotとdefault portを除いた値とする。`repository_node_id`は空でないexact API valueとし、owner、repository名、remote名、URL、branch、SHAをidentityの代用にしない。
+
+Configured remote URLはAPI照会用locatorとしてだけ使い、外部write前に同じ認証hostからrepository node IDと現在のowner/nameを取得して、remote URLから解決したlocatorとの対応をEvidenceへ保存する。Baseとheadはforkを含めて個別に解決し、permission、intent、PR検索、read-backの`expected_base_repository_identity`と`expected_head_repository_identity`へ同じcanonical objectを使う。Immutable IDまたはURLとの対応を取得できない場合はURL hashやowner/nameから補作せず`EVALUATION_DEFERRED`にする。GitHub以外のproviderはV1の`publish_exact_candidate`対象外とする。
+
 ### 入力
 
 - Repository、許可されたremoteとそのrepository identity、PRのexpected base/head repository identity、作業branch、PRのbase/head ref
@@ -149,7 +155,17 @@
 
 Local target、base/head repository identity、branch、SHA、inputの不一致またはpublish中のdriftは`READY_INVALIDATED`として、期待値、観測値、外部操作の有無を返す。追加変更、gate再実行、commit、force pushは行わない。呼び出し側はIssue/project contextへ戻り、新しいtargetで影響するverification、gate、Final reviewを完了して新しい`READY`を作る。
 
-Remote headがexpected headまたは次のnon-force pushが安全なancestorで、PRが未作成、またはidentities/refs/SHAsが一致する一意なPRのtitle/body/assignee/labelだけがdesired stateと不一致な場合は`PARTIALLY_PERFORMED`とし、step別結果とfull read-backを返す。Harness callerはREADYを失効させずobservation checkpointを保存し、budget内でexact push skipまたはidempotent metadata設定から次attemptを開始できる。Draft不一致、複数PR、fork identity不一致、またはread-back不能は`PARTIALLY_PERFORMED`に丸めない。
+前段のtarget/input drift guardを先に評価し、該当すれば必ず`READY_INVALIDATED`にする。Driftがない場合のpublish observation phase resultと次stepは次の表を正本とする。Mutable metadataはtitle、body、assignees、labelsだけを指す。
+
+| Remote head | PR observation | Phase result | 次の安全なstep |
+| --- | --- | --- | --- |
+| `exact` | Expected identities、refs、SHAs、draft、全metadataがexactな一意のopen PR | `SUCCEEDED` | なし |
+| `absent`または`ancestor` | `absent`かつ外部effect未観測 | `NOT_PERFORMED` | Exact SHAをnon-force push後、PRを作成 |
+| `exact` | `absent` | `PARTIALLY_PERFORMED` | Pushをskipし、PRを作成 |
+| `exact` | Expected identities、refs、SHAs、draftがexactでmutable metadataだけ不一致な一意のopen PR | `PARTIALLY_PERFORMED` | Pushをskipし、同じPRのmutable metadataだけをidempotentに設定 |
+| 上記以外 | Draft不一致、複数PR、fork identity不一致、diverged remote、read-back不能、外部effect不明を含む | `RESULT_UNKNOWN` | 自動retryせずHuman handoff |
+
+`NOT_PERFORMED`と`PARTIALLY_PERFORMED`はstep別結果とfull read-backを返す。Harness callerはREADYを失効させずobservation checkpointを保存し、budget内で表の次stepだけを開始できる。
 
 Fetchのpermission、利用不能、timeoutはPhase共通failureへ従う。PushまたはPR操作のtimeoutで外部結果が不明な場合は同じ操作を推測retryせず、remoteとPRをread-backして確定できなければHuman handoffで停止する。
 
