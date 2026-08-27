@@ -65,7 +65,7 @@
 
 1. `git branch --show-current`と`git status --short --branch`を確認する。
 2. 現在branchが空、`HEAD`、`main`、`develop`なら停止する。
-3. 入力remoteを使ってremote refsを最新化する。Default経路では`origin`を使う。
+3. 入力remoteとbase refを使い、`git -c maintenance.auto=false fetch --no-tags <remote> refs/heads/<base>:refs/remotes/<remote>/<base>`相当でbaseのremote-tracking refを最新化する。Default経路では`origin`を使う。Harness callerは`fetch_remote_refs` permissionで同じrepository identity、remote、refspecを許可していることを先に確認する。
 4. 入力base refを使う。Default経路でbase refがまだ未指定の場合だけ、入力remoteのdefault branch、`develop`、`main`の順に解決する。
 5. Fetch後の`<remote>/<base>`が入力`base_sha`と異なる場合は`TARGET_MUTATED`を返し、新しいbaseでcontextを固定し直すまで品質gateへ進まない。一致したbaseを比較元としてcommit済み差分、working tree、index、untracked fileを確認する。
 6. `.env`、認証情報、秘密情報らしいfileが含まれる場合はcommitせず、対象を報告する。
@@ -122,7 +122,7 @@
 ### 手順
 
 1. Harness経路の`READY`または通常経路の`DEFAULT_SUBMISSION_READY`が入力のbase/head SHAと同じtargetに結び付き、pushとPR操作が許可されていることを確認する。
-2. 入力remoteのrepository identityがpermission対象と一致することを確認し、`git fetch --prune <remote>`後、local `HEAD`、作業branch先端、`<remote>/<base>`、working tree、indexをread-onlyで照合する。
+2. 入力remoteのrepository identityと設定済みfetch refspecがpermission対象と一致することを確認し、`git -c maintenance.auto=false fetch --no-tags --prune <remote>`後、local `HEAD`、作業branch先端、`<remote>/<base>`、working tree、indexをread-onlyで照合する。Harness callerは`fetch_remote_refs` permissionでremote、設定済みsource/destination refspec、prune範囲を許可していなければ実行しない。
 3. Local `HEAD`または作業branch先端が`head_sha`と異なる、working treeまたはindexがdirty、`<remote>/<base>`が`base_sha`と異なる場合はpushしない。
 4. Remote headを`absent`、`exact`、`ancestor`、`diverged_or_ahead`に分類する。`ancestor`はremote headが入力`head_sha`のancestorである場合だけとし、`diverged_or_ahead`ではforce pushせず停止する。
 5. Remote headが`absent`または`ancestor`の場合だけ、sourceをexact `head_sha`に固定して入力remoteの同名branchへnon-force pushする。`exact`ならpushを省略する。いずれもremote headをread-backし、`head_sha`との一致を確認する。

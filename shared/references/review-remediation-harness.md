@@ -193,6 +193,7 @@ Run開始時に次を個別に記録する。
 - `read_repository`: 初期true。固定read-only inspectionだけ。
 - `write_run_store`: 初期true。Candidate外のappend-only storeだけ。
 - `read_external_source`: 明示sourceだけtrue。Authorityは別判定。
+- `fetch_remote_refs`: 初期false。CommitまたはPR依頼で明示されたrepository identity、remote、refspec、prune範囲だけtrueにできる。
 - `write_worktree`: 変更依頼かつallowed path/limitがある場合だけtrue。
 - `run_local_commands`: 解決済みexact commandだけtrue。
 - `commit`、`push`、`create_or_update_pr`: 明示されたcommitまたはPR依頼の範囲だけtrue。
@@ -205,6 +206,10 @@ Remediation cycleは`FIXING`直前、request別attemptは対象requestの最初�
 
 External writeはidempotency keyがあるかread-backで未実行を証明できる場合だけretryできる。成功不明のtimeoutは自動retryせず、read-backで確定できなければ`HUMAN_DECISION_REQUIRED`にする。
 
+`fetch_remote_refs`は`prepare_candidate`と`publish_exact_candidate`が要求するnetwork readとlocal Git metadata更新専用である。実行前にnormalized repository identity、remote名とURL、source/destination refspec、`prune`の有無、credential scope、timeoutをallowlistへ固定する。Fetchは`--no-tags`かつ自動maintenance無効で実行し、許可するlocal writeはGit object database、fetch中のlock/temporary metadata、`FETCH_HEAD`、宣言したremote-tracking ref namespaceだけとする。Working tree、index、local branch、tag、Git configを変更しない。`run_local_commands`や`read_repository`へ暗黙に含めない。Permissionがfalse、remote identityまたはrefspecが不一致、credentialまたはnetworkが利用不能ならfetchせず、前2者は`HUMAN_DECISION_REQUIRED`、後者は`EVALUATION_DEFERRED`にする。
+
+Fetchのtimeoutまたはtransient failureでは、許可したrefをread-backして要求されたobjectとref更新が完了済みなら成功として再実行しない。未完了を確認でき、同じallowlistとexecution keyを使う場合だけ`max_transient_stage_retries`の範囲で1回retryできる。Fetch後にbaseまたはinput refが変わった場合は成功を流用せず`CONTEXT_RESOLVING`、READY後のpublish checkpointなら`READY_INVALIDATED`へ進む。
+
 ## Stateと実行順
 
 次の正常系を順に実行する。各遷移はprevious state、state、stable transition ID、cause artifact、counter snapshotを持つ新しいrun manifest revisionとして保存する。
@@ -214,12 +219,12 @@ External writeはidempotency keyがあるかread-backで未実行を証明でき
 3. CriticalまたはMajorがあれば`CHANGES_REQUESTED`を作り、scope/permission内だけ`FIXING`する。なければ`VERIFYING`へ進む。
 4. `VERIFYING`: Working tree targetでrequired verificationを実行する。
 5. `PRECOMMIT_DOCS_PENDING`: `sync-docs-code`を実行する。Mutationがあれば新targetでverificationからやり直す。
-6. `CANDIDATE_COMMIT_PENDING`: `prepare_candidate`を使いcleanなcandidate SHAを固定する。
+6. `CANDIDATE_COMMIT_PENDING`: `fetch_remote_refs`とcommit permissionを確認し、`prepare_candidate`を使いcleanなcandidate SHAを固定する。
 7. `TARGET_VERIFYING`: Exact candidate SHAでrequired verificationを再実行する。
 8. `GATES_PENDING`: Docs、security、project gateを同じcandidate SHAで実行する。
 9. `REREVIEW_PENDING`: Fresh Final reviewerのpoprとgeneric comprehensive blind scan、必要なproject lens、reconciliationを行う。
 10. READY条件を全て満たせば`READY`を記録する。
-11. PR提出が許可されていれば`publish_exact_candidate`だけを実行する。Defaultのmonolithic `create-pr`を再実行しない。
+11. PR提出が許可されていれば、`fetch_remote_refs`、push、PR permissionを確認して`publish_exact_candidate`だけを実行する。Defaultのmonolithic `create-pr`を再実行しない。
 12. Humanがreviewしてmergeする。
 
 Targetを変更したstageは`TARGET_MUTATED`相当の結果を返し、影響するartifactをinvalidateする。Publish前後にbase/head/input driftを検出した場合はREADYを失効し、`CONTEXT_RESOLVING`から新targetを作る。
@@ -278,6 +283,7 @@ Resumeでは次を順に行う。
 - Claude Code subagentなし: 別session、別CLI、Human reviewerのいずれかを使う。
 - Fresh sessionなし: `INDEPENDENCE_BLOCKED`。
 - Required gate実装なし: 同じsemantic contractの別実装をHumanが用意する。用意できなければ停止する。
+- Git remote fetch不可: 許可済みremote/refへのnetwork、credential、Git metadata writeを回復して再開する。Base/ref一致を再検証できなければcandidate準備またはpublishを続けない。
 - Worktreeなし: Cleanな単独checkoutだけを使う。Dirty共有checkoutや並行runでは停止する。
 - Token meterなし: `unsupported`を記録し、cycle、retry、deadline、cost limitを適用する。
 

@@ -560,6 +560,7 @@ Run開始時に次のpermissionを個別に記録する。
 | `read_repository` | true | reviewer、tester、gate、orchestrator | Orchestratorはcontext解決前に9.1の固定bootstrap inspectionを実行可。対象scope外への探索は正本確認に必要な最小範囲だけ |
 | `write_run_store` | true | orchestrator | Candidate worktree外のappend-only storeだけ。各roleのresultをruntime metadata付きで保存する |
 | `read_external_source` | 明示されたIssue/PR/source identifierだけtrue | orchestrator | `allowed_source_identifiers`、host、credential scope、network、paid-call costを固定。Read-only APIだけを許可し、規範authorityは与えない |
+| `fetch_remote_refs` | false | orchestrator、create-pr phase担当 | CommitまたはPR依頼で明示されたrepository identity、remote、refspec、prune範囲だけtrueにできる。Network readとGit object database、fetch metadata、許可済みremote-tracking refの更新だけを許可 |
 | `write_worktree` | 変更依頼時だけtrue | implementer、更新を許可されたdocs gate | Reviewerは常にfalse |
 | `run_local_commands` | 解決済みproject contextの宣言分だけtrue | tester、CI、gate | effectが不明なら停止 |
 | `commit` | false | create-pr contractに従う提出担当 | 明示的なcommitまたはPR依頼でtrueにできる |
@@ -571,6 +572,10 @@ Run開始時に次のpermissionを個別に記録する。
 | `accept_risk_or_spec` | false | Human | agentへ委譲しない |
 
 IssueからPRまで明示された依頼は、現在scopeのcommit、push、PR作成を許可するが、merge、deploy、Issueへのcomment、risk受容は許可しない。
+
+`fetch_remote_refs`は`read_repository`または`run_local_commands`へ含めない。実行前にnormalized repository identity、remote名とURL、source/destination refspec、`prune`の有無、credential scope、timeoutをrun manifestへ固定する。Fetchは`--no-tags`かつ自動maintenance無効で実行する。許可するlocal writeはGit object database、fetch中のlock/temporary metadata、`FETCH_HEAD`、宣言したremote-tracking ref namespaceだけとし、working tree、index、local branch、tag、Git configへの変更は禁止する。`prepare_candidate`ではbase refの最新化、`publish_exact_candidate`ではcreate-pr contractが要求するfetch/pruneだけに使う。Permissionがfalseまたはallowlist外なら`HUMAN_DECISION_REQUIRED`、network、credential、Git capabilityが利用不能なら`EVALUATION_DEFERRED`にする。
+
+Fetchがtimeoutまたはtransient failureになった場合は、許可済みrefをread-backし、要求objectとref更新が完了済みなら成功として再実行しない。未完了を確認でき、同じallowlistとexecution keyを使う場合だけtransient retry budget内で1回再実行できる。Fetch後のbase/ref driftは`TARGET_MUTATED`または`READY_INVALIDATED`として扱い、旧artifactを流用しない。
 
 ## 11. Gitとworktree
 
@@ -614,8 +619,9 @@ stateDiagram-v2
     PRECOMMIT_DOCS_PENDING --> HUMAN_DECISION_REQUIRED: 正本矛盾または外部副作用判断が必要
     PRECOMMIT_DOCS_PENDING --> EVALUATION_DEFERRED: BLOCKED、失敗、利用不能
     PRECOMMIT_DOCS_PENDING --> BUDGET_EXHAUSTED: run-wide budget guard
-    CANDIDATE_COMMIT_PENDING --> TARGET_VERIFYING: cleanなcandidate SHAを固定
-    CANDIDATE_COMMIT_PENDING --> HUMAN_DECISION_REQUIRED: commit権限なし
+    CANDIDATE_COMMIT_PENDING --> TARGET_VERIFYING: fetch後にcleanなcandidate SHAを固定
+    CANDIDATE_COMMIT_PENDING --> HUMAN_DECISION_REQUIRED: fetchまたはcommit権限なし
+    CANDIDATE_COMMIT_PENDING --> EVALUATION_DEFERRED: fetchのnetwork、credential、capability不足
     CANDIDATE_COMMIT_PENDING --> BUDGET_EXHAUSTED: run-wide budget guard
     TARGET_VERIFYING --> GATES_PENDING: 同じtargetのrequired verification成功
     TARGET_VERIFYING --> CANDIDATE_COMMIT_PENDING: 許可済みlocal writeでtarget変更
@@ -832,6 +838,7 @@ Base側に複数のtest commandがあり、変更scopeとの対応を一意に�
 | Project reviewer | Personal `pr-risk-reviewer`または同じsemantic contractでgeneric comprehensive reviewを実行し、project coverageは`not_required`とする | 信頼済みruleが専用lensを要求せずgeneric coverageがCompleteなら可 |
 | Required skill名 | Personal/globalの同じsemantic contractを直接実行する | Contractと実行capabilityがあれば可 |
 | Required gate capability | 利用可能な別実装が同じsemantic contractを満たすかHumanが用意する | 用意できなければ不可 |
+| Git remote fetch | 許可済みrepository identity、remote、refspecへのnetwork、credential、Git metadata writeを回復する | Base/ref一致を再検証できなければ不可 |
 | Worktree | 単独clean checkoutで順次実行する | 並行runまたはdirty共有checkoutでは不可 |
 | Token meter | `unsupported`を記録し、cycle、retry、deadlineを適用 | 他limit内なら可 |
 | CI | Project contextで解決したexact commandをlocalで実行する | 同等環境を証明できなければ不可 |
