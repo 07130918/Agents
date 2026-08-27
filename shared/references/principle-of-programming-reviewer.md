@@ -92,6 +92,51 @@ repository rootと変更pathに適用される`AGENTS.md`、`CLAUDE.md`、`CONTR
 
 SHAは短縮せず、`git rev-parse`で得たfull SHAを使う。regular fileのcanonical content hashは`git hash-object --no-filters -- <path>`で取得する。symlinkは参照先fileをdereferenceせず、link targetのbytesそのものを`git hash-object --stdin`でhashする。untracked fileも同じtype別規則で最終file mode / typeとcanonical content hashをmanifestへ含める。通常のcurrent branchレビューではindex diffを別途fingerprintへ追加せず、clean / dirty判定にも使わない。working tree manifestのcontent hashと、commit tree内のproject rulesを示すblob hashを混同しない。fingerprintのいずれかが変わったレビューは別対象であり、異なるfingerprintのgradeは比較しない。
 
+Harnessまたはmachine-consumable resultを要求するcallerには、上記と同じ意味を持つ`popr_target_fingerprint`を次のJSON shapeで返す。これはtarget意味論の正本であり、Markdownはそのhuman-readable renderingとする。JSON bytesを保存またはhashする場合はRFC 8785 JCSを使う。
+
+```json
+{
+  "schema_version": "1.0",
+  "target_source": {
+    "kind": "current_branch|commit_range|pull_request|staged_only",
+    "identifier": "<branch_name|full_base...full_head|canonical_pr_url|branch@full_head>"
+  },
+  "git_object_format": "sha1|sha256",
+  "base": {"ref": null, "sha": "<full_git_oid>"},
+  "head": {"sha": "<full_git_oid>"},
+  "working_tree": {
+    "status": "clean|dirty",
+    "mode": "included|excluded",
+    "entries": []
+  },
+  "index_diff": {"included": false, "content_oid": null},
+  "pr_remote": null,
+  "scope": {"included_paths": ["."], "excluded_paths": []},
+  "skill_versions": [
+    {"path": "<absolute_path>", "content_oid": "<git_hash_object_oid>"}
+  ],
+  "project_rules": [
+    {
+      "source": "base|head",
+      "source_sha": "<full_git_oid>",
+      "path": "<repository_relative_path>",
+      "blob_oid": "<git_blob_oid>"
+    }
+  ]
+}
+```
+
+Conditional shapeと順序は次へ固定する。
+
+- `base.ref`はbranch/ref名を解決できる場合はそのexact string、raw commit rangeなどrefを持たない入力ではnullとする。`base.sha`と`head.sha`は`git_object_format`に一致する小文字16進40または64文字とする。
+- `working_tree.mode: excluded`では`entries: []`とし、statusだけを観測値として保持する。`included`ではHEAD treeとの差分だけをrepository相対pathのUTF-8 byte順で並べる。
+- Present entryは`{"path":"<path>","status":"present","mode":"<git_mode>","type":"regular|symlink","content_oid":"<oid>"}`、deleted entryは`{"path":"<path>","status":"deleted","head_mode":"<git_mode>","head_type":"regular|symlink","head_content_oid":"<oid>"}`とする。取得失敗をdeletedへ丸めずfingerprint unresolvedとして`Evaluation deferred`にする。
+- `index_diff.included`はstaged-onlyまたはindex指定時だけtrueにし、その場合だけ`content_oid`へcached diff bytesの`git hash-object --stdin`結果を入れる。Falseではnullにする。
+- `pr_remote`はPR targetだけ`{"name":"<remote_name>","fetch_url":"<unnormalized_fetch_url>"}`、それ以外はnullとする。
+- `scope.included_paths`は宣言済みrepository相対path/pathspecを重複なくUTF-8 byte順で並べ、repository全体は`["."]`とする。`excluded_paths`は`{"path":"<path>","reason":"<reason>"}`をpath、reasonのUTF-8 byte順で並べる。
+- `skill_versions`はabsolute path、`project_rules`はsource、pathのUTF-8 byte順で並べる。適用ruleがなければ`project_rules: []`とし、架空ruleを補わない。
+- Markdown fingerprintとJSONの対応fieldが1件でも不一致、required fieldを取得不能、またはschema/順序に準拠できない場合は`coverage: Incomplete`かつ`Evaluation deferred`にする。Harnessは独自mappingで補完しない。
+
 ### 3. 差分を取得して分割する
 
 - committed diffは`git diff <base_sha>...<head_sha> --no-color --`で取得する
@@ -224,6 +269,9 @@ MinorとNitは費用対効果で任意対応または別issue候補にする。�
 - excluded paths: `<path>: <reason>`
 - skill version: `<wrapper path>: <hash>` / `<reference path>: <hash>`
 - project rules: `source=<base|head>:<full SHA> / <path>: <blob hash>`
+
+## Machine fingerprint
+- Harnessまたはmachine-consumable resultでは、上記schemaの`popr_target_fingerprint` JCS JSONを省略せず出力する
 
 ## Coverage
 - status: Complete | Incomplete

@@ -77,7 +77,7 @@ Git inspectionではoptional lockとindex refreshを無効化し、external diff
 3. Authorityを確認したIssue、PR、外部decision。
 4. Human承認run-local input。
 
-最低限、source of truth、review scope、required lens、exact verification command、required gateとtrigger、permission、limitを解決する。各commandはexact text、effect、timeout、required servicesを持つ。複数候補からscopeとの対応を一意に説明できなければ推測実行しない。
+最低限、source of truth、review scope、required lens、exact verification command、required gateとtrigger、permission、limitを解決する。各commandはexact text、effects、timeout、required servicesを持つ。複数候補からscopeとの対応を一意に説明できなければ推測実行しない。
 
 Base側情報から全fieldを決定的に解決できれば`context_status: resolved`にできる。必須field不足は候補と不足根拠を記録して`EVALUATION_DEFERRED`、権威が同等の正本矛盾は`HUMAN_DECISION_REQUIRED`とする。Humanが補完する場合はexact content、適用run、approval scopeを`human_approved_run_local` inputとして固定する。
 
@@ -110,7 +110,7 @@ Run store用repository identityはpopr fingerprintへ暗黙に含めない。Boo
 ```json
 {
   "schema_version": "2.0",
-  "artifact_type": "input_snapshot|target|evidence|target_check|review|change_request|remediation|verification|gate|blind_review|final_review|decision|run_manifest",
+  "artifact_type": "input_snapshot|target|evidence|target_check|review|change_request|remediation|verification|gate|blind_review|final_review|external_operation|decision|run_manifest",
   "artifact_id": "<run_id>/<stage>/<monotonic_sequence>",
   "run_id": "<stable_run_id>",
   "monotonic_sequence": 0,
@@ -141,7 +141,7 @@ Run store用repository identityはpopr fingerprintへ暗黙に含めない。Boo
 
 Artifactの共通refは`artifact_id`、run directory相対の`artifact_path`、保存済みbytesの`sha256`だけを持つ。`target_ref`、`input_refs`、`previous_manifest_ref`、payload内の`*_ref`と`*_refs`はこの型を使う。例外は`run_manifest.artifact_refs`で、各要素を`{"ref": <common_ref>, "lifecycle_status": "current|historical|invalidated", "invalidation_reason_ref": <common_ref|null>}`とする。`invalidated`だけ`invalidation_reason_ref`を必須にし、他statusではnullにする。
 
-`repository_id`は保存済みrepository identity inputの`content`をRFC 8785 JCS bytesへ直列化し、そのSHA-256から`sha256-<小文字16進64文字>`として作る。`run_id`と`transaction_id`は`[A-Za-z0-9][A-Za-z0-9._-]{0,127}`、`artifact_id`は`<run_id>/<state>/<sequence>`とし、`state`は本contractのstate名、`sequence`は先頭0なしの10進非負整数で`monotonic_sequence`と一致させる。SequenceとManifest revisionは0以上`9007199254740991`以下のI-JSON exact integerに限定する。`monotonic_sequence`はManifestを含む全artifactでrun-globalに一意かつ0から隙間なく増加させ、既存committed artifactの最大値より1大きい値から採番する。同じtransactionではwrite setの非Manifest artifactをsequence昇順に並べ、Manifestへ最大sequenceを割り当てる。Manifest revisionは0から1ずつ増える独立counterであり、sequenceと同値である必要はない。Common refの`sha256`は小文字16進64文字に限定する。`artifact_path`とrun-storeを読むすべての`content_path`は`/`区切りの相対pathとし、各segmentを`[A-Za-z0-9][A-Za-z0-9._-]{0,127}`へ限定する。Absolute path、空segment、`.`、`..`、backslash、NULを拒否する。
+`repository_id`は保存済みrepository identity inputの`content`をRFC 8785 JCS bytesへ直列化し、そのSHA-256から`sha256-<小文字16進64文字>`として作る。`run_id`と`transaction_id`は`[A-Za-z0-9][A-Za-z0-9._-]{0,127}`、`artifact_id`は`<run_id>/<state>/<sequence>`とし、`state`は本contractのstate名、`sequence`は先頭0なしの10進非負整数で`monotonic_sequence`と一致させる。通常artifactはartifact IDのstate segmentとenvelopeの`stage`を一致させ、Manifestは両方を`payload.state`とも一致させる。SequenceとManifest revisionは0以上`9007199254740991`以下のI-JSON exact integerに限定する。`monotonic_sequence`はManifestを含む全artifactでrun-globalに一意かつ0から隙間なく増加させ、既存committed artifactの最大値より1大きい値から採番する。同じtransactionではwrite setの非Manifest artifactをsequence昇順に並べ、Manifestへ最大sequenceを割り当てる。Manifest revisionは0から1ずつ増える独立counterであり、sequenceと同値である必要はない。Common refの`sha256`は小文字16進64文字に限定する。`artifact_path`とrun-storeを読むすべての`content_path`は`/`区切りの相対pathとし、各segmentを`[A-Za-z0-9][A-Za-z0-9._-]{0,127}`へ限定する。Absolute path、空segment、`.`、`..`、backslash、NULを拒否する。
 
 Writerとvalidatorはrun rootを一度realpathで固定し、run-store pathを文字列連結だけで開かない。各componentをsymlink followなしで辿り、正規化後も同じrun root配下であること、最終objectが通常fileであることを確認する。Artifactの`run_id`、`artifact_id`先頭、実際のrun directoryを一致させ、別runへの参照を拒否する。Repository相対pathもabsolute、空segment、`.`、`..`、NULを拒否してrepository root配下へ限定するが、targetとして記録されたsymlink自体のtypeとlink targetはfollowせず観測できる。Local skill pathやexternal source identifierはrun-store pathとしてdereferenceせず、取得済みcontentをinput snapshotへ保存する。
 
@@ -160,9 +160,9 @@ Lifecycleは直前Manifestから次のManifestへ不可逆に遷移させる。`
 
 Artifact参照は次の非循環layerに限定する。
 
-1. Rootの`input_snapshot`は他artifactを参照しない。`target`はcurrent `repository_identity`を含む`input_snapshot`だけを参照でき、Stage、Evidence、Manifestは参照しない。両typeの`target_ref`は必ずnullにする。
+1. Rootの`input_snapshot`は`input_refs: []`とし、他artifactを参照しない。`target`の`input_refs`はcurrent `repository_identity` inputのcommon ref 1件だけを持ち、`payload.repository_identity_ref`とexactに一致させる。Stage、Evidence、Manifestは参照しない。両typeの`target_ref`は必ずnullにする。
 2. Evidenceの`evidence`はRootだけを参照できる。
-3. Stageの`target_check`、`review`、`change_request`、`remediation`、`verification`、`gate`、`blind_review`、`final_review`、`decision`は、Root、Evidence、自分より小さい`monotonic_sequence`のStageだけを参照できる。
+3. Stageの`target_check`、`review`、`change_request`、`remediation`、`verification`、`gate`、`blind_review`、`final_review`、`external_operation`、`decision`は、Root、Evidence、自分より小さい`monotonic_sequence`のStageだけを参照できる。
 4. Manifestの`run_manifest`は確定済みRoot、Evidence、Stageを`artifact_refs`へ列挙し、直前Manifestだけを専用の`previous_manifest_ref`で参照できる。他artifactからManifestは参照されず、Manifestを`artifact_refs`へ含めない。
 
 同一artifact、前方参照、自分を含むManifest、未確定artifactは参照しない。最初のManifestだけ`previous_manifest_ref: null`とし、以後は直前revisionへの共通refだけを許可する。Revision欠落、直前以外への飛越し、cycleを不正とする。保存前に参照先の存在、hash、同じrun、許可されたtarget generationを確認する。違反時はartifactをREADY根拠へ使わず`EVALUATION_DEFERRED`にする。
@@ -191,7 +191,7 @@ Commit pointはManifest fileのinstallではなく、`writer.lock`のexclusive l
 
 Writerはlockを取得してheadとcommitted最大sequenceを読んだ後、`transactions/<transaction_id>/staged/<write_index>`へ全write bytesを0からのwrite index順でexclusive createし、各fileをdurable syncする。次にJCS descriptorを`descriptor.pending`へexclusive create、file syncし、そのexact bytesを`descriptor.json`へatomic no-replace installしてtransaction directoryをsyncする。Validな`descriptor.json`をactive transactionの境界とし、descriptorより先にcrashしたdirectoryまたはpending fileは診断対象だがactiveとは扱わない。Descriptorは`transaction_id`、expected/proposed head、next Manifest revision、割り当てたsequence範囲、write index順の完全なwrite setを持つ。各write set entryは`kind: object|manifest`、staged path、canonical destination path、SHA-256、byte length、artifact IDまたはnull、content typeを持ち、artifact JSONだけでなくtarget attachmentとEvidence bytesもすべて列挙する。Manifest entryは最後のwrite indexかつ1件だけとする。
 
-Descriptorと全staged bytesを再検証した後、objectをwrite index順、Manifestを最後にcanonical destinationへatomic no-replace installし、各fileと親directoryをsyncする。Install primitiveがno-replaceとdurabilityを保証できないruntimeでは停止する。同じdestinationが既に存在する場合はexact bytes、hash、length一致時だけidempotent successとし、不一致なら停止する。最後にlock内で`HEAD.json`のexact JCS bytesをexpected headと再照合し、proposed headをtransaction directoryの`head.pending`へexclusive create、file sync、atomic replaceで`HEAD.json`へ移動、run root directory syncの順でCAS更新する。既存のpending headはdescriptorのproposed headとexact bytes/hashが一致する場合だけ再利用する。各revisionは1 Manifest、各Manifestは最大1 successorとする。
+Descriptorと全staged bytesを再検証した後、objectをwrite index順、Manifestを最後にcanonical destinationへsource-preservingなatomic no-replace installで複製し、各fileと親directoryをsyncする。`committed.json`がdurableになるまでstaged bytesを消費、移動、上書き、削除しない。Install primitiveがsource preservation、no-replace、durabilityを保証できないruntimeでは停止する。同じdestinationが既に存在する場合はexact bytes、hash、length一致時だけidempotent successとし、不一致なら停止する。最後にlock内で`HEAD.json`のexact JCS bytesをexpected headと再照合し、proposed headをtransaction directoryの`head.pending`へexclusive create、file sync、atomic replaceで`HEAD.json`へ移動、run root directory syncの順でCAS更新する。既存のpending headはdescriptorのproposed headとexact bytes/hashが一致する場合だけ再利用する。各revisionは1 Manifest、各Manifestは最大1 successorとする。
 
 Head CAS成功後はdescriptorを変更せず、同じ`transaction_id`、descriptor hash、committed headを持つJCS markerを`committed.pending`へexclusive create、file syncし、そのexact bytesをimmutable `committed.json`へatomic no-replace installしてtransaction directoryをsyncする。Validな`committed.json`だけをcommit markerとする。新transaction開始前とresumeでは、まずcommit markerのないactive descriptorをすべて検査する。Active descriptorが1件だけでcurrent headがexpected headなら、staged bytes、write set、既存object、proposed Manifestの全hashが一致する場合だけ不足installとhead CASを続行できる。Current headがproposed headならcommit済みとして同じhashを照合しcommit markerを追記する。それ以外、active descriptor複数、不足または不一致bytes、unknown headでは自動完了または削除をせず`EVALUATION_DEFERRED`にする。Marker済みdescriptorもhashを検証し、crashしたtransactionと無関係なuncommitted objectは診断に列挙するがledgerへ再接続しない。
 
@@ -209,18 +209,20 @@ Target、Issue input、scope、permission、project rule、contract hashが変�
 
 | Input kind | Source locator |
 | --- | --- |
-| `repository_identity` | `source_revision`に`sha256:<content_sha256>`を必須、`source_sha: null`、`source_object_id: null` |
+| `repository_identity|prior_run_handoff` | `source_revision`に`sha256:<content_sha256>`を必須、`source_sha: null`、`source_object_id: null` |
 | `project_rule|acceptance_policy` | `source_sha`とGit blobの`source_object_id`を必須、`source_revision: null` |
 | `issue_bundle|external_record` | Stableな`source_revision`を必須、`source_sha: null`、`source_object_id: null` |
 | `personal_contract|required_capability` | `source_revision`に`version:<declared_version>`または`sha256:<content_sha256>`を必須、`source_sha: null`、`source_object_id: null` |
 | `human_approved_run_local|explicit_scope` | `source_revision`に`approval:<stable_approval_id>`を必須、`source_sha: null`、`source_object_id: null` |
 | `permission_set` | Human変更時は`approval:<stable_approval_id>`、defaultは`sha256:<content_sha256>`を`source_revision`へ保存し、`source_sha: null`、`source_object_id: null` |
 
-`trust_source`は`runtime_observed|personal_contract|base|human_approved_run_local|external_authoritative|external_observed`のいずれかとする。`repository_identity`だけ`runtime_observed`を使い、`source_identifier: runtime:git-common-dir`、上記JCS objectのexact `content`を保存する。`external_authoritative`は`authority_status: governing`、`external_observed`は`authority_status: evidence_only|pending`だけに使い、external inputは`authority_basis`を必須にする。`issue_bundle`はtitle、body、Issue revision、各commentのstable ID、revision、author、author role、body、採用した関連sourceのidentifier/revisionを保持する。Source APIがbundle全体のrevisionを返さない場合、`source_revision`はこれらcomponentのstable IDとrevisionを並べたJCS valueのSHA-256を`sha256:<小文字16進64文字>`で保存する。Git SHA/object IDはrepository object formatに一致する小文字16進40または64文字とする。
+`trust_source`は`runtime_observed|personal_contract|base|human_approved_run_local|external_authoritative|external_observed`のいずれかとする。`repository_identity`と`prior_run_handoff`だけ`runtime_observed`を使う。Repository identityは`source_identifier: runtime:git-common-dir`と上記JCS objectのexact `content`を保存する。Prior run handoffは`source_identifier: run:<repository_id>/<prior_run_id>`とし、旧runを検証してから、terminal Manifestのrevision/artifact ID/hash、未解決requestごとのsource artifact ID/hashとexact request value、未完了state、停止理由を通常refではない値として`content`へcopyする。Artifact pathやcommon refを持たず、新runはこのself-contained snapshotだけを参照する。`external_authoritative`は`authority_status: governing`、`external_observed`は`authority_status: evidence_only|pending`だけに使い、external inputは`authority_basis`を必須にする。`issue_bundle`はtitle、body、Issue revision、各commentのstable ID、revision、author、author role、body、採用した関連sourceのidentifier/revisionを保持する。Source APIがbundle全体のrevisionを返さない場合、`source_revision`はこれらcomponentのstable IDとrevisionを並べたJCS valueのSHA-256を`sha256:<小文字16進64文字>`で保存する。Git SHA/object IDはrepository object formatに一致する小文字16進40または64文字とする。
 
-Permission setは`input_kind: permission_set`の`input_snapshot`として、permission名、boolean、対象identity、allowed path/ref/source、effect、approval scopeをexact `content`へ保存する。Run開始時のdefaultもHumanによる追加・縮小も新しいimmutable snapshotにし、inline値だけを正本にしない。Human承認は先に`human_approved_run_local` input snapshotへ固定し、それを参照するdecisionを保存する。Permission setが変わった場合は新generationを作り、必ず`CONTEXT_RESOLVING`からcontext、review、verification、gateを再評価する。
+`stable_approval_id`はruntimeが返すimmutable event/message IDを優先する。取得不能時は、Humanのexact approval text、actor ID、対象run ID、approval scope、承認対象のcontent hashをJCS化したSHA-256を`sha256-<小文字16進64文字>`として使い、そのJCS value自体をHuman inputの`approval_evidence`へ保存する。Timestamp、表示名、連番だけからIDを補作しない。
 
-`target.payload`はpoprのtarget fingerprintを正本とし、target source、exact base ref/SHA、head SHA、working tree status/mode/manifest、対象ならindex diff hash、PR remote、include/exclude scope、実際に使ったskill version、project ruleのsource/path/blob hashを持つ。Harness metadataとして`repository_identity_ref`、`generation`、`previous_target_ref`、`transition_reason`を追加するが、popr fingerprintの意味は変更しない。`repository_identity_ref`はcurrent repository identity inputを参照し、popr結果に存在しないidentityをpopr fingerprintの一部と表現しない。Generation変更の観測証拠はRootからEvidenceへの逆参照を作らず、直前の`target_check`またはtargetを変更したStage artifactと、それを指すManifestの`transition_cause_ref`へ保存する。
+Permission setは`input_kind: permission_set`の`input_snapshot`として、permission名、boolean、対象identity、allowed path/ref/source/host、effects、approval scopeをexact `content`へ保存する。Run開始時のdefaultもHumanによる追加・縮小も新しいimmutable snapshotにし、inline値だけを正本にしない。Human承認は先に`human_approved_run_local` input snapshotへ固定し、それを参照するdecisionを保存する。Permission setが変わった場合は新generationを作り、必ず`CONTEXT_RESOLVING`からcontext、review、verification、gateを再評価する。
+
+`target.payload`は`popr_target_fingerprint`、`repository_identity_ref`、`generation`、`transition_reason`だけを持つ。`popr_target_fingerprint`のvalueにpoprのmachine-readable fingerprint objectをそのまま保存し、Harness独自のfieldへflattenまたは変換しない。`repository_identity_ref`はcurrent repository identity inputを参照し、popr結果に存在しないidentityをpopr fingerprintの一部と表現しない。Targetから旧targetへの`previous_target_ref`は持たせず、generation lineageと変更証拠は`target_check`と、それを指すManifestの`transition_cause_ref`だけに保存する。
 
 Target作成時、working tree manifestのうちimmutable Git objectからexact bytesを再取得できない各entryは、targetを確定する前にtarget所有の`mutable_content_snapshots`へ保存する。各entryはrepository相対path、file mode/type、byte length、`content_sha256`、run directory相対の`content_path`を持ち、raw binary bytesは変換せず、symlinkはlink targetのraw bytesを保存する。`content_path`はtarget artifact自身が所有するappend-only attachmentであり、共通artifact refでもEvidence graph nodeでもない。Targetのcanonical JSONがattachment metadataをhashで固定し、validatorはattachment pathがrun directory内にあり、通常fileとして保存され、bytesとlength/hashが一致することを検証する。秘密情報、storage limit、raceなどによりexact bytesを安全に保存または再読込できない場合はtargetを確定せず`EVALUATION_DEFERRED`にする。
 
@@ -234,9 +236,10 @@ Stage artifactの必須payloadは次の通りとする。
 | `change_request` | `requests`。各要素は`review_finding|verification_failure|gate_failure`を識別する |
 | `remediation` | request IDごとの`decision`、`minimal_change`、`planned_paths`、`changed_paths`、条件付き`patch_ref`、`test_plan`、`scope_effect` |
 | `verification` | `commands`、各commandのexit code、開始・終了時刻、`stdout_ref`、`stderr_ref`、`environment_snapshot_ref`、`status`、`unverified_reason`、`mutated_target`、条件付き`mutation_patch_ref` |
-| `gate` | `gate_name`、`declared_version`、`capability_revision`、`content_sha256`、`execution_status`、`decision_status`、`decision_policy`、`acceptance_policy_ref`、`evidence_ref`、`mutated_target` |
+| `gate` | `gate_name`、`declared_version`、`capability_revision`、`content_sha256`、`execution_status`、`decision_status`、`decision_policy`、`acceptance_policy_ref`、`evidence_ref`、`pre_target_check_ref`、`post_target_check_ref`、`mutated_target` |
 | `blind_review` | `blind_result`、`generic_risk_result`、`generic_coverage_status`、`blind_received_artifacts`、`project_results`、`project_coverage_status`、`required_gates`、`independence_check` |
 | `final_review` | `blind_review_ref`、`reconciliation`、`popr_result`、`previous_review_ref`、`remediation_status`、`remediation_refs`、`independence_check` |
+| `external_operation` | `operation_kind: publish_exact_candidate`、`record_kind: intent|observation`、`operation_id`、`execution_key`、`intent_ref`、`expected_repository_identity`、`expected_base_sha`、`expected_head_sha`、`remote_name`、`remote_url`、`base_branch`、`head_branch`、`attempt`、`result`、`external_effect_observed`、`remote_head_sha`、`pr_identifier`、`read_back_evidence_refs`、`started_at`、`observed_at` |
 | `decision` | `decision_kind`と、その判断を再現する観測値、根拠ref、blocker、Human action。Context解決では下記の専用field |
 
 Context解決の`decision.payload`は`decision_kind: context_resolution`、`resolution_mode`、`contract_status`、`contract_ref`、`considered_sources`、`selected_sources`、`authority_decisions`、`resolved_source_of_truth`、`resolved_scope`、`resolved_lenses`、`resolved_commands`、`resolved_gates`、`resolved_risk_triggers`、`resolved_permissions`、`resolved_limits`、`unresolved_inputs`を持つ。各selected sourceとresolved fieldは対応するinput/evidence refとcontent hashを含める。値が空になり得るfieldは、空配列だけでなく`not_required_reason`とその判断根拠refを持つ。候補を無視して空の`unresolved_inputs`を返さず、いずれかのresolved fieldが欠落するdecisionを`context_status: resolved`の根拠にしない。
@@ -248,6 +251,14 @@ Context解決の`decision.payload`は`decision_kind: context_resolution`、`reso
 `final_review.remediation_status`は`required|not_required`のいずれかとする。Current targetのgeneration lineageでoriginを問わず`change_request`が`FIXING`を1回でも発生させた場合は`required`とし、`remediation_refs`へ対応する全remediation artifactを含める。Lineage全体に該当change requestがない場合だけ`not_required`と空の`remediation_refs`を許可する。
 
 `gate.decision_policy`は`native_status|project_or_human`とする。`acceptance_policy_ref`は`native_status`の場合だけnullにでき、`project_or_human`ではgoverningなacceptance policyまたはHuman承認input snapshotへのcommon refを必須にする。その他のnullable refは、各payload contractが状態と不在理由を明示した場合だけnullを許す。
+
+現行`security-audit`は監査reportとscoreを所有するがnativeなPASS/BLOCKEDを持たないため、Harnessは次のexact adapterだけを所有する。Audit前後にsame-target `target_check`を保存し、full reportを`evidence_kind: security_audit_result`のEvidenceへ保存する。そのJCS `content`は`audit_contract_revision`、`audit_status: complete|incomplete`、`rounds_completed`、6カテゴリを固定順で持つ`category_results`、ID/severity/category/location/attack scenario/evidence/remediationを持つ全`findings`、`overall_score`、exact `raw_report`、そのUTF-8 bytesの`raw_report_sha256`を持つ。10 round未完、category coverage不足、report/hash不一致は`audit_status: incomplete`として`execution_status: failed`にし、READYへ使わない。
+
+Security gateは常に`decision_policy: project_or_human`とし、上記Evidence、前後target check、`mutated_target`をgate artifactへ接続する。Base側のgoverning acceptance policyがstable rule IDと、security resultのseverity/count/score/category fieldから`PASS|BLOCKED`を決める完全な規則を持つ場合だけ機械適用できる。Policyがない、不完全、複数解釈、またはHumanのrisk判断が必要なら、監査完了やfinding 0件をPASSへ変換せず`decision_status: HUMAN_DECISION_REQUIRED`にする。Humanが判断する場合も、exact result、対象run/target、受容scopeを固定したHuman inputを`acceptance_policy_ref`へ保存する。`mutated_target: true`または前後check不一致はdecision statusにかかわらずsame-target成功として扱わない。
+
+`external_operation`の`intent`は外部call前に保存し、`intent_ref: null`、`result: pending`、`external_effect_observed: false`、`remote_head_sha: null`、`pr_identifier: null`、空の`read_back_evidence_refs`、`observed_at: null`にする。`operation_id`はexpected repository identity、base/head SHA、remote URL/name、base/head branch、operation kindのJCS valueをSHA-256化した`sha256-<小文字16進64文字>`、`execution_key`はoperation ID、attempt、permission set hashのJCS valueから同形式で作る。Observationは同じoperation/execution keyと先行intent refを持ち、`result: succeeded|not_performed|unknown|ready_invalidated`、外部effectの有無、read-back結果とfull evidence refs、`observed_at`を保存する。Intentを含むManifestとobservationを含むManifestはいずれも`previous_state: READY`、`state: READY`の非状態変更checkpointにする。ただし`ready_invalidated`は続けてinvalidation decisionを保存し`CONTEXT_RESOLVING`へ、`unknown`は自動retryせず`HUMAN_DECISION_REQUIRED`へ遷移する。
+
+Resumeでobservationのないpublish intentを見つけた場合、同じoperationを再実行する前にremote headとopen PRをread-backする。Exact headと一意なPRを確認できれば`succeeded` observationを保存し、未実行を証明できれば同じexecution keyのretry budget内だけ再実行できる。結果不明、複数PR、remote/PR不一致では`unknown`として停止する。これによりPR作成直後のcrashを重複作成で埋めない。
 
 `target_check.status`は、全componentを観測でき差分がなければ`unchanged`、全componentを観測でき差分が1件以上あれば`changed`、1件でも再取得または比較できなければ`unresolved`とする。`unresolved`では`unresolved_components`へcomponent、理由、観測証拠refを記録し、既存artifactを再利用せず`EVALUATION_DEFERRED`にする。`changed`と`unresolved`を相互に丸めない。
 
@@ -283,7 +294,7 @@ Run開始時に次を個別に記録する。
 
 - `read_repository`: 初期true。固定read-only inspectionだけ。
 - `write_run_store`: 初期true。Candidate外のappend-only ledger、transaction、ledger外recovery reportだけ。
-- `read_external_source`: 明示sourceだけtrue。Authorityは別判定。
+- `read_external_source`: 明示source/hostだけtrue。Authorityは別判定。
 - `fetch_remote_refs`: 初期false。CommitまたはPR依頼で明示されたrepository identity、remote、refspec、prune範囲だけtrueにできる。
 - `write_worktree`: 変更依頼かつallowed path/limitがある場合だけtrue。
 - `run_local_commands`: 解決済みexact commandだけtrue。
@@ -291,17 +302,19 @@ Run開始時に次を個別に記録する。
 - `write_external_system`: 初期false。操作単位のHuman承認が必要。
 - `merge`、`deploy_or_production_write`、`accept_risk_or_spec`: 初期false。Harnessはtrueにしない。
 
-この集合全体をpermission set input snapshotとしてManifestの`permission_set_ref`へ固定する。Permissionの追加・縮小、対象identity、allowed path/ref/source、effect、approval scopeの変更はすべてgoverning input変更であり、途中stageへ直接resumeせず`CONTEXT_RESOLVING`へ戻る。単なるservice復旧などpermission setのbytesが不変な場合だけ、記録済みresume stateへ戻れる。
+この集合全体をpermission set input snapshotとしてManifestの`permission_set_ref`へ固定する。Permissionの追加・縮小、対象identity、allowed path/ref/source/host、effects、approval scopeの変更はすべてgoverning input変更であり、途中stageへ直接resumeせず`CONTEXT_RESOLVING`へ戻る。単なるservice復旧などpermission setのbytesが不変な場合だけ、記録済みresume stateへ戻れる。
 
-解決済みcommandはstable ID、exact command、`read_only|local_write|external_write`のdeclared effect、1以上でrun deadline以下のtimeout、required servicesを持つ。Effectと必要permissionを次へ固定する。
+解決済みcommandはstable ID、exact command、declared `effects`、1以上でrun deadline以下のtimeout、required servicesを持つ。`effects`は`repository_read|local_write|repository_write|external_read|external_write`の重複なし配列をこの順に並べる。複合commandは該当effectをすべて持ち、各rowのpermissionとretry制約を累積する。
 
-| Effective effect | 必要permission | Retry条件 |
+| Effect | 必要permissionと固定input | Retry条件 |
 | --- | --- | --- |
-| `read_only` | `read_repository`、`run_local_commands` | 未実行または未完了を証明できるtransient failureだけ1回 |
-| `local_write` | `run_local_commands`。Repository内を変更する場合は`write_worktree`も必要 | 同じ入力から安全に再実行できるdeclared commandだけ1回 |
+| `repository_read` | `read_repository`、`run_local_commands` | 未実行または未完了を証明できるtransient failureだけ1回 |
+| `local_write` | `run_local_commands`、許可されたlocal destination | 同じ入力から安全に再実行できるdeclared commandだけ1回 |
+| `repository_write` | `run_local_commands`、`write_worktree`、allowed paths、file/diff limit | 同じ入力から安全に再実行できるdeclared commandだけ1回 |
+| `external_read` | `run_local_commands`、`read_external_source`、source/host、credential scope、network、paid-call budget | 同じsourceへの未完了transient failureだけ1回 |
 | `external_write` | `run_local_commands`、`write_external_system`、操作対象と単位を記録したHuman decision | Idempotency keyがあるか、read-backで未実行を証明できる場合だけ1回 |
 
-Declared effectはpermissionの下限であり、command自身が権限を弱めるauthorityではない。Orchestratorは実行tool metadata、network access、filesystem/endpointのwrite先を独立に分類し、declared effectと観測分類のうち強い方をeffective effectにする。分類不能、動的なendpoint/write先、coverage upload、外部DB変更、Issue/SaaS更新は`external_write`としてHuman判断へ送り、deployまたはproduction writeを含むcommandはHarness内で実行しない。必要permissionが1つでもfalse、Human decisionの対象/単位が不一致、またはcontext resolutionにないcommandなら実行せずblockerへ遷移する。Context前の固定bootstrap inspectionはproject commandではなく`read_repository`だけで実行する。
+Declared effectsはpermissionの下限であり、command自身が権限を弱めるauthorityではない。Orchestratorは実行tool metadata、network access、filesystem/endpointのread/write先を独立に分類し、観測または可能なeffectをdeclared setへ加えた累積effective setで判定する。Repository writeとexternal writeを併せ持つcommandは両rowのpermissionを必要とし、`write_worktree: false`、path/limit外、またはHuman decision不一致なら実行しない。Network endpoint、credential、paid cost、local/repository write先、effect集合のいずれかを実行前に一意に分類できないcommandは権限を昇格して推測実行せず停止する。Coverage upload、外部DB変更、Issue/SaaS更新は`external_write`、認証付きAPIやpackage auditのnetwork readは`external_read`を含める。Deployまたはproduction writeを含むcommandはHarness内で実行しない。Context resolutionにないcommandも実行しない。Context前の固定bootstrap inspectionはproject commandではなく`read_repository`だけで実行する。
 
 Limitsには`max_remediation_cycles: 2`、`max_same_request_attempts: 2`、`max_transient_stage_retries: 1`、required deadline、token meter値または`unsupported`、paid external call budget、allowed write paths、max changed files、max diff linesを含める。
 
@@ -327,7 +340,7 @@ Fetchのtimeoutまたはtransient failureでは、許可したrefをread-backし
 8. `GATES_PENDING`: Docs、security、project gateを同じcandidate SHAで実行する。
 9. `REREVIEW_PENDING`: Fresh Final reviewerのpoprとgeneric comprehensive blind scan、必要なproject lens、reconciliationを行う。
 10. READY条件を全て満たせば`READY`を記録する。
-11. PR提出が許可されていれば、`fetch_remote_refs`、push、PR permissionを確認して`publish_exact_candidate`だけを実行する。Defaultのmonolithic `create-pr`を再実行しない。
+11. PR提出が許可されていれば、`fetch_remote_refs`、push、PR permissionを確認し、publish intent checkpointを保存してから`publish_exact_candidate`だけを実行する。Read-back後にobservation checkpointを保存し、Defaultのmonolithic `create-pr`を再実行しない。
 12. Humanがreviewしてmergeする。
 
 Targetを変更したstageは`TARGET_MUTATED`相当の結果を返し、影響するartifactをinvalidateする。Publish前後にbase/head/input driftを検出した場合、create-prはphase result `READY_INVALIDATED`を返す。Orchestratorはexpected/observed値と外部操作の有無を持つ`decision_kind: ready_invalidation`を保存し、そのdecisionをtransition causeにしてManifest stateを`READY -> CONTEXT_RESOLVING`へ遷移させる。新targetのverification、gate、Final reviewが終わるまでpublishを再開しない。
@@ -365,7 +378,7 @@ Finding 0件、A grade、100%の確信はREADY条件にしない。MinorとNit�
 - Retry、cycle、deadline、token、cost、diff上限へ到達: `BUDGET_EXHAUSTED`。
 - Required gateが未実行、実行失敗、利用不能、別target、または修正可能なfailureへ分類できない: `EVALUATION_DEFERRED`。信頼済み期待値へ結び付く修正可能なfailureは`CHANGES_REQUESTED`へ進む。
 
-Blockerからは記録されたresume stateへだけ戻る。`EVALUATION_DEFERRED`は`CONTEXT_RESOLVING`、verification blockerは停止したverification state、independence blockerは`REREVIEW_PENDING`を再開候補にするが、次の再検証に成功するまで遷移しない。`BUDGET_EXHAUSTED`は現在runのterminal stateであり、Manifestは`resume_state: null`と`blocker.required_human_action: start_new_run`を持ち、同じrunのlimitを増やしてresumeしない。Humanが継続を承認した場合は、新しいlimit/permission input、prior run ID、未解決requestとartifact refsをintakeに持つ別`run_id`を開始し、旧runへdecisionまたはManifestを追記しない。
+Blockerからは記録されたresume stateへだけ戻る。`EVALUATION_DEFERRED`は`CONTEXT_RESOLVING`、verification blockerは停止したverification state、independence blockerは`REREVIEW_PENDING`を再開候補にするが、次の再検証に成功するまで遷移しない。`BUDGET_EXHAUSTED`は現在runのterminal stateであり、Manifestは`resume_state: null`と`blocker.required_human_action: start_new_run`を持ち、同じrunのlimitを増やしてresumeしない。Humanが継続を承認した場合は、新しいlimit/permission inputとself-containedな`prior_run_handoff` input snapshotを持つ別`run_id`を開始する。旧runのcommon refを新runへ保存せず、旧runへdecisionまたはManifestを追記しない。
 
 Resumeでは次を順に行う。
 

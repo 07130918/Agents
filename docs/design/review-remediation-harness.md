@@ -294,49 +294,11 @@ Working tree manifestのtracked/untracked file追加、変更、削除、file mo
 
 ### 8.5 Required gate result
 
-各`required_gates`は、gate名、発火理由、許容するdecision status、target refを持つ。同名gateでもtarget refが違えば未実行として扱う。
+各`required_gates`はgate名、発火理由、許容decision status、target refを持つ。同名gateでもtarget refが違えば未実行として扱う。Gate artifactのexact payload、前後target check、native statusとproject/Human policyの分離、security-audit adapterはshared referenceを唯一の実行正本とする。
 
-```json
-{
-  "name": "<stable_gate_name>",
-  "reason": "<risk_or_contract_trigger>",
-  "acceptable_decision_statuses": ["PASS"],
-  "target_ref": {
-    "artifact_id": "<target_artifact_id>",
-    "artifact_path": "<path>",
-    "sha256": "<hash>"
-  }
-}
-```
+`sync-docs-code`の`decision_status`と`mutated_target`は直交する。`UPDATED`は必要なdocumentation更新がrunまたはcandidateに含まれるnative status、`mutated_target`は当該gate実行がtarget contentを実際に変更したかを表す。Docs gateは`PASS|UPDATED`を許容できるが、`mutated_target: true`なら新しいtargetを固定してverificationとrequired gateを再実行する。
 
-`sync-docs-code`の`decision_status`と`mutated_target`は直交する。`UPDATED`は必要なdocumentation更新がrunまたはcandidateに含まれるnative status、`mutated_target`は当該gate実行がtarget contentを実際に変更したかを表す。`UPDATED`かつ`mutated_target: true`なら新しいtarget artifactを作成し、target依存のverificationとrequired gateを再実行して変更前targetの結果を流用しない。`UPDATED`かつ`mutated_target: false`ならsame-targetの成功statusとして扱える。
-
-Docs gateの`acceptable_decision_statuses`は`["PASS", "UPDATED"]`、それ以外のgateは各正本または信頼済みacceptance policyが許可したstatusだけとする。許容statusでも`mutated_target: true`のartifactはsame-target成功根拠にせず、target再固定を優先する。
-
-Gate artifactは実行成否と採用可否を分ける。
-
-```json
-{
-  "gate_name": "<stable_gate_name>",
-  "declared_version": null,
-  "capability_revision": "sha256:<gate_contract_content_sha256>",
-  "content_sha256": "<gate_contract_content_sha256>",
-  "execution_status": "completed|failed|unavailable",
-  "decision_status": "PASS|UPDATED|BLOCKED|HUMAN_DECISION_REQUIRED",
-  "decision_policy": "native_status|project_or_human",
-  "acceptance_policy_ref": null,
-  "evidence_ref": {
-    "artifact_id": "<evidence_artifact_id>",
-    "artifact_path": "<run_directory_relative_path>",
-    "sha256": "<artifact_content_hash>"
-  },
-  "mutated_target": false
-}
-```
-
-`sync-docs-code`はnativeな`PASS`、`UPDATED`、`BLOCKED`を`decision_status`へ使う。`security-audit`の現行契約は監査手順とreportを定義するが、Harness向けの一律なPASS thresholdを定義していない。したがって監査が完了したことだけをPASSへ変換しない。Base側policyにhash付きでsnapshot化できる監査結果の採用基準がある場合はその正本に従い、ない場合は`HUMAN_DECISION_REQUIRED`とする。Harnessはsecurityのscoringまたはrisk基準を新設しない。
-
-`acceptance_policy_ref`は信頼済みpolicyの`input_snapshot`、`evidence_ref`はgateのraw reportを持つ`evidence`だけを参照する。
+`security-audit`は監査reportとscoreを所有し、Harnessはseverity thresholdやrisk基準を新設しない。監査結果を機械的に採用できるのはbase側governing policyが完全な判定規則を持つ場合だけとし、それ以外はHuman判断へ送る。監査完了、finding 0件、scoreだけを自動PASSへ読み替えない。
 
 ### 8.6 Targetとinputのconsistency checkpoint
 
@@ -352,7 +314,7 @@ Orchestratorはtarget依存stageの開始前と完了後、READY判定前、base
 - skill/referenceのcapability revisionとcontent hash
 - project rulesのsource、path、blob hash
 
-`target_check`は保存済みtargetと再取得値を比較する。全componentを観測でき差分がなければ`unchanged`、全componentを観測でき差分があれば`changed`、1件でも再取得または比較できなければ`unresolved`とする。`unresolved`ではcomponent、理由、観測証拠refを記録し、`changed`へ丸めず旧artifactを再利用しない。Target依存stageが`local_write`を実行した場合も必ずcheckする。Tracked content、対象に含むuntracked content、file modeが変わった場合は、そのstageの成功結果をREADYへ使わない。Pre-commit `VERIFYING`で許可された変更なら新しいworking-tree targetを固定して`VERIFYING`を再実行し、`PRECOMMIT_DOCS_PENDING`を飛ばさない。Candidate commit後の`TARGET_VERIFYING`または`GATES_PENDING`で許可された変更なら`CANDIDATE_COMMIT_PENDING`へ戻して新commitを固定する。想定外の変更または`unresolved`は`EVALUATION_DEFERRED`にする。
+`target_check`は保存済みtargetと再取得値を比較する。全componentを観測でき差分がなければ`unchanged`、全componentを観測でき差分があれば`changed`、1件でも再取得または比較できなければ`unresolved`とする。`unresolved`ではcomponent、理由、観測証拠refを記録し、`changed`へ丸めず旧artifactを再利用しない。Target依存stageが`local_write|repository_write`を実行した場合も必ずcheckする。Tracked content、対象に含むuntracked content、file modeが変わった場合は、そのstageの成功結果をREADYへ使わない。Pre-commit `VERIFYING`で許可された変更なら新しいworking-tree targetを固定して`VERIFYING`を再実行し、`PRECOMMIT_DOCS_PENDING`を飛ばさない。Candidate commit後の`TARGET_VERIFYING`または`GATES_PENDING`で許可された変更なら`CANDIDATE_COMMIT_PENDING`へ戻して新commitを固定する。想定外の変更または`unresolved`は`EVALUATION_DEFERRED`にする。
 
 PR提出前は`git fetch`後のbase ref SHAとcandidate targetのbase SHAも比較する。Base、head、scope、capability revision、project rules、input refsのいずれかが変わればREADYを破棄し、`CONTEXT_RESOLVING`からreview、verification、gate、Final reviewをやり直す。PR作成後はGitHub metadataのexact base/head SHAを再確認し、不一致ならPRが存在していてもREADYと表現しない。
 
@@ -382,11 +344,11 @@ Repository baselineは、少なくともrepository identity、Issueまたは明�
 - Personal Harness contract、Issueまたは明示scope、targetをimmutableなinputとして固定できる
 - Source of truthと対象pathに適用されるrepository ruleを列挙でき、materialな矛盾がない
 - 変更scopeに必要なreview lensをpersonal review contractまたは信頼済みrepository ruleから決定できる
-- 必須verificationをexact commandへ一意に結び付け、effect、timeout、required serviceを保守的に分類できる
+- 必須verificationをexact commandへ一意に結び付け、累積effects、timeout、required serviceを保守的に分類できる
 - Docs、security、opsを含むrequired gateと採用基準を決定できる
 - 自動修正に必要なpermission、allowed path、diff/cycle/cost limitを固定できる
 
-Standard resolverは名前の類似だけでcommandを選ばず、README全体から任意の手順を正本へ昇格させない。複数の`test`候補、scopeとの対応不明、interactive command、dependency install、service起動、deploy、migration、外部writeを含む可能性がありeffectを分類できない場合は実行しない。解決できなかったfieldを`unresolved_inputs`へ列挙し、仕様なら`HUMAN_DECISION_REQUIRED`、verification/gate capabilityまたはrequired serviceなら`EVALUATION_DEFERRED`へ遷移する。`VERIFICATION_BLOCKED`はcontextとInitial reviewが完了し、`VERIFYING`または`TARGET_VERIFYING`で実際のverificationを開始した後にだけ使う。Harness専用fileの有無を探索またはblocker理由にしない。
+Standard resolverは名前の類似だけでcommandを選ばず、README全体から任意の手順を正本へ昇格させない。複数の`test`候補、scopeとの対応不明、interactive command、dependency install、service起動、deploy、migration、external read/writeを含む可能性がありeffectsを分類できない場合は実行しない。解決できなかったfieldを`unresolved_inputs`へ列挙し、仕様なら`HUMAN_DECISION_REQUIRED`、verification/gate capabilityまたはrequired serviceなら`EVALUATION_DEFERRED`へ遷移する。`VERIFICATION_BLOCKED`はcontextとInitial reviewが完了し、`VERIFYING`または`TARGET_VERIFYING`で実際のverificationを開始した後にだけ使う。Harness専用fileの有無を探索またはblocker理由にしない。
 
 すべてのrunで、Initial/Final reviewerはpoprに加えてpersonal `pr-risk-reviewer`または同じsemantic contractのgeneric comprehensive reviewを実行する。最低限、correctnessと要件適合、認証・認可と情報漏えい、data integrityとmigration、並行性、後方互換性、error handlingと外部失敗、実害のあるperformance riskを変更scopeに応じて確認し、観点別のreviewed、not_applicable、unreviewedとfinding candidateの根拠を返す。Generic reviewer独自のgradeやmerge判断は採用せず、poprが共通schemaとseverityへ統合する。Security gateやproject固有lensの代替にはしない。Capability revisionを固定できない、実行不能、またはrequired観点にunreviewedが残る場合はcoverage不足として停止する。
 
@@ -398,7 +360,7 @@ Personal Harness wrapper/referenceは実際に読み込んだlocal path、contra
 
 Project入力の例外はHumanが内容と適用runを明示承認したrun-local snapshotだけとする。この場合はsnapshotへHuman producerとapproval scopeを記録し、対応するdecision artifactからそのsnapshotを参照する。Implementerまたはcandidate contentだけを根拠に承認済みと扱わない。External recordは9.1のauthority判定に従い、governingだけを`external_authoritative`、その他を`external_observed`としてsource revisionとcontent hashを固定する。
 
-Resolved verification commandはstableなID、exact command、effect、必須になる根拠、timeout、required servicesを持つ。Exact effect→permission mapping、独立した保守的分類、retry条件、分類不能時のfail-closed規則は`shared/references/review-remediation-harness.md`を唯一の実行正本とする。本設計では、commandの自己申告でpermissionを弱めず、context resolutionにないcommandを推測実行せず、deploy/production writeをHarnessのscope外に保つinvariantだけを所有する。自然言語の`required_when`を実行する汎用condition languageは設けない。
+Resolved verification commandはstableなID、exact command、累積effects、必須になる根拠、timeout、required servicesを持つ。Exact effects→permission mapping、独立した保守的分類、retry条件、分類不能時のfail-closed規則は`shared/references/review-remediation-harness.md`を唯一の実行正本とする。本設計では、commandの自己申告でpermissionを弱めず、context resolutionにないcommandを推測実行せず、deploy/production writeをHarnessのscope外に保つinvariantだけを所有する。自然言語の`required_when`を実行する汎用condition languageは設けない。
 
 ## 10. Permissionと外部副作用
 
@@ -408,10 +370,10 @@ Run開始時に次のpermissionを個別に記録する。
 | --- | --- | --- | --- |
 | `read_repository` | true | reviewer、tester、gate、orchestrator | Orchestratorはcontext解決前に9.1の固定bootstrap inspectionを実行可。対象scope外への探索は正本確認に必要な最小範囲だけ |
 | `write_run_store` | true | orchestrator | Candidate worktree外のappend-only storeだけ。各roleのresultをruntime metadata付きで保存する |
-| `read_external_source` | 明示されたIssue/PR/source identifierだけtrue | orchestrator | `allowed_source_identifiers`、host、credential scope、network、paid-call costを固定。Read-only APIだけを許可し、規範authorityは与えない |
+| `read_external_source` | 明示されたIssue/PR/source identifier/hostだけtrue | orchestrator、tester、CI、gate | `allowed_source_identifiers`、host、credential scope、network、paid-call costを固定。Read-only APIだけを許可し、規範authorityは与えない |
 | `fetch_remote_refs` | false | orchestrator、create-pr phase担当 | CommitまたはPR依頼で明示されたrepository identity、remote、refspec、prune範囲だけtrueにできる。Network readとGit object database、fetch metadata、許可済みremote-tracking refの更新だけを許可 |
-| `write_worktree` | 変更依頼時だけtrue | implementer、更新を許可されたdocs gate | Reviewerは常にfalse |
-| `run_local_commands` | 解決済みproject contextの宣言分だけtrue | tester、CI、gate | effectが不明なら停止 |
+| `write_worktree` | 変更依頼時だけtrue | implementer、更新を許可されたtester/docs/gate | Reviewerは常にfalse。Resolved commandのallowed pathとfile/diff limitを超えない |
+| `run_local_commands` | 解決済みproject contextの宣言分だけtrue | tester、CI、gate | 累積effectsが不明なら停止 |
 | `commit` | false | create-pr contractに従う提出担当 | 明示的なcommitまたはPR依頼でtrueにできる |
 | `push` | false | create-pr contractに従う提出担当 | PR依頼でtrueにできる |
 | `create_or_update_pr` | false | create-pr contractに従う提出担当 | PR依頼でtrueにできる |
@@ -494,7 +456,9 @@ stateDiagram-v2
     REREVIEW_PENDING --> EVALUATION_DEFERRED: coverage不足
     REREVIEW_PENDING --> HUMAN_DECISION_REQUIRED: materialな仕様矛盾
     REREVIEW_PENDING --> BUDGET_EXHAUSTED: run-wide budget guard
+    READY --> READY: publish intent/result checkpoint
     READY --> CONTEXT_RESOLVING: publish前後のtargetまたはinput不一致
+    READY --> HUMAN_DECISION_REQUIRED: publish結果をread-backで確定不能
     EVALUATION_DEFERRED --> CONTEXT_RESOLVING: 不足input、capability、targetを補完
     HUMAN_DECISION_REQUIRED --> CONTEXT_RESOLVING: decisionを新input/permission snapshotへ固定
     SCOPE_CHANGE_REQUIRED --> CONTEXT_RESOLVING: Humanが同一Issueへのscope変更を承認
@@ -718,7 +682,7 @@ Issue #39ではproject-local distributionを不採用とし、`shared/references
 7. 同phaseが`create-pr` contractに従うlocal candidate commitを作り、exact SHAを返す。Commit権限がなければHumanへhandoffする。
 8. Candidate SHAに対してrequired verification、docs/security gateを実行する。
 9. 修正を担当していないFinal reviewerと必要なProject reviewerが、candidate SHAでrequired project lensを含むblind scanを実行する。新しいrequired gateがあれば同じtargetで完了し、project resultとcoverageを固定してからreconciliationを行う。
-10. READY後、`publish_exact_candidate`がbase refをfetchし、candidate targetのbase/headと一致することを確認してから未実行のpushとPR作成だけを行う。PR metadataのexact base/head SHAが変わっていればREADYを破棄する。
+10. READY後、Orchestratorがpublish intentをappend-only保存し、`publish_exact_candidate`がbase refをfetchしてcandidate targetのbase/headと一致することを確認してから未実行のpushとPR作成だけを行う。Read-backした結果をobservationとして保存し、PR metadataのexact base/head SHAが変わっていればREADYを破棄する。Intent保存後にcrashした場合は同じ操作を再実行する前にremoteとPRをread-backする。
 11. Humanがreviewし、mergeする。
 
 Docs gateをFinal reviewより前に置くのは、`mutated_target: true`がreview対象を変えるためである。Targetを変更し得るgateをFinal review後に実行すると独立reviewが古いSHAへ結び付く。Candidate SHAでdocs gateが許容statusかつ`mutated_target: false`になった後にFinal reviewを行うことで、codeとdocumentationの最終snapshotを同じ対象として確認する。
