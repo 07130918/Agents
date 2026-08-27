@@ -106,7 +106,7 @@ Canonical run artifactはJSONとし、candidate worktree外のrun storeへappend
 ```json
 {
   "schema_version": "1.0",
-  "artifact_type": "input_snapshot|target|evidence|review|change_request|remediation|verification|gate|blind_review|final_review|decision|run_manifest",
+  "artifact_type": "input_snapshot|target|evidence|target_check|review|change_request|remediation|verification|gate|blind_review|final_review|decision|run_manifest",
   "artifact_id": "<run_id>/<stage>/<monotonic_sequence>",
   "run_id": "<stable_run_id>",
   "stage": "<state_name>",
@@ -134,6 +134,31 @@ Canonical run artifactはJSONとし、candidate worktree外のrun storeへappend
 Artifact参照はRoot、Evidence、Stage、Manifestの順に限定する。後順位から前順位、同一artifact、自分を含むmanifest、未確定artifactを参照しない。保存前に参照先の存在、hash、同じrun、許可されたtarget generationを確認する。違反時はartifactをREADY根拠へ使わず`EVALUATION_DEFERRED`にする。
 
 Target、Issue input、scope、permission、project rule、contract hashが変わった場合は新しいgenerationを作る。旧verification、gate、reviewを成功根拠へ流用しない。Historical artifactはreconciliationの参照だけに使える。
+
+### 必須payloadとcheckpoint
+
+`input_snapshot.payload`は`input_kind`、`trust_source`、`source_identifier`、`source_sha`、`source_revision`、`content_sha256`、秘密情報を除いたexact `content`を持つ。External recordには`authority_status`と`authority_basis`も必要である。Portable contract、profile、project ruleはbase SHAとGit blob hashも記録する。
+
+`target.payload`はpoprのtarget fingerprintを正本とし、repository identity、target source、exact base ref/SHA、head SHA、working tree status/mode/manifest、対象ならindex diff hash、PR remote、include/exclude scope、実際に使ったskill version、project ruleのsource/path/blob hashを持つ。Harness metadataとして`generation`、`previous_target_ref`、`transition_reason`を追加するが、popr fingerprintの意味は変更しない。
+
+Stage artifactの必須payloadは次の通りとする。
+
+| Artifact | 必須payload |
+| --- | --- |
+| `target_check` | `expected_target_ref`、`status: unchanged|changed`、`observed_components`、`changed_components`、`checked_at` |
+| `evidence` | `evidence_kind`、`media_type`、`content_sha256`、`content_path`またはinline `content`、`redactions` |
+| `review` | `popr_result`、`project_results`、`blocking_finding_ids`、`required_gates`、`coverage_status` |
+| `change_request` | `requests`。各要素は`review_finding|verification_failure|gate_failure`を識別する |
+| `remediation` | request IDごとの`decision`、`minimal_change`、`planned_paths`、`test_plan`、`scope_effect` |
+| `verification` | `commands`、各commandのexit codeと開始・終了時刻、`environment_snapshot_ref`、`output_refs`、`status`、`unverified_reason`、`mutated_target` |
+| `gate` | `gate_name`、`contract_version`、`execution_status`、`decision_status`、`decision_policy`、`acceptance_policy_ref`、`evidence_ref`、`mutated_target` |
+| `blind_review` | `blind_result`、`blind_received_artifacts`、`project_results`、`project_coverage_status`、`required_gates`、`independence_check` |
+| `final_review` | `blind_review_ref`、`reconciliation`、`popr_result`、`previous_review_ref`、`remediation_status`、`remediation_refs`、`independence_check` |
+| `decision` | `decision_kind`と、その判断を再現する観測値、根拠ref、blocker、Human action |
+
+`run_manifest.payload`は`revision`、`previous_manifest_ref`、`state`、`previous_state`、`transition_id`、`transition_cause_ref`、`current_target_generation`、`current_target_ref`、`input_refs`、`artifact_refs`と各refの`current|historical|invalidated`、`permissions`、`limits`、`counters`、`context_status`、`resolution_mode`、`profile_status`、`last_completed_stage`、`resume_state`、`blocker`を持つ。最初のrevisionだけ`previous_manifest_ref: null`を許し、以後は直前manifestのpathとhashを参照する。Issue起点では`issue_ref`、明示scope起点では`scope_input_ref`も必須とする。各state遷移、target generation変更、stage完了、blocker、外部副作用の前後で新revisionをappend-only保存する。
+
+Orchestratorはtarget依存stageの開始前と完了後、外部writeの前後、resume、Final review開始前、READY判定前に`target_check`を保存する。Publish前はfetch後のbase refも、PR作成後はremoteのexact base/headも照合する。Checkは保存済みtargetだけでなく、input refs、contract/profile/project rule hash、external source revisionも現在値と比較する。差分または再取得不能があれば旧artifactをREADY根拠へ使わず、該当blockerを記録する。
 
 ## Roleを分離する
 
@@ -213,7 +238,17 @@ Finding 0件、A grade、100%の確信はREADY条件にしない。MinorとNit�
 - Retry、cycle、deadline、token、cost、diff上限へ到達: `BUDGET_EXHAUSTED`。
 - Required gateが未実行、失敗、利用不能、別target: `EVALUATION_DEFERRED`。
 
-Blockerからは記録されたresume stateへだけ戻る。`EVALUATION_DEFERRED`は`CONTEXT_RESOLVING`、verification blockerは停止したverification state、independence blockerは`REREVIEW_PENDING`から再開する。Limitを黙って増やさず、変更にはHuman decision artifactを必要とする。
+Blockerからは記録されたresume stateへだけ戻る。`EVALUATION_DEFERRED`は`CONTEXT_RESOLVING`、verification blockerは停止したverification state、independence blockerは`REREVIEW_PENDING`を再開候補にするが、次の再検証に成功するまで遷移しない。Limitを黙って増やさず、変更にはHuman decision artifactを必要とする。
+
+Resumeでは次を順に行う。
+
+1. 最大revisionのmanifestを読み、content hash、`previous_manifest_ref`のchain、transition、counter、全artifact refのhashを検証する。
+2. Repository identity、base ref/SHA、branch、head SHA、working tree status/mode/manifestをread-onlyで再取得する。
+3. External authoritative inputをsourceから再取得し、revisionとcontent hashを照合する。権限または安定したrevisionがなく再検証できなければ成功扱いしない。
+4. 新しい`target_check`を現在のtarget、input、contract/profile/project rule、external revisionへ接続して保存する。
+5. Manifestのcurrent target generationと再取得値を比較し、driftがあれば新target/input snapshotを作り、依存artifactを`invalidated`として`CONTEXT_RESOLVING`へ戻す。
+6. Driftがない場合だけ、同じtarget generation、input refs、contract hashを持つ完了artifactを再利用する。外部副作用もbranch、commit、PRの実状態をread-onlyで照合する。
+7. `last_completed_stage`を単独cursorにせず、manifest stateと確定済みtransitionから状態機械を再評価する。検証不能、manifest chain破損、曖昧な実状態は`EVALUATION_DEFERRED`または`HUMAN_DECISION_REQUIRED`にする。
 
 ## Fallback
 

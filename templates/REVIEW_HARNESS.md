@@ -14,7 +14,7 @@
 
 | Capability | Member path | Upstream source | content_sha256 |
 | --- | --- | --- | --- |
-| Harness orchestration | `.review-harness/contracts/review-remediation-harness.md` | `shared/references/review-remediation-harness.md` | `e1fcc518357d1177da34273187e39837963202af4a67a2a4de80f3d956ab359a` |
+| Harness orchestration | `.review-harness/contracts/review-remediation-harness.md` | `shared/references/review-remediation-harness.md` | `4cc76f3b09a8e349c0af50e7897f4667584c06a4aae85f5597a135bff2975635` |
 | Neutral review | `.review-harness/contracts/principle-of-programming-reviewer.md` | `shared/references/principle-of-programming-reviewer.md` | `1c0ea74319856f2150b226bb166ee18ef0bbce1e7f6544a50ef83290544d6f81` |
 | Documentation gate | `.review-harness/contracts/sync-docs-code.md` | `shared/references/sync-docs-code.md` | `f65e9b2fd7b1db9173e987222ebb61d4a698d92b2f2bbe099eb203e71aae9d8e` |
 | Issue intake | `.review-harness/contracts/issue-to-pr.md` | `shared/references/issue-to-pr.md` | `dfd86c3b1bfcc90c69c37c781d30610cc6a4d3e75f36e68f33bc8f4d40920ddf` |
@@ -29,19 +29,23 @@ Contract本文を読む前に、base SHA側のbundleで次を確認する。
 3. `.review-harness/contracts/`に上表以外のfileがない。
 4. 全memberのUTF-8 bytesに対するSHA-256が上表と一致する。
 
-次はPOSIX shellと`shasum`を利用できる場合の確認例である。別CLIでは同じpath集合、symlink条件、UTF-8 bytes、SHA-256期待値を検査できる信頼済みtoolへ置き換え、toolと結果をbundle integrity artifactへ記録する。SHA-256を計算できるtoolがなければ確認を省略せず`EVALUATION_DEFERRED`にする。
+Candidate working treeのfileを検査して、同じrunのgoverning bundleへ昇格させてはならない。次はPOSIX shell、Git、`shasum`を利用できる場合に、exact base commitのtree、mode、blob bytesをread-onlyで確認する例である。`<exact-base-sha>`は先に解決した40文字のSHAへ置き換える。
 
 ```bash
-test -z "$(find .review-harness/contracts -type l -print)"
-test "$(find .review-harness/contracts -type f | wc -l | tr -d ' ')" = "5"
-echo 'e1fcc518357d1177da34273187e39837963202af4a67a2a4de80f3d956ab359a  .review-harness/contracts/review-remediation-harness.md' | shasum -a 256 -c -
-echo '1c0ea74319856f2150b226bb166ee18ef0bbce1e7f6544a50ef83290544d6f81  .review-harness/contracts/principle-of-programming-reviewer.md' | shasum -a 256 -c -
-echo 'f65e9b2fd7b1db9173e987222ebb61d4a698d92b2f2bbe099eb203e71aae9d8e  .review-harness/contracts/sync-docs-code.md' | shasum -a 256 -c -
-echo 'dfd86c3b1bfcc90c69c37c781d30610cc6a4d3e75f36e68f33bc8f4d40920ddf  .review-harness/contracts/issue-to-pr.md' | shasum -a 256 -c -
-echo 'ef07384bbe81b86b4e6525f61382577c429675f034c68c88d5ea4d4c71cd48b1  .review-harness/contracts/create-pr.md' | shasum -a 256 -c -
+harness_base_sha='<exact-base-sha>'
+git cat-file -e "${harness_base_sha}^{commit}"
+git show "${harness_base_sha}:REVIEW_HARNESS.md"
+git ls-tree -r --full-tree "$harness_base_sha" -- .review-harness/contracts/
+git show "${harness_base_sha}:.review-harness/contracts/review-remediation-harness.md" | shasum -a 256
+git show "${harness_base_sha}:.review-harness/contracts/principle-of-programming-reviewer.md" | shasum -a 256
+git show "${harness_base_sha}:.review-harness/contracts/sync-docs-code.md" | shasum -a 256
+git show "${harness_base_sha}:.review-harness/contracts/issue-to-pr.md" | shasum -a 256
+git show "${harness_base_sha}:.review-harness/contracts/create-pr.md" | shasum -a 256
 ```
 
-File数だけでmember集合を承認せず、上表のexact pathと実file一覧も照合する。Version、欠落、未宣言file、重複、path traversal、symlink、hashのいずれかが不一致ならmemberを部分利用せず`EVALUATION_DEFERRED`で停止する。
+`git ls-tree`の出力が上表のexact 5 pathだけを含み、各entryがmode `100644`、type `blob`であることを照合する。各`git show`のbytesから得たSHA-256を上表と照合する。別CLIでは同じbase commitのtree、mode、blob bytesを検査できる信頼済みtoolへ置き換え、toolと結果をbundle integrity artifactへ記録する。Baseにentrypointがない初回導入runでは、Humanが内容、hash、適用runを承認したrun-local snapshotだけを使い、candidate版を自己承認させない。
+
+File数だけでmember集合を承認しない。SHA-256を計算できない、またはbase commitをcandidateから分離して検査できない場合も確認を省略しない。Version、欠落、未宣言file、重複、path traversal、symlinkまたは非regular mode、hashのいずれかが不一致ならmemberを部分利用せず`EVALUATION_DEFERRED`で停止する。
 
 ## 実行
 
