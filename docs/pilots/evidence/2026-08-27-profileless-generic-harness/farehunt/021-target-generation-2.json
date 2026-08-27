@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0",
+  "artifact_type": "target",
+  "artifact_id": "agents-42-farehunt-20260827T065752Z/FIXING/021",
+  "run_id": "agents-42-farehunt-20260827T065752Z",
+  "stage": "FIXING",
+  "target_ref": null,
+  "producer": {"role": "orchestrator", "instance_id": "/root", "context_id": "/root", "parent_context_id": null, "fresh_context": false, "received_artifacts": ["018-verification-attempt-1.json", "019-verification-change-request.json", "020-remediation-plan-attempt-2.json", "016-target-generation-1.json"]},
+  "input_refs": ["001-personal-contract.json", "002-capabilities.json", "003-issue-42.json", "004-project-context.json", "019-verification-change-request.json", "020-remediation-plan-attempt-2.json"],
+  "created_at": "2026-08-27T07:10:26Z",
+  "payload": {
+    "repository_identity": "github.com/07130918/FareHunt",
+    "target_source": "historical commit range plus remediation working tree",
+    "base_ref": "e6368a840ec983055b7fb218c33760f74abc75be^",
+    "base_sha": "311d05e7a422c77f48baffcbfaebcd2f07f17c2b",
+    "head_sha": "e6368a840ec983055b7fb218c33760f74abc75be",
+    "working_tree": {
+      "status": "dirty",
+      "mode": "include",
+      "manifest": [
+        {"path": "src/components/search/ResultsContent.test.tsx", "mode": "100644", "type": "regular", "content_hash": "3f0d585e4439ff7f16548fb37b4501a141132117"},
+        {"path": "src/components/shared/FlightSearchForm.tsx", "mode": "100644", "type": "regular", "content_hash": "5187850e36aceeb42712e9f81a9ba7563cc677d1"},
+        {"path": "src/components/shared/FlightSearchForm.test.tsx", "mode": "100644", "type": "regular", "content_hash": "cfd00d730ed30ea52bd78f3b44c1831f7dc1ac87"}
+      ],
+      "diff_sha256": "c2a234aabdb62ec9a57deb6353aad02922e6536062631379f828463d72b5d176"
+    },
+    "pr_remote": null,
+    "include_scope": [".gitignore", "package-lock.json", "package.json", "src/app/providers.tsx", "src/components/search/LoadingState.tsx", "src/components/search/ResultsContent.tsx", "src/components/search/ResultsContent.test.tsx", "src/components/search/tabs/DetailedOptionsTab.tsx", "src/components/search/tabs/FlightOptionsTab.tsx", "src/components/search/tabs/ProTipsTab.tsx", "src/components/shared/FlightSearchForm.tsx", "src/components/shared/FlightSearchForm.test.tsx"],
+    "exclude_scope": [],
+    "committed_diff_sha256": "4711462df538d4b7bfec87903e31ad73f97cce297e20492d64173684a53c44d1",
+    "project_rules": {"source": "base:311d05e7a422c77f48baffcbfaebcd2f07f17c2b", "path": "CLAUDE.md", "blob_hash": "76c5dba1c971de2a66e98ed7030208c786a289e6"},
+    "generation": 2,
+    "previous_target_ref": {"path": "016-target-generation-1.json", "sha256": "3cb06d378533345206a432a3c995913eed9caa4164f5f63e6ea41e9f70d0ea64"},
+    "transition_reason": "Verification failure remediation changed two allowed paths"
+  }
+}

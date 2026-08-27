@@ -1,0 +1,198 @@
+diff --git a/src/components/search/ResultsContent.test.tsx b/src/components/search/ResultsContent.test.tsx
+index c053253..3f0d585 100644
+--- a/src/components/search/ResultsContent.test.tsx
++++ b/src/components/search/ResultsContent.test.tsx
+@@ -119 +119 @@ describe("ResultsContent", () => {
+-            expect(screen.getByText(/🔄 マルチストップルート/)).toBeInTheDocument();
++            expect(screen.getByRole("heading", { name: "マルチストップルート" })).toBeInTheDocument();
+@@ -129 +129 @@ describe("ResultsContent", () => {
+-            expect(screen.getByText(/🎯 Hidden City Tickets/)).toBeInTheDocument();
++            expect(screen.getByRole("heading", { name: "Hidden City Tickets" })).toBeInTheDocument();
+@@ -138 +138 @@ describe("ResultsContent", () => {
+-            expect(screen.getByText(/✂️ 分割チケット/)).toBeInTheDocument();
++            expect(screen.getByRole("heading", { name: "分割チケット" })).toBeInTheDocument();
+@@ -147 +147 @@ describe("ResultsContent", () => {
+-            expect(screen.getByText(/📍 近隣空港からの便/)).toBeInTheDocument();
++            expect(screen.getByRole("heading", { name: "近隣空港からの便" })).toBeInTheDocument();
+@@ -166,4 +166,4 @@ describe("ResultsContent", () => {
+-            expect(screen.queryByText(/🔄 マルチストップルート/)).not.toBeInTheDocument();
+-            expect(screen.queryByText(/🎯 Hidden City Tickets/)).not.toBeInTheDocument();
+-            expect(screen.queryByText(/✂️ 分割チケット/)).not.toBeInTheDocument();
+-            expect(screen.queryByText(/📍 近隣空港からの便/)).not.toBeInTheDocument();
++            expect(screen.queryByRole("heading", { name: "マルチストップルート" })).not.toBeInTheDocument();
++            expect(screen.queryByRole("heading", { name: "Hidden City Tickets" })).not.toBeInTheDocument();
++            expect(screen.queryByRole("heading", { name: "分割チケット" })).not.toBeInTheDocument();
++            expect(screen.queryByRole("heading", { name: "近隣空港からの便" })).not.toBeInTheDocument();
+@@ -184 +184 @@ describe("ResultsContent", () => {
+-            expect(screen.getByText(/🌏 地域別価格情報/)).toBeInTheDocument();
++            expect(screen.getByRole("heading", { name: "地域別価格情報" })).toBeInTheDocument();
+@@ -199 +199 @@ describe("ResultsContent", () => {
+-            expect(screen.getByText(/⏰ 最適予約タイミング/)).toBeInTheDocument();
++            expect(screen.getByRole("heading", { name: "最適予約タイミング" })).toBeInTheDocument();
+@@ -214 +214 @@ describe("ResultsContent", () => {
+-            expect(screen.getByText(/📋 運賃ルール/)).toBeInTheDocument();
++            expect(screen.getByRole("heading", { name: "運賃ルール" })).toBeInTheDocument();
+@@ -229 +229 @@ describe("ResultsContent", () => {
+-            expect(screen.getByText(/🏪 プラットフォーム比較/)).toBeInTheDocument();
++            expect(screen.getByRole("heading", { name: "プラットフォーム比較" })).toBeInTheDocument();
+@@ -246 +246 @@ describe("ResultsContent", () => {
+-            expect(screen.getByText(/✈️ 直行便参考価格/)).toBeInTheDocument();
++            expect(screen.getByRole("heading", { name: "直行便参考価格" })).toBeInTheDocument();
+@@ -260 +260 @@ describe("ResultsContent", () => {
+-            expect(screen.getByText(/💡 価格操作回避のヒント/)).toBeInTheDocument();
++            expect(screen.getByRole("heading", { name: "価格操作回避のヒント" })).toBeInTheDocument();
+@@ -274 +274 @@ describe("ResultsContent", () => {
+-            expect(screen.getByText(/📈 価格監視戦略/)).toBeInTheDocument();
++            expect(screen.getByRole("heading", { name: "価格監視戦略" })).toBeInTheDocument();
+diff --git a/src/components/shared/FlightSearchForm.tsx b/src/components/shared/FlightSearchForm.tsx
+index 9609827..5187850 100644
+--- a/src/components/shared/FlightSearchForm.tsx
++++ b/src/components/shared/FlightSearchForm.tsx
+@@ -5 +5 @@ import { zodResolver } from "@hookform/resolvers/zod";
+-import type { ReactElement } from "react";
++import type { ComponentPropsWithoutRef, ReactElement } from "react";
+@@ -12 +12 @@ import { AirportAutocomplete } from "@/components/shared/AirportAutocomplete";
+-import { getDateAfterDays } from "@/lib/utils/date-helpers";
++import { formatDateForInput, getDateAfterDays, parseLocalDate } from "@/lib/utils/date-helpers";
+@@ -24,4 +24 @@ type FlightSearchFormProps = {
+-interface CustomDateInputProps {
+-    value?: string;
+-    onClick?: () => void;
+-    placeholder?: string;
++type CustomDateInputProps = Omit<ComponentPropsWithoutRef<"input">, "size"> & {
+@@ -29 +26 @@ interface CustomDateInputProps {
+-}
++};
+@@ -32 +29 @@ const CustomDateInput = forwardRef<HTMLInputElement, CustomDateInputProps>(
+-    ({ value, onClick, placeholder, isError }, ref): ReactElement => {
++    ({ isError, ...inputProps }, ref): ReactElement => {
+@@ -38,0 +36 @@ const CustomDateInput = forwardRef<HTMLInputElement, CustomDateInputProps>(
++                    {...inputProps}
+@@ -40,3 +37,0 @@ const CustomDateInput = forwardRef<HTMLInputElement, CustomDateInputProps>(
+-                    value={value}
+-                    onClick={onClick}
+-                    placeholder={placeholder}
+@@ -177 +172,9 @@ export function FlightSearchForm({ onSubmit, isLoading = false }: FlightSearchFo
+-                        <Text fontSize="sm" fontWeight="600" mb={2} color="text.muted" display="block" as="label">
++                        <Text
++                            id="departureDate-label"
++                            as="label"
++                            fontSize="sm"
++                            fontWeight="600"
++                            mb={2}
++                            color="text.muted"
++                            display="block"
++                        >
+@@ -185 +188,2 @@ export function FlightSearchForm({ onSubmit, isLoading = false }: FlightSearchFo
+-                                    selected={field.value ? new Date(field.value) : null}
++                                    id="departureDate"
++                                    selected={field.value ? parseLocalDate(field.value).toDate() : null}
+@@ -187 +191 @@ export function FlightSearchForm({ onSubmit, isLoading = false }: FlightSearchFo
+-                                        field.onChange(date ? date.toISOString().split("T")[0] : "");
++                                        field.onChange(date ? formatDateForInput(date) : "");
+@@ -192,0 +197,3 @@ export function FlightSearchForm({ onSubmit, isLoading = false }: FlightSearchFo
++                                    ariaLabelledBy="departureDate-label"
++                                    ariaInvalid={errors.departureDate ? "true" : undefined}
++                                    ariaDescribedBy={errors.departureDate ? "departureDate-error" : undefined}
+@@ -208 +215,9 @@ export function FlightSearchForm({ onSubmit, isLoading = false }: FlightSearchFo
+-                            <Text fontSize="sm" fontWeight="600" mb={2} color="text.muted" display="block" as="label">
++                            <Text
++                                id="returnDate-label"
++                                as="label"
++                                fontSize="sm"
++                                fontWeight="600"
++                                mb={2}
++                                color="text.muted"
++                                display="block"
++                            >
+@@ -216 +231,2 @@ export function FlightSearchForm({ onSubmit, isLoading = false }: FlightSearchFo
+-                                        selected={field.value ? new Date(field.value) : null}
++                                        id="returnDate"
++                                        selected={field.value ? parseLocalDate(field.value).toDate() : null}
+@@ -218 +234 @@ export function FlightSearchForm({ onSubmit, isLoading = false }: FlightSearchFo
+-                                            field.onChange(date ? date.toISOString().split("T")[0] : "");
++                                            field.onChange(date ? formatDateForInput(date) : "");
+@@ -221 +237 @@ export function FlightSearchForm({ onSubmit, isLoading = false }: FlightSearchFo
+-                                        minDate={departureDate ? new Date(departureDate) : new Date()}
++                                        minDate={departureDate ? parseLocalDate(departureDate).toDate() : new Date()}
+@@ -223,0 +240,3 @@ export function FlightSearchForm({ onSubmit, isLoading = false }: FlightSearchFo
++                                        ariaLabelledBy="returnDate-label"
++                                        ariaInvalid={errors.returnDate ? "true" : undefined}
++                                        ariaDescribedBy={errors.returnDate ? "returnDate-error" : undefined}
+diff --git a/src/components/shared/FlightSearchForm.test.tsx b/src/components/shared/FlightSearchForm.test.tsx
+new file mode 100644
+index 0000000..cfd00d7
+--- /dev/null
++++ b/src/components/shared/FlightSearchForm.test.tsx
+@@ -0,0 +1,71 @@
++import { fireEvent } from "@testing-library/react";
++import { cloneElement, createElement, Fragment, type InputHTMLAttributes, type ReactElement } from "react";
++import { describe, expect, it, vi } from "vitest";
++import { FlightSearchForm } from "@/components/shared/FlightSearchForm";
++import { render, screen } from "@/tests/utils";
++
++type MockDatePickerProps = {
++    id?: string;
++    selected: Date | null;
++    onChange: (date: Date | null) => void;
++    customInput: ReactElement<InputHTMLAttributes<HTMLInputElement>>;
++    ariaInvalid?: "true" | "false" | "grammar" | "spelling";
++    ariaDescribedBy?: string;
++};
++
++function formatLocalDate(date: Date): string {
++    const year = date.getFullYear();
++    const month = String(date.getMonth() + 1).padStart(2, "0");
++    const day = String(date.getDate()).padStart(2, "0");
++    return `${year}-${month}-${day}`;
++}
++
++vi.mock("react-datepicker", () => ({
++    default: ({ id, selected, onChange, customInput, ariaInvalid, ariaDescribedBy }: MockDatePickerProps) =>
++        createElement(
++            Fragment,
++            null,
++            cloneElement(customInput, {
++                id,
++                value: selected ? formatLocalDate(selected) : "",
++                "aria-invalid": ariaInvalid,
++                "aria-describedby": ariaDescribedBy,
++                onKeyDown: (event) => event.currentTarget.setAttribute("data-keydown-forwarded", "true"),
++            }),
++            createElement(
++                "button",
++                { type: "button", "aria-label": `${id}-select`, onClick: () => onChange(new Date(2026, 8, 10)) },
++                "select"
++            ),
++            createElement(
++                "button",
++                { type: "button", "aria-label": `${id}-clear`, onClick: () => onChange(null) },
++                "clear"
++            )
++        ),
++}));
++
++describe("FlightSearchForm date picker adapter", () => {
++    it("選択したローカル暦日をUTC変換せず保持する", async () => {
++        const { user } = render(<FlightSearchForm onSubmit={vi.fn()} />);
++
++        await user.click(screen.getByRole("button", { name: "departureDate-select" }));
++
++        expect(screen.getByLabelText("出発日")).toHaveValue("2026-09-10");
++    });
++
++    it("label、error、DatePickerのkeyboard handlerをinputへ接続する", async () => {
++        const { user } = render(<FlightSearchForm onSubmit={vi.fn()} />);
++        const departureDateInput = screen.getByLabelText("出発日");
++
++        fireEvent.keyDown(departureDateInput, { key: "ArrowDown" });
++        expect(departureDateInput).toHaveAttribute("data-keydown-forwarded", "true");
++
++        await user.click(screen.getByRole("button", { name: "departureDate-clear" }));
++        await user.click(screen.getByRole("button", { name: "最安値の航空券を検索" }));
++
++        expect(departureDateInput).toHaveAttribute("aria-invalid", "true");
++        expect(departureDateInput).toHaveAttribute("aria-describedby", "departureDate-error");
++        expect(screen.getByText("出発日を選択してください")).toHaveAttribute("id", "departureDate-error");
++    });
++});

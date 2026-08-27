@@ -1,0 +1,26 @@
+{
+  "schema_version": "1.0",
+  "artifact_type": "verification",
+  "artifact_id": "agents-42-farehunt-20260827T065752Z/VERIFYING/025",
+  "run_id": "agents-42-farehunt-20260827T065752Z",
+  "stage": "VERIFYING",
+  "target_ref": {"artifact_id": "agents-42-farehunt-20260827T065752Z/FIXING/021", "artifact_path": "021-target-generation-2.json", "sha256": "06099f70164683dbc65ee066448c66be559824fbcfab50d0ea63a0361ea775df"},
+  "producer": {"role": "tester", "instance_id": "/root", "context_id": "/root", "parent_context_id": null, "fresh_context": false, "received_artifacts": ["006-context-resolution.json", "021-target-generation-2.json", "024-manifest-r7.json"]},
+  "input_refs": ["006-context-resolution.json", "021-target-generation-2.json"],
+  "created_at": "2026-08-27T07:12:42Z",
+  "payload": {
+    "commands": [
+      {"command": "npm ci", "exit_code": 0, "reuse_basis": "Dependency inputs unchanged since attempt 1"},
+      {"command": "npm run chakra:typegen", "exit_code": 0, "summary": "Tracked target unchanged"},
+      {"command": "npm run check", "exit_code": 0, "summary": "No fixes applied; four pre-existing warnings"},
+      {"command": "npm run type-check", "exit_code": 0},
+      {"command": "npm run test:ci", "exit_code": 1, "summary": "145 passed, 6 failed, 3 skipped, 1 todo. New FlightSearchForm mock failed to forward aria-labelledby; historical route test also failed because its fixed 2026-06-01 date is now in the past."},
+      {"command": "npm run build", "exit_code": null, "summary": "Not run after required test failure"}
+    ],
+    "environment_snapshot_ref": {"timezone": "Asia/Tokyo", "current_date": "2026-08-27", "worktree": "/tmp/farehunt-issue42.En2AEi/worktree"},
+    "output_refs": [],
+    "status": "FAILED",
+    "unverified_reason": "Required test gate failed and a third remediation cycle would exceed the fixed run limit.",
+    "mutated_target": false
+  }
+}

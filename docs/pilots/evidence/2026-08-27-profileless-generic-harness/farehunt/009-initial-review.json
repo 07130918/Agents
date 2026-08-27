@@ -1,0 +1,101 @@
+{
+  "schema_version": "1.0",
+  "artifact_type": "review",
+  "artifact_id": "agents-42-farehunt-20260827T065752Z/REVIEW_PENDING/009",
+  "run_id": "agents-42-farehunt-20260827T065752Z",
+  "stage": "REVIEW_PENDING",
+  "target_ref": {
+    "artifact_id": "agents-42-farehunt-20260827T065752Z/CONTEXT_RESOLVING/005",
+    "artifact_path": "005-target-generation-0.json",
+    "sha256": "8569e481a07afe2e439f4b649f5f5fa7cdf15d927bfc3dce3470a6c7ff870a8d"
+  },
+  "producer": {
+    "role": "orchestrator",
+    "instance_id": "/root",
+    "context_id": "/root",
+    "parent_context_id": null,
+    "fresh_context": false,
+    "received_artifacts": ["/root/issue42_initial_popr", "/root/issue42_initial_risk", "008-target-check-before-initial-review.json"]
+  },
+  "input_refs": ["001-personal-contract.json", "002-capabilities.json", "003-issue-42.json", "004-project-context.json", "005-target-generation-0.json", "006-context-resolution.json"],
+  "created_at": "2026-08-27T07:05:02Z",
+  "payload": {
+    "popr_result": {
+      "reviewer_instance": "/root/issue42_initial_popr",
+      "fresh_context": true,
+      "coverage": "Complete",
+      "verdict": "Request changes",
+      "grade": "C",
+      "rule": "Critical 0, Major 3",
+      "findings": [
+        {
+          "id": "src/components/shared/FlightSearchForm.tsx#date-picker-value-adapter#contract#date-only-utc-round-trip",
+          "severity": "Major",
+          "origin": "Introduced",
+          "location": "src/components/shared/FlightSearchForm.tsx:185",
+          "principle": "contract and data locality",
+          "scenario_or_cost": "A local calendar date is converted through UTC and can become the previous date in the search request.",
+          "evidence": "new Date(YYYY-MM-DD) and toISOString() conflict with the repository local-date helpers and URL contract.",
+          "confidence": "High",
+          "minimal_fix": "Use parseLocalDate for display and formatDateForInput for storage; add timezone regression coverage.",
+          "review_status": "New"
+        },
+        {
+          "id": "src/components/shared/FlightSearchForm.tsx#CustomDateInput#contract#lost-label-and-error-association",
+          "severity": "Major",
+          "origin": "Introduced",
+          "location": "src/components/shared/FlightSearchForm.tsx:38",
+          "principle": "contract preservation and separation of concerns",
+          "scenario_or_cost": "Date inputs lose label/error association and DatePicker keyboard props, blocking accessible identification and operation.",
+          "evidence": "The custom input drops id, aria attributes and injected input event props that existed in the base implementation.",
+          "confidence": "High",
+          "minimal_fix": "Forward native input props and restore unique ids, htmlFor, aria-invalid and aria-describedby with component coverage.",
+          "review_status": "New"
+        },
+        {
+          "id": "src/components/search/ResultsContent.test.tsx#emoji-heading-assertions#contract#stale-after-icon-migration",
+          "severity": "Major",
+          "origin": "Introduced",
+          "location": "src/components/search/ResultsContent.test.tsx:119",
+          "principle": "contract and feedback loop",
+          "scenario_or_cost": "Required CI fails and negative assertions become vacuous because production headings no longer contain emoji.",
+          "evidence": "Fifteen assertions still use emoji text while the changed components render SVG icons and plain headings.",
+          "confidence": "High",
+          "minimal_fix": "Assert heading roles and emoji-free accessible names.",
+          "review_status": "New"
+        }
+      ],
+      "non_blocking_findings": [
+        {"id": "package.json#dependencies#yagni#redundant-react-datepicker-types", "severity": "Minor", "origin": "Introduced", "decision": "not remediated because Minor is not a loop condition"}
+      ]
+    },
+    "generic_risk_result": {
+      "reviewer_instance": "/root/issue42_initial_risk",
+      "fresh_context": true,
+      "coverage": {
+        "correctness_and_requirements": "reviewed",
+        "auth_and_information_disclosure": "not_applicable",
+        "data_integrity": "reviewed",
+        "concurrency": "not_applicable",
+        "backward_compatibility": "reviewed",
+        "error_handling_and_external_failure": "reviewed",
+        "practical_performance": "reviewed"
+      },
+      "finding_reconciliation": {
+        "timezone_date_shift": "same root cause as POPR date-only finding",
+        "stale_emoji_tests": "same root cause as POPR test finding",
+        "keyboard_and_aria_contract": "merged into POPR CustomDateInput contract finding"
+      }
+    },
+    "generic_coverage_status": "Complete",
+    "project_results": [],
+    "project_coverage_status": "not_required",
+    "blocking_finding_ids": [
+      "src/components/shared/FlightSearchForm.tsx#date-picker-value-adapter#contract#date-only-utc-round-trip",
+      "src/components/shared/FlightSearchForm.tsx#CustomDateInput#contract#lost-label-and-error-association",
+      "src/components/search/ResultsContent.test.tsx#emoji-heading-assertions#contract#stale-after-icon-migration"
+    ],
+    "required_gates": ["resolved CI verification sequence", "sync-docs-code"],
+    "coverage_status": "Complete"
+  }
+}

@@ -108,6 +108,7 @@ CONTEXT_RESOLVING
 
 - Run ID: `agents-42-farehunt-20260827T065752Z`
 - Local store: `.git/review-harness/07130918-FareHunt/agents-42-farehunt-20260827T065752Z/`
+- Persistent evidence: [`evidence/2026-08-27-profileless-generic-harness/`](evidence/2026-08-27-profileless-generic-harness/)
 - Manual run log: 27 JSON、124 KiB
 - Artifact ledger aggregate SHA-256: `0f6b4813f044740820d6e69ba86f6af401f314fd590ee33202280ccb7e12245d`
 - Final manifest: `027-manifest-r8.json`
@@ -126,6 +127,8 @@ CONTEXT_RESOLVING
 
 契約ではartifact graph違反をREADY根拠へ使わず`EVALUATION_DEFERRED`にする。このため、最後のmanifestが記録した`BUDGET_EXHAUSTED`は実行時のbudget guard観測として保持するが、run全体の契約適合を示す最終stateには使わない。JSONを上書きして履歴を整形することもしていない。
 
+Merge後も監査できるように、context、Initial review、target generation、verification、budget decisionとgeneration 2 patchをpersistent evidenceへ抽出した。全artifactを複製せず、約42 KiBの最小bundleに限定した。Generation 1 patchとcommandのfull stdout/stderrはpilot中に保持していなかったため、後から補作せずbundleの制限として明記した。
+
 ## Hold-out run: word-pop-quiz
 
 `github.com/07130918/word-pop-quiz`のremote `main`、exact SHA `56bc473617bb9bc5108bf9aa22ab1fc0a5b99f1f`をread-onlyで解決した。
@@ -141,6 +144,7 @@ Manual artifact作成時にtarget hashのplaceholderを含むdecisionを一度�
 
 - Run ID: `agents-42-word-pop-holdout-20260827T071340Z`
 - Local store: `.git/review-harness/07130918-word-pop-quiz/agents-42-word-pop-holdout-20260827T071340Z/`
+- Persistent evidence: [`evidence/2026-08-27-profileless-generic-harness/word-pop-quiz/`](evidence/2026-08-27-profileless-generic-harness/word-pop-quiz/)
 - Artifact数: 5 JSON、20 KiB
 - Artifact ledger aggregate SHA-256: `e56b37662305d9ccda819cd897f7d0b35c7a6ce00005d5e2259041d29292182d`
 - Final manifest SHA-256: `a325626dc019fced5e81fee9b8bbc0f4b11c2dcb38ffbb9271b499cf091eb1b8`
@@ -150,7 +154,7 @@ Manual artifact作成時にtarget hashのplaceholderを含むdecisionを一度�
 | Scenario | 観測結果 |
 | --- | --- |
 | Profileなしで標準規約とcommandを解決 | FareHuntでは`repository_baseline`で解決成功 |
-| Project-local Harness fileなしで同じ状態遷移を辿る | 成功。Target repositoryへHarness fileを追加していない |
+| Project-local Harness fileなしで同じ状態遷移を辿る | State machineは実行でき、Target repositoryへHarness fileを追加していない。Artifact schema適合は失敗したため完全成功とは扱わない |
 | Test command候補が一意でない、または不足 | word-pop-quizで`EVALUATION_DEFERRED` |
 | Source of truthが矛盾 | 今回は未発生。矛盾なしを成功と記録し、synthetic conflictは作っていない |
 | 必須gateまたはfresh reviewerが利用不能 | Fresh Initial reviewerは利用可能。Final reviewerはverification未達のため起動対象外 |
@@ -180,7 +184,7 @@ Manual artifact作成時にtarget hashのplaceholderを含むdecisionを一度�
 
 ## Issue #40へのhandoff
 
-このpilotだけで自動化を採用決定しない。Uka-Route #1197のprofileありpilotと比較するため、Issue #40では少なくとも次を評価する。
+このpilotだけで自動化を採用決定しない。Uka-Route #1197のprofileありpilotと比較するため、Issue #40では[reportとpersistent evidence](evidence/2026-08-27-profileless-generic-harness/)を使って少なくとも次を評価する。
 
 1. Artifact/manifest helper: 手動hash参照とmanifest chainは誤りやすく、実際に共通refとexact contentの非準拠、placeholder hashのinvalidatedを観測した。WriterまたはvalidatorがDAG、required payload、hash、直前manifest参照を保護できるか比較する。少なくともschema適合を証明できないrunをREADYへ進めない検査が必要である。
 2. Target checker: Formatter、typegen、remediationごとのsnapshot/hash再取得は単純だが反復が多い。Deterministic checkerでtarget driftだけを小さく自動化できるか比較する。

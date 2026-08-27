@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "artifact_type": "decision",
+  "artifact_id": "agents-42-farehunt-20260827T065752Z/BUDGET_EXHAUSTED/026",
+  "run_id": "agents-42-farehunt-20260827T065752Z",
+  "stage": "BUDGET_EXHAUSTED",
+  "target_ref": {"artifact_id": "agents-42-farehunt-20260827T065752Z/FIXING/021", "artifact_path": "021-target-generation-2.json", "sha256": "06099f70164683dbc65ee066448c66be559824fbcfab50d0ea63a0361ea775df"},
+  "producer": {"role": "orchestrator", "instance_id": "/root", "context_id": "/root", "parent_context_id": null, "fresh_context": false, "received_artifacts": ["025-verification-attempt-2.json", "024-manifest-r7.json"]},
+  "input_refs": ["003-issue-42.json", "025-verification-attempt-2.json"],
+  "created_at": "2026-08-27T07:12:42Z",
+  "payload": {
+    "decision_kind": "budget_exhausted",
+    "observed": {"remediation_cycles": 2, "max_remediation_cycles": 2, "next_cycle_required": true},
+    "blocker": "Required test gate remains failed after the second remediation cycle.",
+    "completed_artifacts": ["009-initial-review.json", "018-verification-attempt-1.json", "025-verification-attempt-2.json"],
+    "invalidated_artifacts": ["005-target-generation-0.json", "016-target-generation-1.json"],
+    "human_action": "Review the pilot result and, if continuing the target remediation is valuable, authorize a new run with fresh limits and a current-date-safe replay target.",
+    "resume_state": "CONTEXT_RESOLVING",
+    "ready": false,
+    "final_review_executed": false,
+    "reason_final_review_not_executed": "Required verification did not pass."
+  }
+}

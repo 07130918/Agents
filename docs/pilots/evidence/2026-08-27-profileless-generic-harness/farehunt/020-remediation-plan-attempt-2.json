@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "artifact_type": "remediation",
+  "artifact_id": "agents-42-farehunt-20260827T065752Z/FIXING/020",
+  "run_id": "agents-42-farehunt-20260827T065752Z",
+  "stage": "FIXING",
+  "target_ref": {"artifact_id": "agents-42-farehunt-20260827T065752Z/FIXING/016", "artifact_path": "016-target-generation-1.json", "sha256": "3cb06d378533345206a432a3c995913eed9caa4164f5f63e6ea41e9f70d0ea64"},
+  "producer": {"role": "implementer", "instance_id": "/root", "context_id": "/root", "parent_context_id": null, "fresh_context": false, "received_artifacts": ["018-verification-attempt-1.json", "019-verification-change-request.json"]},
+  "input_refs": ["018-verification-attempt-1.json", "019-verification-change-request.json"],
+  "created_at": "2026-08-27T07:09:48Z",
+  "payload": {
+    "remediation_cycle": 2,
+    "requests": [
+      {"request_id": "verification/type-check#FlightSearchForm-label-and-test-types", "decision": "fix", "minimal_change": "Use id plus aria-labelledby instead of unsupported htmlFor on Chakra Text, narrow the mock aria-invalid type, and assert the error by exact text/id.", "planned_paths": ["src/components/shared/FlightSearchForm.tsx", "src/components/shared/FlightSearchForm.test.tsx"], "test_plan": ["Restart the exact verification sequence from chakra:typegen through build."], "scope_effect": "within_original_scope"}
+    ]
+  }
+}

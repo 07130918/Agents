@@ -1,0 +1,60 @@
+{
+  "schema_version": "1.0",
+  "artifact_type": "decision",
+  "artifact_id": "agents-42-farehunt-20260827T065752Z/CONTEXT_RESOLVING/006",
+  "run_id": "agents-42-farehunt-20260827T065752Z",
+  "stage": "CONTEXT_RESOLVING",
+  "target_ref": {
+    "artifact_id": "agents-42-farehunt-20260827T065752Z/CONTEXT_RESOLVING/005",
+    "artifact_path": "005-target-generation-0.json",
+    "sha256": "8569e481a07afe2e439f4b649f5f5fa7cdf15d927bfc3dce3470a6c7ff870a8d"
+  },
+  "producer": {
+    "role": "orchestrator",
+    "instance_id": "/root",
+    "context_id": "/root",
+    "parent_context_id": null,
+    "fresh_context": false,
+    "received_artifacts": ["001-personal-contract.json", "002-capabilities.json", "003-issue-42.json", "004-project-context.json", "005-target-generation-0.json"]
+  },
+  "input_refs": ["001-personal-contract.json", "002-capabilities.json", "003-issue-42.json", "004-project-context.json", "005-target-generation-0.json"],
+  "created_at": "2026-08-27T06:59:01Z",
+  "payload": {
+    "decision_kind": "context_resolution",
+    "resolution_mode": "repository_baseline",
+    "contract_status": "resolved",
+    "contract_ref": {"path": "001-personal-contract.json", "sha256": "2dd110e0ab624c5c07bb43720c788150bdabe9afcdb76f69a7e5132ff6957024"},
+    "considered_sources": [
+      {"path": ".review-harness/profile.yaml", "status": "absent"},
+      {"path": "CLAUDE.md", "status": "selected_as_repository_instruction"},
+      {"path": ".github/workflows/pr-validation.yaml", "status": "selected_as_pr_verification"},
+      {"path": "Makefile", "status": "considered_as_command_index"},
+      {"path": "package.json", "status": "selected_as_exact_script_definition"}
+    ],
+    "selected_sources": [
+      {"path": "CLAUDE.md", "git_blob": "76c5dba1c971de2a66e98ed7030208c786a289e6", "input_ref": "004-project-context.json"},
+      {"path": ".github/workflows/pr-validation.yaml", "git_blob": "8a89a4abe9a5c46a7ad33f96a9090337afd445e5", "input_ref": "004-project-context.json"},
+      {"path": "package.json", "git_blob": "4e401a5caf99b50039af6cbb6e8fc7230a9a5ce1", "input_ref": "004-project-context.json"}
+    ],
+    "authority_decisions": [
+      {"source": "Issue #42", "status": "governing", "basis": "User explicitly requested execution"},
+      {"source": "FareHunt historical commit message and PR #3 metadata", "status": "evidence_only", "basis": "Used only to select a reproducible non-production pilot target"}
+    ],
+    "resolved_commands": [
+      {"command": "npm ci", "purpose": "dependency_setup", "effect": "local_write_and_network_read", "timeout_seconds": 300, "required_services": ["registry.npmjs.org"], "source": ".github/workflows/pr-validation.yaml"},
+      {"command": "npm run chakra:typegen", "purpose": "verification", "effect": "local_write", "timeout_seconds": 120, "required_services": [], "source": ".github/workflows/pr-validation.yaml"},
+      {"command": "npm run check", "purpose": "verification", "effect": "local_write", "timeout_seconds": 120, "required_services": [], "source": ".github/workflows/pr-validation.yaml"},
+      {"command": "npm run type-check", "purpose": "verification", "effect": "read_only", "timeout_seconds": 120, "required_services": [], "source": ".github/workflows/pr-validation.yaml"},
+      {"command": "npm run test:ci", "purpose": "verification", "effect": "local_write", "timeout_seconds": 300, "required_services": [], "source": ".github/workflows/pr-validation.yaml"},
+      {"command": "npm run build", "purpose": "verification", "effect": "local_write", "timeout_seconds": 300, "required_services": [], "source": ".github/workflows/pr-validation.yaml"}
+    ],
+    "resolved_gates": [
+      {"gate": "sync-docs-code", "required": true, "trigger": "all PR candidates", "capability_ref": "002-capabilities.json"},
+      {"gate": "security-audit", "required": false, "trigger": "No auth, secret, permission, external endpoint, or protected-data path changed"},
+      {"gate": "project reviewer", "required": false, "trigger": "No trusted base rule requires a dedicated project reviewer"}
+    ],
+    "review_scope": "e6368a840ec983055b7fb218c33760f74abc75be compared with 311d05e7a422c77f48baffcbfaebcd2f07f17c2b",
+    "required_lens": ["popr universal principles", "generic correctness and practical risk"],
+    "unresolved_inputs": []
+  }
+}
