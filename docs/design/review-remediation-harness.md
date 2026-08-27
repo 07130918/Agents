@@ -183,7 +183,7 @@ Codexでfresh subagentを使える場合は、過去会話をforkせず、必要
 - Agentが生成するcanonical run artifactはJSONとする。曖昧な型変換を避け、将来のvalidatorとCIで同じ内容を検証できるためである。
 - Markdownはgoverning contract、PR本文、human向けreportに使えるが、run stateとresumeの正本にしない。
 - Run artifactはcandidate worktree外のharness管理storeへ保存する。論理pathは`<runtime_state_root>/review-harness/<repository_id>/<run_id>/`とし、実pathまたはstore URIをbootstrap manifestへ記録する。Stage完了後のartifactは上書きせずappend-onlyにする。
-- Canonical ledgerへのartifact publishとManifest head更新はsingle-writer、atomic、exclusive-create/CAS相当とする。Crash、fork、invalid latestを古いvalid Manifestへのrollbackで隠さない。Exact protocolとpath grammarは実行正本へ集約する。
+- Canonical ledgerへのcommit pointはManifest headのCAS更新とし、single-writerのimmutable transaction descriptorからだけcrash recoveryする。Head未到達のcontent-addressed objectはartifact/lifecycleへ昇格させない。Crash、fork、invalid latestを古いvalid Manifestへのrollbackで隠さない。Exact protocolとpath grammarは実行正本へ集約する。
 - Personal Harness wrapper/referenceはrun artifactではないが、実際に読み込んだpath、`declared_version`、`capability_revision`、content hashを`input_snapshot`へ固定する。
 - Storeへappendできるのは`write_run_store`を持つOrchestratorだけとする。各roleはresultを返し、Orchestratorがruntime由来のproducer metadata、hash、sequenceを付けて保存する。Implementerとcandidate processにはstoreの書込権限を与えない。
 - Issue #40では上記storeを実装しない。最小writer/validatorは#49で別に実装する。
@@ -616,7 +616,8 @@ stateDiagram-v2
     REREVIEW_PENDING --> CONTEXT_RESOLVING: targetまたはinput変更
     REREVIEW_PENDING --> CHANGES_REQUESTED: CriticalまたはMajorあり、budget内
     REREVIEW_PENDING --> INDEPENDENCE_BLOCKED: fresh reviewerなし
-    REREVIEW_PENDING --> EVALUATION_DEFERRED: coverage不足または仕様矛盾
+    REREVIEW_PENDING --> EVALUATION_DEFERRED: coverage不足
+    REREVIEW_PENDING --> HUMAN_DECISION_REQUIRED: materialな仕様矛盾
     REREVIEW_PENDING --> BUDGET_EXHAUSTED: run-wide budget guard
     READY --> CONTEXT_RESOLVING: publish前後のtargetまたはinput不一致
     EVALUATION_DEFERRED --> CONTEXT_RESOLVING: 不足input、capability、targetを補完
@@ -722,7 +723,7 @@ Run manifestは次のlimitを持つ。
 }
 ```
 
-Counterはappend-onlyなrun manifest revisionで更新する。各state遷移も`previous_state`、`state`、stable `transition_id`、`transition_cause_ref`を持つ新revisionとして保存し、更新済みcounterと遷移を1つの確定単位にする。Budget停止だけは先行するimmutableな`limit_observation`をcauseとし、その次のmanifest revisionでcounter snapshotとの一致を検証して遷移する。途中で停止した場合は未参照のobservationを再検証し、一致すれば再利用、一致しなければunreferenced historical artifactとして残してmanifestを自己参照させない。Remediation cycleは`FIXING`へ入る直前、request別attemptは対象requestの最初のworktree変更前、transient retryは再実行前、external write attemptは外部call前に増やす。Attempt counterの増加は許可済み試行の予約であり、その試行の検証完了前に上限到達として停止しない。Crash時に予約を未消費へ戻さず、同じexecution keyを重複実行しない。Execution keyは`stage`、target hash、input set hash、command/tool IDから作り、targetやinputが変わった実行と混ぜない。Tokenとpaid callはruntimeの観測値を保存し、paid callは予算を先に予約してから実行する。Counter更新を保存できなければ副作用を開始しない。
+Counterはappend-onlyなrun manifest revisionで更新する。各state遷移も`previous_state`、`state`、stable `transition_id`、`transition_cause_ref`を持つ新revisionとして保存し、更新済みcounterと遷移を1つの確定単位にする。Budget停止だけは先行するimmutableな`limit_observation`をcauseとし、その次のmanifest revisionでcounter snapshotとの一致を検証して遷移する。途中で停止したobservationは同じtransaction descriptorのwrite setとexpected headが一致する場合だけcommitを再開し、不一致のuncommitted objectをhistorical artifactへ昇格させない。Remediation cycleは`FIXING`へ入る直前、request別attemptは対象requestの最初のworktree変更前、transient retryは再実行前、external write attemptは外部call前に増やす。Attempt counterの増加は許可済み試行の予約であり、その試行の検証完了前に上限到達として停止しない。Crash時に予約を未消費へ戻さず、同じexecution keyを重複実行しない。Execution keyは`stage`、target hash、input set hash、command/tool IDから作り、targetやinputが変わった実行と混ぜない。Tokenとpaid callはruntimeの観測値を保存し、paid callは予算を先に予約してから実行する。Counter更新を保存できなければ副作用を開始しない。
 
 - Test failure、review finding、仕様矛盾はtransient failureではない。同じstageをそのままretryせず、対応するstateへ遷移する。
 - Read-onlyまたは安全に再実行できるlocal commandのnetwork timeoutと一時的なtool errorだけを1回retryできる。External writeはidempotency keyがあるか、read-backで未実行を証明できる場合に限る。それ以外のtimeoutは直ちに`HUMAN_DECISION_REQUIRED`とする。
@@ -739,13 +740,14 @@ Counterはappend-onlyなrun manifest revisionで更新する。各state遷移も
 
 ### 15.2 Resume手順
 
-1. Canonical namespaceの全Manifestとheadを読み、最大の観測済みrevisionがheadと一致する唯一の連続chainであることを確認する。同一revisionの複数file、fork、orphan、欠落、飛越し、cycle、partial/invalid latest、head不一致があれば古いvalid revisionへfallbackせず停止する。各Manifestのhash、`state`、`previous_state`、`transition_id`、counter、permission set、Issue/personal contract/project context snapshot、すべてのartifact refのhashを検証する。`artifact_refs`へManifestが含まれていないことも確認する。
-2. External authoritative inputをsourceから再取得し、revisionとcontent hashを照合する。変更されていれば新snapshotを作って`CONTEXT_RESOLVING`へ戻す。
-3. Repository identity、current branch、candidate SHA、working treeを再取得する。
-4. Manifestのcurrent target generationと現在状態が一致するか確認する。不一致なら暗黙に上書きせず新しいgenerationのtargetを固定する。
-5. Current generationで再利用する完了artifactだけが同じtargetと同じinput refsを参照することを確認する。過去generationは`historical|invalidated`として保持し、破損と誤認しない。
-6. 外部副作用はGitHub上のbranch、commit、PRなど実状態をread-onlyで照合する。
-7. `last_completed_stage`を線形cursorにせず、manifestの`state`と確定済みtransitionから状態機械を再評価する。完了条件を満たすartifactは再生成しない。
+1. Single-writer lock下でimmutable transaction descriptorを検査し、expected/proposed headと全staged/write-set hashが一意に一致するtransactionだけを完了する。不一致、競合、説明不能なuncommitted objectはledgerへ接続せず停止する。
+2. Canonical namespaceの全Manifestとheadを読み、最大の観測済みcommitted revisionがheadと一致する唯一の連続chainであることを確認する。同一revisionの複数file、fork、説明不能なorphan、欠落、飛越し、cycle、partial/invalid latest、head不一致があれば古いvalid revisionへfallbackせず停止する。各Manifestのhash、`state`、`previous_state`、`transition_id`、counter、permission set、Issue/personal contract/project context snapshot、すべてのartifact refのhashを検証する。`artifact_refs`へManifestが含まれていないことも確認する。
+3. External authoritative inputをsourceから再取得し、revisionとcontent hashを照合する。変更されていれば新snapshotを作って`CONTEXT_RESOLVING`へ戻す。
+4. Repository identity、current branch、candidate SHA、working treeを再取得する。
+5. Manifestのcurrent target generationと現在状態が一致するか確認する。不一致なら暗黙に上書きせず新しいgenerationのtargetを固定する。
+6. Current generationで再利用する完了artifactだけが同じtargetと同じinput refsを参照することを確認する。過去generationは`historical|invalidated`として保持し、破損と誤認しない。
+7. 外部副作用はGitHub上のbranch、commit、PRなど実状態をread-onlyで照合する。
+8. `last_completed_stage`を線形cursorにせず、manifestの`state`と確定済みtransitionから状態機械を再評価する。完了条件を満たすartifactは再生成しない。
 
 ### 15.3 Idempotency
 
@@ -862,7 +864,7 @@ Docs gateをFinal reviewより前に置くのは、`mutated_target: true`がrevi
 | --- | --- | --- |
 | R1 | 小規模bug fixが1 cycleで収束 | finding IDがremediationとreconciliationへ接続されREADYになる |
 | R2 | UI変更でunit test成功、E2E失敗 | E2E artifactが失敗しREADYにならない |
-| R3 | 仕様文書と実装が矛盾 | `HUMAN_DECISION_REQUIRED`または`EVALUATION_DEFERRED`になる |
+| R3 | 仕様文書と実装がmaterialに矛盾 | `HUMAN_DECISION_REQUIRED`になり、Human decisionを新inputとして固定するまで再開しない |
 | R4 | 修正が別Issue相当へ拡大 | `SCOPE_CHANGE_REQUIRED`になり許可外pathを変更しない |
 | R5 | Pre-commit Docs gateがfileを更新 | `PRECOMMIT_DOCS_PENDING`から新targetを作ってverificationを再実行し、candidate SHAでもdocs gateを再実行する |
 | R6 | 専用project reviewerとproject-local Harness fileがないgeneric repository | Personal Harnessから起動し、base側instructionとexact commandでcontextを解決してREADYまで同じstateを辿る |

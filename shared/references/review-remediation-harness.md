@@ -135,11 +135,11 @@ Schema 2.0のJSON bytesは[RFC 8785](https://www.rfc-editor.org/rfc/rfc8785)のJ
 
 Artifactの共通refは`artifact_id`、run directory相対の`artifact_path`、保存済みbytesの`sha256`だけを持つ。`target_ref`、`input_refs`、`previous_manifest_ref`、payload内の`*_ref`と`*_refs`はこの型を使う。例外は`run_manifest.artifact_refs`で、各要素を`{"ref": <common_ref>, "lifecycle_status": "current|historical|invalidated", "invalidation_reason_ref": <common_ref|null>}`とする。`invalidated`だけ`invalidation_reason_ref`を必須にし、他statusではnullにする。
 
-`repository_id`はnormalized repository identityのSHA-256から作る`sha256-<小文字16進64文字>`、`run_id`は`[A-Za-z0-9][A-Za-z0-9._-]{0,127}`、`artifact_id`は`<run_id>/<state>/<sequence>`とし、`state`は本contractのstate名、`sequence`は先頭0なしの10進非負整数とする。Common refの`sha256`は小文字16進64文字に限定する。`artifact_path`とrun-storeを読むすべての`content_path`は`/`区切りの相対pathとし、各segmentを`[A-Za-z0-9][A-Za-z0-9._-]{0,127}`へ限定する。Absolute path、空segment、`.`、`..`、backslash、NULを拒否する。
+`repository_id`はnormalized repository identityのSHA-256から作る`sha256-<小文字16進64文字>`、`run_id`と`transaction_id`は`[A-Za-z0-9][A-Za-z0-9._-]{0,127}`、`artifact_id`は`<run_id>/<state>/<sequence>`とし、`state`は本contractのstate名、`sequence`は先頭0なしの10進非負整数とする。Common refの`sha256`は小文字16進64文字に限定する。`artifact_path`とrun-storeを読むすべての`content_path`は`/`区切りの相対pathとし、各segmentを`[A-Za-z0-9][A-Za-z0-9._-]{0,127}`へ限定する。Absolute path、空segment、`.`、`..`、backslash、NULを拒否する。
 
 Writerとvalidatorはrun rootを一度realpathで固定し、run-store pathを文字列連結だけで開かない。各componentをsymlink followなしで辿り、正規化後も同じrun root配下であること、最終objectが通常fileであることを確認する。Artifactの`run_id`、`artifact_id`先頭、実際のrun directoryを一致させ、別runへの参照を拒否する。Repository相対pathもabsolute、空segment、`.`、`..`、NULを拒否してrepository root配下へ限定するが、targetとして記録されたsymlink自体のtypeとlink targetはfollowせず観測できる。Local skill pathやexternal source identifierはrun-store pathとしてdereferenceせず、取得済みcontentをinput snapshotへ保存する。
 
-Lifecycleは直前Manifestから次のManifestへ不可逆に遷移させる。`current -> current|historical|invalidated`、`historical -> historical|invalidated`、`invalidated -> invalidated`だけを許可し、`historical|invalidated`から`current`へ戻さない。新artifactは最初に列挙するManifestでだけ`current`にできる。`current`はcurrent target generation、current input refs、contract/project rule hashが一致し、supersedeされていないartifactに限定する。`historical`と`invalidated`はいずれもREADY根拠へ使わず、`historical`は元targetに対するvalidな監査またはreconciliation履歴、`invalidated`は依存条件の破壊または検証不能を表す。
+Lifecycleは直前Manifestから次のManifestへ不可逆に遷移させる。`current -> current|historical|invalidated`、`historical -> historical|invalidated`、`invalidated -> invalidated`だけを許可し、`historical|invalidated`から`current`へ戻さない。新artifactは原則`current`で初出させるが、target generationを切り替える同じManifestに初出する旧target boundの`target_check`とtransition Evidenceだけは、`transition_cause_ref`から到達でき、expected/observed target refsを検証できる場合に`historical`で初出できる。`current`はcurrent target generation、current input refs、permission set、contract/project rule hashが一致し、supersedeされていないartifactに限定する。`historical`と`invalidated`はいずれもREADY根拠へ使わず、`historical`は元targetに対するvalidな監査またはreconciliation履歴、`invalidated`は依存条件の破壊または検証不能を表す。
 
 | Event | 対象artifact | 次status |
 | --- | --- | --- |
@@ -161,9 +161,13 @@ Artifact参照は次の非循環layerに限定する。
 
 同一artifact、前方参照、自分を含むManifest、未確定artifactは参照しない。最初のManifestだけ`previous_manifest_ref: null`とし、以後は直前revisionへの共通refだけを許可する。Revision欠落、直前以外への飛越し、cycleを不正とする。保存前に参照先の存在、hash、同じrun、許可されたtarget generationを確認する。違反時はartifactをREADY根拠へ使わず`EVALUATION_DEFERRED`にする。
 
-Canonical ledgerへのpublishはatomicかつexclusiveにする。Writerは同じrunの単一writer lockを取得できた場合だけ、canonical namespace外のpending fileへ全bytesを書いてdurableにし、hashとschemaを検証してからno-replaceで最終pathへinstallする。Manifestはrevisionごとに1つだけ作り、直前headのrevision/hashをexpected valueとするcompare-and-swap相当の更新をlock内で行う。各Manifestのsuccessorは最大1つとし、headは唯一の連続chainの末尾だけを指す。Lockまたはexpected headを確認できない場合はappendしない。
+Canonical ledgerへのpublishはatomicかつexclusiveにする。Commit pointはManifest fileのinstallではなく、唯一のheadをexpected revision/hashからproposed Manifest revision/hashへcompare-and-swap相当で更新した時点とする。Headから到達するManifestと、その`artifact_refs`から到達するcontent-addressed immutable objectだけがcommitted artifactである。Object storeに存在してもcommitted Manifestから到達しないbytesはledger artifactでもlifecycle対象でもなく、診断用のuncommitted objectとしてREADYまたはresumeへ使わない。
 
-Resume/validationではcanonical namespaceに観測できる全Manifestとheadを検査する。同一revisionの複数file、同じprevious manifestを指すfork、orphan、欠落、飛越し、partial/invalid canonical file、head不一致が1件でもあれば、より古いvalid revisionへfallbackせず`EVALUATION_DEFERRED`にする。Pending fileはcanonical ledgerへ含めず、crash後は自動publishまたは削除せず診断対象にする。最大の観測済みcanonical revisionとheadが一致し、その唯一chain全体がvalidな場合だけ再開する。
+HeadはJCSで直列化した`{"revision":<integer>,"manifest_ref":<common_ref|null>}`とし、初期値は`revision: -1`かつnull、最初のManifest revisionは0とする。Writerは同じrunのsingle-writer lockを取得し、headを読んだ後、canonical ledger外へimmutable transaction descriptorと全staged bytesをdurableに保存する。Descriptorは`transaction_id`、expected/proposed head、next revision、artifact ID/path/hashの完全なwrite set、Manifest path/hash、各staged path/hashを持つ。Writerはdescriptorとstaged bytesを検証してから、content-addressed objectとManifestをno-replaceでinstallし、最後にlock内でhead bytesを再照合してatomic replaceとdirectory syncでCAS更新する。同じpathが既に存在する場合はexact bytes/hash一致時だけidempotent successとし、不一致なら停止する。各revisionは1 Manifest、各Manifestは最大1 successorとする。
+
+Head CAS成功後はtransaction descriptorを変更せず、同じ`transaction_id`とdescriptor hashを持つimmutable commit markerを追記する。新transaction開始前とresumeでは、まずcommit markerのないactive descriptorをすべて検査する。Active descriptorが1件だけでcurrent headがexpected headなら、staged bytes、write set、既存object、proposed Manifestの全hashが一致する場合だけ不足installとhead CASを続行できる。Current headがproposed headならcommit済みとして同じhashを照合しcommit markerを追記する。それ以外、active descriptor複数、不足または不一致bytes、unknown headでは自動完了または削除をせず`EVALUATION_DEFERRED`にする。Marker済みdescriptorもhashを検証し、crashしたtransactionと無関係なuncommitted objectは診断に列挙するがledgerへ再接続しない。
+
+Transactionを安全に完了またはcommit済みと確認した後、canonical namespaceの全Manifestとheadを検査する。同一revisionの複数file、同じprevious manifestを指すfork、transactionで説明できないorphan Manifest、欠落、飛越し、partial/invalid canonical file、head不一致が1件でもあれば、より古いvalid revisionへfallbackせず`EVALUATION_DEFERRED`にする。最大の観測済みcommitted revisionとheadが一致し、その唯一chain全体がvalidな場合だけ再開する。
 
 Target、Issue input、scope、permission、project rule、contract hashが変わった場合は新しいgenerationを作る。旧verification、gate、reviewを成功根拠へ流用しない。Historical artifactはreconciliationの参照だけに使える。
 
@@ -181,7 +185,7 @@ Stage artifactの必須payloadは次の通りとする。
 
 | Artifact | 必須payload |
 | --- | --- |
-| `target_check` | `expected_target_ref`、`expected_input_refs`、`observed_input_refs`、`expected_permission_set_ref`、`observed_permission_set_ref`、`expected_contract_ref`、`observed_contract_ref`、`expected_project_rule_refs`、`observed_project_rule_refs`、`status: unchanged|changed|unresolved`、`transition_kinds`、`observed_components`、`changed_components`、`unresolved_components`、`observation_evidence_refs`、条件付き`transition_diff_ref`、`checked_at` |
+| `target_check` | `expected_target_ref`、`observed_target_status: resolved|unresolved`、`observed_target_ref`、`observed_target_absence_reason`、`expected_input_refs`、`observed_input_refs`、`expected_permission_set_ref`、`observed_permission_set_ref`、`expected_contract_ref`、`observed_contract_ref`、`expected_project_rule_refs`、`observed_project_rule_refs`、`status: unchanged|changed|unresolved`、`transition_kinds`、`observed_components`、`changed_components`、`unresolved_components`、`observation_evidence_refs`、条件付き`transition_diff_ref`、`checked_at` |
 | `evidence` | `evidence_kind`、`media_type`、`content_sha256`、`content_path`またはinline `content`、`completeness: full|redacted|truncated`、`redactions`、`truncation` |
 | `review` | `popr_result`、`generic_risk_result`、`generic_coverage_status`、`project_results`、`project_coverage_status`、`blocking_finding_ids`、`required_gates`、`coverage_status` |
 | `change_request` | `requests`。各要素は`review_finding|verification_failure|gate_failure`を識別する |
@@ -200,11 +204,13 @@ Context解決の`decision.payload`は`decision_kind: context_resolution`、`reso
 
 `target_check.status`は、全componentを観測でき差分がなければ`unchanged`、全componentを観測でき差分が1件以上あれば`changed`、1件でも再取得または比較できなければ`unresolved`とする。`unresolved`では`unresolved_components`へcomponent、理由、観測証拠refを記録し、既存artifactを再利用せず`EVALUATION_DEFERRED`にする。`changed`と`unresolved`を相互に丸めない。
 
+`target_check` envelopeの`target_ref`は常に`expected_target_ref`と同じ旧/current targetを指す。`unchanged`では`observed_target_status: resolved`かつ`observed_target_ref`をexpectedと同じcommon ref、`changed`では事前にexact bytesを固定した次generationのtarget common refとする。`unresolved`では`observed_target_status: unresolved`、`observed_target_ref: null`、空でない`observed_target_absence_reason`を要求し、新targetを補作しない。
+
 `transition_kinds`は`target_changed`、`governing_input_changed`、`permission_changed`、`contract_changed`、`project_rule_changed`、`scope_changed`、`external_revision_changed`、`unresolved`をこの順で重複なく並べる。差分も未解決もない場合だけ`["none"]`とする。`status: changed`は`none|unresolved`以外を1つ以上、`status: unresolved`は`unresolved`を必須とし、観測済みの変更kindも併記する。Expected/observed refsの各集合は`artifact_id`順で並べ、permission、contract、project rule、governing inputをtarget contentと独立に比較できるようにする。
 
 各verification commandの`stdout_ref`と`stderr_ref`は、出力が空でも空bytesをhashした個別`evidence`を参照する。秘密情報はredaction位置と理由を記録できるが、単なる切詰めを`full`または`redacted`と表現しない。`completeness: truncated`のevidenceはHuman向けpreviewに限定し、READYまたはresumeの根拠へ常に使わない。完全なbytesを保存できる場合は別の`completeness: full|redacted` artifactとして保存し、Stageからそのartifactを参照する。各`content_sha256`は同じartifactの`content_path`またはinline `content`のbytesだけをhashする。`remediation.decision: fix`で変更した場合は`patch_ref`、`mutated_target: true`のstageは`mutation_patch_ref`を必須にする。
 
-Working tree manifestのtracked/untracked file追加、変更、削除、file modeまたはtype変更で`target_check.status: changed`になった場合は`transition_diff_ref`を必須にする。参照先は`evidence_kind: target_transition_diff`のcanonical JSONとし、各pathのchange kindと`before`、`after`を持つ。`before|after`は`{"status":"absent"}`または`{"status":"present","mode":"<mode>","type":"file|symlink","byte_length":<integer>,"content_sha256":"<hash>","content_source":<source>}`のdiscriminated unionとする。追加はbeforeだけ`absent`、削除はafterだけ`absent`、空fileは`present`かつ`byte_length: 0`とし、欠落や取得失敗を`absent`へ丸めない。`content_source`は`{"kind":"git_object","object_id":"<oid>"}`または`{"kind":"target_attachment","target_id":"<target_artifact_id>","content_path":"<run_relative_path>"}`とする。Before contentは旧targetのsnapshotまたはimmutable Git object、after contentは新targetのsnapshotまたはimmutable Git objectへ結び付ける。Text、binary、symlinkを同じmanifest deltaで表し、binary bytesをtext化しない。EvidenceからEvidenceへの参照は追加しない。新generationへ進むManifestは、その`target_check`またはtargetを変更したStage artifactを`transition_cause_ref`で参照する。
+Working tree manifestのtracked/untracked file追加、変更、削除、file modeまたはtype変更で`target_check.status: changed`になった場合は`transition_diff_ref`を必須にする。参照先は`evidence_kind: target_transition_diff`のcanonical JSONとし、`expected_target_ref`、`observed_target_ref`、各pathのchange kindと`before`、`after`を持つ。`before|after`は`{"status":"absent"}`または`{"status":"present","mode":"<mode>","type":"file|symlink","byte_length":<integer>,"content_sha256":"<hash>","content_source":<source>}`のdiscriminated unionとする。追加はbeforeだけ`absent`、削除はafterだけ`absent`、空fileは`present`かつ`byte_length: 0`とし、欠落や取得失敗を`absent`へ丸めない。`content_source`は`{"kind":"git_object","object_id":"<oid>"}`または`{"kind":"target_attachment","target_id":"<target_artifact_id>","content_path":"<run_relative_path>"}`とする。Before contentはexpected targetのsnapshotまたはimmutable Git object、after contentはobserved targetのsnapshotまたはimmutable Git objectへ結び付ける。Validatorは両target refのhash、attachment metadataとraw bytesのhash/length、entryのtarget IDを照合する。Text、binary、symlinkを同じmanifest deltaで表し、binary bytesをtext化しない。EvidenceからEvidenceへの参照は追加しない。新generationへ進むManifestは、その`target_check`またはtargetを変更したStage artifactを`transition_cause_ref`で参照する。
 
 Orchestratorはtarget依存stageの開始前と完了後、外部writeの前後、resume、Final review開始前、READY判定前に`target_check`を保存する。Publish前はfetch後のbase refも、PR作成後はremoteのexact base/headも照合する。Checkは保存済みtargetだけでなく、input refs、permission set、contract/project rule hash、external source revisionも現在値と比較する。差分または再取得不能があれば旧artifactをREADY根拠へ使わず、該当blockerを記録する。
 
@@ -306,13 +312,14 @@ Blockerからは記録されたresume stateへだけ戻る。`EVALUATION_DEFERRE
 
 Resumeでは次を順に行う。
 
-1. Canonical namespaceの全Manifestとheadを検査し、最大の観測済みrevisionがheadと一致する唯一の連続chainであることを確認する。Invalid、partial、fork、orphan、重複revision、head不一致があれば古いrevisionへfallbackしない。各Manifestのcontent hash、transition、counter、全artifact refに加えて`permission_set_ref`、`project_context_refs`、`context_resolution_ref`のhashを検証し、`artifact_refs`にManifestが含まれないことも確認する。
-2. Repository identity、base ref/SHA、branch、head SHA、working tree status/mode/manifestをread-onlyで再取得する。
-3. External authoritative inputをsourceから再取得し、revisionとcontent hashを照合する。権限または安定したrevisionがなく再検証できなければ成功扱いしない。
-4. 新しい`target_check`を現在のtarget、input、permission set、contract/project rule、external revisionへ接続して保存する。
-5. Manifestのcurrent target generationと再取得値を比較し、driftがあれば新target/input snapshotを作る。許可済み変更か想定外driftかをtransition evidenceで分類し、上記lifecycle表に従って旧artifactを`historical|invalidated`へ遷移させて`CONTEXT_RESOLVING`へ戻す。
-6. Driftがない場合だけ、同じtarget generation、input refs、permission set、contract hashを持つ完了artifactを再利用する。外部副作用もbranch、commit、PRの実状態をread-onlyで照合する。
-7. `last_completed_stage`を単独cursorにせず、manifest stateと確定済みtransitionから状態機械を再評価する。検証不能、manifest chain破損、曖昧な実状態は`EVALUATION_DEFERRED`または`HUMAN_DECISION_REQUIRED`にする。
+1. Single-writer lockを取得し、transaction descriptorとstaged/write-set hashを照合する。上記条件で一意に完了可能なtransactionだけをidempotentに完了し、それ以外は停止する。
+2. Canonical namespaceの全Manifestとheadを検査し、最大の観測済みcommitted revisionがheadと一致する唯一の連続chainであることを確認する。Invalid、partial、fork、説明不能なorphan、重複revision、head不一致があれば古いrevisionへfallbackしない。各Manifestのcontent hash、transition、counter、全artifact refに加えて`permission_set_ref`、`project_context_refs`、`context_resolution_ref`のhashを検証し、`artifact_refs`にManifestが含まれないことも確認する。
+3. Repository identity、base ref/SHA、branch、head SHA、working tree status/mode/manifestをread-onlyで再取得する。
+4. External authoritative inputをsourceから再取得し、revisionとcontent hashを照合する。権限または安定したrevisionがなく再検証できなければ成功扱いしない。
+5. 新しい`target_check`をexpected/observed target、input、permission set、contract/project rule、external revisionへ接続して保存する。
+6. Manifestのcurrent target generationと再取得値を比較し、driftがあれば新target/input snapshotを作る。許可済み変更か想定外driftかをtransition evidenceで分類し、上記lifecycle表に従って旧artifactを`historical|invalidated`へ遷移させて`CONTEXT_RESOLVING`へ戻す。
+7. Driftがない場合だけ、同じtarget generation、input refs、permission set、contract hashを持つ完了artifactを再利用する。外部副作用もbranch、commit、PRの実状態をread-onlyで照合する。
+8. `last_completed_stage`を単独cursorにせず、manifest stateと確定済みtransitionから状態機械を再評価する。検証不能、manifest chain破損、曖昧な実状態は`EVALUATION_DEFERRED`または`HUMAN_DECISION_REQUIRED`にする。
 
 ## Fallback
 
