@@ -846,7 +846,7 @@ Fallbackは独立性やcoverageを偽装するために使わない。同じagen
 
 両referenceはIssue #38でこのphase interfaceを実行可能なsemantic contractとして定義した。Harnessを使わない通常経路は後方互換のdefault経路を継続し、Harness経路は`READY`後にmonolithicな`create-pr`を再実行せず`publish_exact_candidate`だけを使う。Target driftは`READY_INVALIDATED`としてpublishせず、Issue/project contextへ戻って新しいtargetのverification、gate、Final reviewを完了する。
 
-Issue #39でportable distributionを導入するまでは、personal skillがない環境へproject-local entrypointが自動配置されるわけではない。ただし、Humanが本repositoryの両referenceと本設計のexact snapshotをrun-local inputとして承認すれば、installed skillを前提にせず同じphase boundaryを手動実行できる。Portable contractと既存workflowが衝突する場合に、その場で都合のよい規則を選ばず`EVALUATION_DEFERRED`とする。
+Issue #39で`templates/REVIEW_HARNESS.md`と`templates/.review-harness/contracts/`をportable distributionの正本として導入した。Personal skillがない環境は両方をproject rootへ同時にコピーし、manifestのintegrity確認後に同じphase boundaryを実行できる。Portable contractと既存workflowが衝突する場合に、その場で都合のよい規則を選ばず`EVALUATION_DEFERRED`とする。
 
 ### 18.2 実行順
 
@@ -928,16 +928,16 @@ Docs gateをFinal reviewより前に置くのは、`mutated_target: true`がrevi
 
 Issue #34の成果物はこの設計文書だけとする。設計の採用後も、runner、fixture、schema validator、汎用condition languageを同じPRへ追加しない。
 
-将来の最小実装は別Issueで次を検討する。
+最小実装はIssue #39で次の構成として導入する。
 
 - CLI非依存のupstream運用契約: `shared/references/review-remediation-harness.md`
-- Portable distribution: 各repositoryへ配置するroot `REVIEW_HARNESS.md`と、version/upstream hashを固定した`.review-harness/contracts/`のexact snapshot
-- Codex wrapper: 必要な利用者だけが導入する`codex/skills/review-remediation-harness/SKILL.md`。Portable contractへの薄い任意adapterとする
+- Portable distribution template: 各repositoryへ配置するroot `REVIEW_HARNESS.md`と、version/upstream hashを固定した`.review-harness/contracts/`のexact snapshot
+- Codex wrapper: `codex/skills/review-remediation-harness/SKILL.md`。Portable contractへの薄い任意adapterとする
 - Project profile: 必要なrepositoryだけが追加する`.review-harness/profile.yaml`
 - Claude Code wrapper: ユーザーが明示的に有効化を承認した場合だけ`claude/skills/`へ追加
 - Claude Code subagent: 現在の無効化方針を変更する別ADRと比較評価なしには追加しない
 
-この文書は設計判断とinvariantの正本として残す。将来のshared referenceは実行手順を所有し、本書の理由や比較表を大量複製しない。Repositoryへ配布する`REVIEW_HARNESS.md`は同梱contractを列挙するreview済みentrypoint、`.review-harness/contracts/`は対応するshared referenceのexact snapshotであり、独立した派生contractとして編集しない。配布、hash検証、upgradeの自動化要否はpilot後のIssue #40で判断する。
+この文書は設計判断とinvariantの正本として残す。Shared referenceは実行手順を所有し、本書の理由や比較表を大量複製しない。Repositoryへ配布する`REVIEW_HARNESS.md`は同梱contractを列挙するreview済みentrypoint、`.review-harness/contracts/`は対応するshared referenceのexact snapshotであり、独立した派生contractとして編集しない。配布、hash検証、upgradeの自動化要否はpilot後のIssue #40で判断する。
 
 ## 21. 受入条件との対応
 

@@ -8,7 +8,7 @@ Codex と Claude Code のユーザーグローバル設定を管理するリポ�
 shared/references/   skill 本体の共通参照
 codex/               Codex 用グローバル設定と wrapper
 claude/              Claude Code 用グローバル設定と wrapper
-templates/           新規プロジェクト用の AGENTS.md / CLAUDE.md テンプレート
+templates/           新規プロジェクト用のinstructionとportable Harness template
 scripts/             同期・検証スクリプト
 docs/                運用メモ
 ```
@@ -42,14 +42,18 @@ scripts/apply-to-local.sh
 
 ## 新規プロジェクトのセットアップ
 
-新しいプロジェクトを始めるときは、`templates/` の AGENTS.md / CLAUDE.md をコピーして使うことを推奨します。
+新しいプロジェクトを始めるときは、`templates/` のAGENTS.md / CLAUDE.mdをコピーして使うことを推奨します。Personal skillに依存しないreview-remediation Harnessも必要なら、同じdirectoryのportable bundleをproject rootへコピーします。
 
 ```bash
 cp templates/AGENTS.md templates/CLAUDE.md <プロジェクトルート>/
+cp templates/REVIEW_HARNESS.md <プロジェクトルート>/
+mkdir -p <プロジェクトルート>/.review-harness
+cp -R templates/.review-harness/contracts <プロジェクトルート>/.review-harness/
 ```
 
 - 2 ファイルは意図的な対称配置です。冗長でも両方をフル内容で用意し、片方を変更したらもう片方にも同じ変更を反映します (ラッパー・@import・symlink は使わない)
 - 記入基準と運用ルールは [templates/README.md](templates/README.md) を参照してください
+- `REVIEW_HARNESS.md`と`.review-harness/contracts/`は同時にコピーし、manifestのSHA-256照合に成功してから使います
 - `templates/` はローカル同期 (`sync-from-local.sh` / `apply-to-local.sh`) の対象外で、このリポジトリが正本です
 
 ## 管理しないもの

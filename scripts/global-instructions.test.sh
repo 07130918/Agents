@@ -41,7 +41,8 @@ for skill_name in \
   create-pr \
   git-worktree-ops \
   sync-docs-code \
-  principle-of-programming-reviewer; do
+  principle-of-programming-reviewer \
+  review-remediation-harness; do
   route_pattern="$(printf '`%s`' "${skill_name}")"
   if ! grep -Fq "${route_pattern}" "${CODEX_GLOBAL}"; then
     echo "Workflow索引にskillがありません: ${skill_name}" >&2

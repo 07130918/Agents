@@ -49,6 +49,7 @@
 - Worktreeの作成、確認、merge後整理: `git-worktree-ops`
 - PR前のdocumentation同期: `sync-docs-code`
 - 普遍的なprogramming原則によるreview: `principle-of-programming-reviewer`
+- 独立reviewerによるreview、修正、検証: `review-remediation-harness`
 
 詳細手順をこのfileへ重複させず、対応するskillまたはreferenceを正本とする。
 
