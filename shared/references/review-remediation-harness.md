@@ -220,7 +220,7 @@ Target、Issue input、scope、permission、project rule、contract hashが変�
 | `human_approved_run_local|explicit_scope` | `source_revision`に`approval:<stable_approval_id>`を必須、`source_sha: null`、`source_object_id: null` |
 | `permission_set` | Human変更時は`approval:<stable_approval_id>`、defaultは`sha256:<content_sha256>`を`source_revision`へ保存し、`source_sha: null`、`source_object_id: null` |
 
-`trust_source`は`runtime_observed|personal_contract|base|human_approved_run_local|external_authoritative|external_observed`のいずれかとする。`repository_identity`と`prior_run_handoff`だけ`runtime_observed`を使う。Repository identityは`source_identifier: runtime:git-common-dir`と上記JCS objectのexact `content`を保存する。Prior run handoffは`source_identifier: run:<repository_id>/<prior_run_id>`とし、旧runを検証してから、terminal Manifestのrevision/artifact ID/hash、未解決requestごとのsource artifact ID/hashとexact request value、未完了state、停止理由を通常refではない値として`content`へcopyする。Artifact pathやcommon refを持たず、新runはこのself-contained snapshotだけを参照する。`external_authoritative`は`authority_status: governing`、`external_observed`は`authority_status: evidence_only|pending`だけに使い、external inputは`authority_basis`を必須にする。
+`trust_source`は`runtime_observed|personal_contract|base|human_approved_run_local|external_authoritative|external_observed`のいずれかとする。`repository_identity`と`prior_run_handoff`だけ`runtime_observed`を使う。Repository identityは`source_identifier: runtime:git-common-dir`と上記JCS objectのexact `content`を保存する。Prior run handoffは`source_identifier: run:<repository_id>/<prior_run_id>`とし、旧runを検証してから、terminal Manifestのrevision/artifact ID/hash、terminal state、停止理由、未解決requestごとのstable request ID、source type、source artifact ID/hashを通常refではないscalar valueとして`content`へcopyする。`reuse_policy: informational_only_rederive`を必須にし、request payload、artifact path、common ref、旧Evidence contentはcopyしない。新runはこのsnapshotを成功、finding、期待値の根拠へ使わず、`CONTEXT_RESOLVING`からreviewまたはverificationを再実行してcurrent targetのrequestを再生成する。`external_authoritative`は`authority_status: governing`、`external_observed`は`authority_status: evidence_only|pending`だけに使い、external inputは`authority_basis`を必須にする。
 
 `issue_bundle`はrun開始時に明示されたIssueのstable ID、number、title、exact body/acceptance criteriaだけを持つgoverning projectionであり、comment、PR、review、linked Issueを含めない。`source_revision`はsourceがtitle/body専用のimmutable revisionを返す場合はその値、返さない場合はstable Issue ID、title、bodyを持つJCS valueのSHA-256を`sha256:<小文字16進64文字>`で保存する。各comment、PR、review、linked Issueは1 recordにつき1つの`external_record`へstable ID、revision、record type、author、author role、exact body、`authority_status`、`authority_basis`を保存する。`governing|pending`のrecordだけgeneration inputへ含め、`evidence_only` recordの追加、更新、削除はIssue bundleのbytes、revision、generation inputを変更しない。Authority statusが変わった場合は新しいexternal record inputとgenerationを作る。Git SHA/object IDはrepository object formatに一致する小文字16進40または64文字とする。
 
@@ -287,7 +287,7 @@ Security gateは常に`decision_policy: project_or_human`とし、上記Evidence
 
 Working tree manifestのtracked/untracked file追加、変更、削除、file modeまたはtype変更で`target_check.status: changed`になった場合は`transition_diff_ref`を必須にする。参照先は`evidence_kind: target_transition_diff`のcanonical JSONとし、`expected_target_ref`、`observed_target_ref`、各pathのchange kindと`before`、`after`を持つ。`before|after`は`{"status":"absent"}`または`{"status":"present","mode":"<mode>","type":"regular|symlink","byte_length":<integer>,"content_sha256":"<hash>","content_source":<source>}`のdiscriminated unionとする。追加はbeforeだけ`absent`、削除はafterだけ`absent`、空fileは`present`かつ`byte_length: 0`とし、欠落や取得失敗を`absent`へ丸めない。`content_source`は`{"kind":"git_object","object_id":"<oid>"}`または`{"kind":"target_attachment","target_id":"<target_artifact_id>","content_path":"<run_relative_path>"}`とする。Before contentはexpected targetのsnapshotまたはimmutable Git object、after contentはobserved targetのsnapshotまたはimmutable Git objectへ結び付ける。Validatorは両target refのhash、attachment metadataとraw bytesのhash/length、entryのtarget IDを照合する。Text、binary、symlinkを同じmanifest deltaで表し、binary bytesをtext化しない。EvidenceからEvidenceへの参照は追加しない。新generationへ進むManifestは、その`target_check`またはtargetを変更したStage artifactを`transition_cause_ref`で参照する。
 
-Orchestratorはtarget依存stageの開始前と完了後、resume、Final review開始前、READY判定前、`create-pr`へ渡す直前に`target_check`を保存する。Checkは保存済みtargetだけでなく、generation input refs、permission set、contract/project rule hash、governing/pending external source revisionも現在値と比較する。Evidence-only recordはauthority判定を再実行するために取得できるが、そのcontent driftだけをgeneration driftへ含めない。差分または必要な再取得不能があれば旧artifactをREADY根拠へ使わず、該当blockerを記録する。
+Orchestratorはtarget依存stageの開始前と完了後、resume、Final review開始前、READY判定前、`create-pr`へ渡す直前とphase終了後に`target_check`を保存する。Checkは保存済みtargetだけでなく、generation input refs、permission set、contract/project rule hash、governing/pending external source revisionも現在値と比較する。Evidence-only recordはauthority判定を再実行するために取得できるが、そのcontent driftだけをgeneration driftへ含めない。差分または必要な再取得不能があれば旧artifactをREADY根拠へ使わず、該当blockerを記録する。
 
 ## Roleを分離する
 
@@ -355,7 +355,7 @@ Fetchのtimeoutまたはtransient failureでは、許可したrefをread-backし
 8. `GATES_PENDING`: Docs、security、project gateを同じcandidate SHAで実行する。
 9. `REREVIEW_PENDING`: Fresh Final reviewerのpoprとgeneric comprehensive blind scan、必要なproject lens、reconciliationを行う。
 10. READY条件を全て満たせば`READY`を記録する。
-11. PR提出が許可されていれば、既存の`create-pr` contractへcandidate SHAとHarnessのREADY結果を渡す。Push前のproject hookを含む同contractの確認を省略しない。
+11. PR提出が許可されていれば、既存の`create-pr` contractへcandidate SHAとHarnessのREADY結果を渡す。Push前のproject hookを含む同contractの確認を省略しない。Phase終了後は、同contractが返したstatus、expected/observed base/head、hookを含む実行結果、remote/PR read-back、外部操作の有無をraw Evidenceへ保存する。続けてpost-phase `target_check`を保存し、両refを持つ`decision_kind: create_pr_result`を最後に保存する。Harnessはtransport、hook、PR再開処理を再実装しない。
 12. Humanがreviewしてmergeする。
 
 Targetを変更したstageは`TARGET_MUTATED`相当の結果を返し、影響するartifactをinvalidateする。PR提出前にbase/head/input driftを検出した場合はREADYを失効し、`CONTEXT_RESOLVING`から新targetを作る。新targetのverification、gate、Final reviewが終わるまで提出しない。
@@ -426,7 +426,7 @@ Fallbackで独立性、coverage、gate成功を偽装しない。
 
 - `READY`: Exact base/head、target ref、artifact hash、gate status、Final review、permission使用状況を返す。Mergeは実行しない。
 - Blocker: State、原因artifact、観測値、完了済みartifact、invalidated artifact、必要なHuman action、resume stateを返す。
-- `READY_INVALIDATED`: create-prのphase result。Manifest stateではない。Publishを行わずexpected/observed base/head、外部操作の有無を返し、Harnessはdecision保存後に`READY -> CONTEXT_RESOLVING`へ遷移する。
+- `READY_INVALIDATED`: create-prのphase result。Manifest stateではない。追加のpublishを継続せず、expected/observed base/headと既に行われた外部操作の有無を返す。Harnessはphase結果のraw Evidence、post-phase target check、それらを参照するdecisionの順に保存し、そのdecisionをcauseとして`READY -> CONTEXT_RESOLVING`へ遷移する。
 
 ## 検証
 

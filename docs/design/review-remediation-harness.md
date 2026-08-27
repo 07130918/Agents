@@ -260,6 +260,8 @@ Orchestratorはtarget依存stageの開始前と完了後、READY判定前、base
 
 PR提出前は`git fetch`後のbase ref SHAとcandidate targetのbase SHAも比較する。Base、head、scope、capability revision、project rules、input refsのいずれかが変わればREADYを破棄し、`CONTEXT_RESOLVING`からreview、verification、gate、Final reviewをやり直す。PR作成後はGitHub metadataのexact base/head SHAを再確認し、不一致ならPRが存在していてもREADYと表現しない。
 
+`create-pr`終了後は、同contractが返したphase status、expected/observed base/head、hookを含む実行結果、remote/PR read-back、外部操作の有無をraw Evidenceへ保存する。続けてpost-phase target checkを保存し、両refを持つ汎用decision artifactを最後に保存する。これは結果の観測だけをHarnessが所有する境界であり、Git transport、hook実行、PR作成や再開は`create-pr`から複製しない。`READY_INVALIDATED`では追加の提出操作を止め、既に外部操作が行われた可能性を消さずに`CONTEXT_RESOLVING`へ戻る。
+
 External authoritative inputは保存済みsnapshotのhash検証だけで済ませない。`CONTEXT_RESOLVING`、resume、`REREVIEW_PENDING`開始前、READY判定直前にsource APIからIssue governing projection、全comment、採用候補の関連Issue/decisionを再取得してrecord単位にauthorityを再判定する。Issue本体または`governing|pending` recordのrevision/content hash変更と、新規recordが`governing|pending`になった場合だけ新しいgeneration inputを作り、依存artifactをinvalidateして`CONTEXT_RESOLVING`へ戻る。Evidence-only recordの追加、編集、削除は観測Evidenceを更新できるがgenerationを変えない。Stable revisionまたは再取得手段を提供しないgoverning/pending sourceは自動READYの入力にせず、Humanがexact contentを承認した`human_approved_run_local` snapshotへ凍結する。
 
 ## 9. Profileless project context解決
@@ -618,7 +620,7 @@ Issue #39ではproject-local distributionを不採用とし、`shared/references
 7. 同phaseが`create-pr` contractに従うlocal candidate commitを作り、exact SHAを返す。Commit権限がなければHumanへhandoffする。
 8. Candidate SHAに対してrequired verification、docs/security gateを実行する。
 9. 修正を担当していないFinal reviewerと必要なProject reviewerが、candidate SHAでrequired project lensを含むblind scanを実行する。新しいrequired gateがあれば同じtargetで完了し、project resultとcoverageを固定してからreconciliationを行う。
-10. READY後、Orchestratorがcandidate targetのbase/headとinputの不変性を再確認し、既存の`create-pr` contractへ提出を委譲する。Project hookと同contractの提出前検証を省略せず、targetが変わった場合はREADYを失効して`CONTEXT_RESOLVING`へ戻る。
+10. READY後、Orchestratorがcandidate targetのbase/headとinputの不変性を再確認し、既存の`create-pr` contractへ提出を委譲する。Project hookと同contractの提出前検証を省略しない。Phase結果をraw Evidence、post-phase target check、両refを持つdecisionの順に保存し、targetが変わった場合はREADYを失効して`CONTEXT_RESOLVING`へ戻る。
 11. Humanがreviewし、mergeする。
 
 Docs gateをFinal reviewより前に置くのは、`mutated_target: true`がreview対象を変えるためである。Targetを変更し得るgateをFinal review後に実行すると独立reviewが古いSHAへ結び付く。Candidate SHAでdocs gateが許容statusかつ`mutated_target: false`になった後にFinal reviewを行うことで、codeとdocumentationの最終snapshotを同じ対象として確認する。

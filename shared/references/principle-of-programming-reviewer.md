@@ -99,7 +99,7 @@ Harnessまたはmachine-consumable resultを要求するcallerには、上記と
   "schema_version": "1.0",
   "target_source": {
     "kind": "current_branch|commit_range|pull_request|staged_only",
-    "identifier": "<branch_name|full_base...full_head|canonical_pr_url|branch@full_head>"
+    "identifier": "<kind_specific_stable_identifier>"
   },
   "git_object_format": "sha1|sha256",
   "base": {"ref": null, "sha": "<full_git_oid>"},
@@ -128,7 +128,9 @@ Harnessまたはmachine-consumable resultを要求するcallerには、上記と
 
 Conditional shapeと順序は次へ固定する。
 
+- `target_source.identifier`は`current_branch`ならexact branch名、`commit_range`なら`<full_base_sha>...<full_head_sha>`、`pull_request`ならcanonical PR URL、`staged_only`ならbranchに依存しない`index@<full_head_sha>`とする。
 - `base.ref`はbranch/ref名を解決できる場合はそのexact string、raw commit rangeなどrefを持たない入力ではnullとする。`base.sha`と`head.sha`は`git_object_format`に一致する小文字16進40または64文字とする。
+- `staged_only`ではcached diffの比較元と現在のcommitを同じobjectとして`base.sha == head.sha`にする。Symbolic branchを取得できる場合だけ`base.ref`へexact branch名を保存し、detached HEADではnullにする。
 - `working_tree.mode: excluded`では`entries: []`とし、statusだけを観測値として保持する。`included`ではHEAD treeとの差分だけをrepository相対pathのUTF-8 byte順で並べる。
 - Present entryは`{"path":"<path>","status":"present","mode":"<git_mode>","type":"regular|symlink","content_oid":"<oid>"}`、deleted entryは`{"path":"<path>","status":"deleted","head_mode":"<git_mode>","head_type":"regular|symlink","head_content_oid":"<oid>"}`とする。取得失敗をdeletedへ丸めずfingerprint unresolvedとして`Evaluation deferred`にする。
 - `index_diff.included`はstaged-onlyまたはindex指定時だけtrueにし、その場合だけ`content_oid`へcached diff bytesの`git hash-object --stdin`結果を入れる。Falseではnullにする。
