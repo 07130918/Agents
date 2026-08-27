@@ -210,6 +210,8 @@ Generationはrun内で0から開始し、targetまたはgoverning inputが変わ
 
 Dirty working treeをtargetに含める場合、Git objectから復元できないraw bytesをtarget確定時にrun storeへimmutable attachmentとして先に保存する。Attachmentはtarget metadataのpath、mode/type、length、hashで固定し、独立Evidence nodeにはしない。保存不能または保存後のhash不一致はtarget unresolvedとして停止する。これにより後から削除・変更されたuntracked、binary、symlinkもbefore contentを復元でき、RootからEvidenceへの逆参照やEvidence間参照を増やさずtransitionを証明できる。
 
+Staged-onlyまたはindex指定targetでは、popr contractが固定したenvironment/argvで生成したcached diffのraw bytesもtarget-owned attachmentへ保存する。Raw bytesからrepository object formatのGit blob OIDを再計算し、fingerprintの`index_diff.content_oid`へbindする。Working tree attachmentも同様にraw bytesからGit blob OIDを再計算し、同じpath/mode/typeのfingerprint entryへ一対一でbindする。Index diffだけが変わるgeneration transitionもbefore/after attachmentを持つcanonical deltaを必須にし、hash値だけの差分へ縮退させない。
+
 Personal Harness wrapper/referenceは`input_snapshot`としてpath、`declared_version`、`capability_revision`、content hashを固定し、実際に使用したskillだけをpoprの既存`skill_versions`へ記録する。Instructionとpolicyのhashは`project_rules`と`input_refs`でtarget/input consistencyへ含める。
 
 Initial reviewでは明示されたworking treeを含められる。READY候補とFinal reviewでは`working_tree.status == clean`、`working_tree.mode == excluded`、`head.sha == candidate commit`でなければならない。
@@ -663,7 +665,7 @@ Docs gateをFinal reviewより前に置くのは、`mutated_target: true`がrevi
 | H7 | Artifactが自己参照または未確定artifactを前方参照する | Artifact graph違反として`EVALUATION_DEFERRED`になりREADYへ進まない |
 | H8 | READY返却直前にtargetが変わる | READYを作らず`CONTEXT_RESOLVING`へ戻り、旧Final reviewを流用しない |
 | H9 | Final review前にIssue本文またはgoverning/pending commentが更新される | 該当inputのrevision差分を検出し、旧input依存artifactをinvalidateして`CONTEXT_RESOLVING`へ戻る。Evidence-only commentの変更ではgenerationを変えない |
-| H10 | Detached HEADでstaged-only reviewを行う | Branch名を補作せず`index@<full_head_sha>`でtargetを固定する |
+| H10 | Detached HEADでstaged-only reviewを行う | Branch名を補作せず`index@<full_head_sha>`でtargetを固定し、固定environment/argvで生成したcached diff raw bytesをfingerprint OIDへbindする |
 | H11 | Security gate中にdeadlineまたはpaid-call budgetへ達する | Run-wide budget guardが優先し、limitとcounter revisionを記録して`BUDGET_EXHAUSTED`になる |
 | H12 | Project-local Harness fileが存在しない | Personal Harnessを正本として通常起動し、projectへcontractを生成しない |
 | H13 | Base側instruction間でsource of truthが矛盾する | `context_status: conflicted`として`HUMAN_DECISION_REQUIRED`になる |
