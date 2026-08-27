@@ -433,6 +433,8 @@ Project contextはportable contractが実行に必要とするproject固有入�
 
 Orchestratorは次の順にbase側の候補を収集し、採用、除外、矛盾を`decision_kind: context_resolution`へ記録する。後順位の情報が前順位を黙って上書きする優先順位ではない。複数の信頼済みsourceがmaterialに矛盾すれば`context_status: conflicted`とし、Human判断まで停止する。
 
+Context解決前のbootstrapでは`read_repository`だけを使い、filesystem readとportable contractが固定したread-only Git inspectionに限定する。許可するGit操作はrepository identity、ref、tree、blob、diff、status、file mode、content hashを取得する`git rev-parse`、`git symbolic-ref`、`git remote get-url`、`git status`、`git diff`、`git show`、`git ls-tree`、`git cat-file`、`git hash-object`相当である。実装はoptional lockとindex refreshを無効化し、external diff、textconv、`hash-object -w`などwriteまたは外部processを起動し得るoptionを使わない。Read-onlyを証明できなければbootstrap allowlistへ入れない。Repository content、index、ref、remote、外部systemを変更するcommand、project script、package manager、task runnerはbootstrapで実行しない。Runtimeが同じ情報を専用read toolで取得できる場合はshell commandを必要としない。
+
 1. Base SHAにある`REVIEW_HARNESS.md`。存在しない場合は、Humanがrunとcontent hashを明示承認したportable contract snapshot。
 2. Base SHAにある任意の`.review-harness/profile.yaml`。
 3. 対象pathへ適用されるbase側のrepository instruction file。`AGENTS.md`、`CLAUDE.md`、`CONTRIBUTING.md`と、それらが正本として明示的に参照する文書だけを含む。
@@ -530,6 +532,8 @@ Effectと必要permissionの対応は次で固定する。
 | `local_write` | `run_local_commands`。Repository内を変更する場合は`write_worktree`も必要 | 同じ入力から安全に再実行できるdeclared commandだけ1回 |
 | `external_write` | `run_local_commands`、`write_external_system`、操作対象と単位を記録したHuman decision | Idempotency keyがあるか、read-backで未実行を証明できる場合だけ1回 |
 
+この表の`read_only`はcontext解決後に実行するproject-defined commandを指す。9.1の固定bootstrap inspectionはproject commandではなく、Orchestratorが`read_repository`だけで実行できる。Bootstrap allowlistへ任意のproject commandを追加せず、追加が必要ならproject contextとして解決し、`run_local_commands`とeffect分類を適用する。
+
 Profileまたはcontext resolutionの`effect`は必要permissionの下限宣言であり、command自身がpermissionを引き下げるauthorityではない。Orchestratorは実行toolのmetadata、network access、書込先から独立に分類し、宣言より強いeffectを適用できるが弱くしてはならない。External endpointまたは書込先を安全に分類できないcommandは`external_write`としてHuman判断へ送る。
 
 `external_write`がremote側で成功した可能性を残してtimeoutした場合は自動retryしない。Read-backで結果を一意に確定できなければ`HUMAN_DECISION_REQUIRED`へ遷移する。Paid APIはpermissionに加えて残budgetも必要とする。
@@ -542,7 +546,7 @@ Run開始時に次のpermissionを個別に記録する。
 
 | Permission | 初期値 | 許可されるrole | 備考 |
 | --- | --- | --- | --- |
-| `read_repository` | true | reviewer、tester、gate、orchestrator | 対象scope外への探索は正本確認に必要な最小範囲だけ |
+| `read_repository` | true | reviewer、tester、gate、orchestrator | Orchestratorはcontext解決前に9.1の固定bootstrap inspectionを実行可。対象scope外への探索は正本確認に必要な最小範囲だけ |
 | `write_run_store` | true | orchestrator | Candidate worktree外のappend-only storeだけ。各roleのresultをruntime metadata付きで保存する |
 | `write_worktree` | 変更依頼時だけtrue | implementer、更新を許可されたdocs gate | Reviewerは常にfalse |
 | `run_local_commands` | 解決済みproject contextの宣言分だけtrue | tester、CI、gate | effectが不明なら停止 |
@@ -831,7 +835,9 @@ Harnessを実装する前に、`issue-to-pr`と`create-pr`の正本は次のdele
 - `prepare_candidate`: `create-pr`の品質確認、documentation同期、stage確認、commit分割とmessage規約をstate machineへ個別stepとして公開し、steps 5-7全体を担う。既に確定したsame-target artifactを二重実行せず、各stepの結果またはtarget mutationをHarnessへ返し、最後にcleanなexact candidate SHAを返す。
 - `publish_exact_candidate`: READY済みcandidate SHAとbase SHAを入力にし、fetch後の一致確認、既存remote/PR確認、同じSHAのpush、PR作成または更新だけを行う。File編集、targetを変更し得る品質gate、stage、追加commitは禁止する。
 
-現行の正本はこれらを単一workflowとして記述しており、このphase interfaceはまだ存在しない。したがって将来の自動Harnessまたはportable手動運用がmonolithicな`create-pr`をREADY後に再実行してはならない。実装着手前に両referenceを更新し、portable distributionからも実行可能にすることを必須前提とする。本Issueは設計文書だけなのでreference自体は変更せず、手動運用では各正本の規約を守りながら同じ境界で個別stepを実行する。
+現行の正本はこれらを単一workflowとして記述しており、このphase interfaceはまだ存在しない。`issue-to-pr`には不明なproject commandを推測する経路もあるため、本設計のfail-closed resolverと現行workflowを組み合わせたend-to-end手動運用は認めない。Issue #38が両referenceを更新するまでは、portable baselineをcontext解決のread-only dry-run以外へ使わず、project command、修正、commit、`READY`判定、push、PR作成へ進めない。
+
+Issue #38完了後は、portable、自動、手動のいずれの運用も更新済みphase interfaceを使い、monolithicな`create-pr`を`READY`後に再実行してはならない。Portable contractと既存workflowが衝突する場合に、その場で都合のよい規則を選ばず`EVALUATION_DEFERRED`とする。本Issueは設計文書だけなのでreference自体は変更せず、実行可能化は#38、portable distributionは#39で行う。
 
 ### 18.2 実行順
 
