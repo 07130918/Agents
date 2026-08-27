@@ -44,7 +44,7 @@ scripts/apply-to-local.sh
 
 新しいプロジェクトを始めるときは、`templates/` の AGENTS.md / CLAUDE.md をコピーして使うことを推奨します。Review-remediation Harnessはpersonal/global skillとして管理し、projectへcontract全文をコピーしません。
 
-Harnessはproject profileなしでもrepository instruction、CI、manifest、Issueから必要なcontextを解決する。Project固有のcommandやgateを明示して精度を高める場合だけ、対象projectへ任意の`.review-harness/profile.yaml`を追加する。
+Harnessはrepository instruction、CI、manifest、governing Issueなど、projectが既に持つ正本から必要なcontextを解決します。Harness専用project profileは作らず、必須情報を一意に解決できない場合はHuman承認のrun-local inputで補完するか、fail-closedで停止します。
 
 ```bash
 cp templates/AGENTS.md templates/CLAUDE.md <プロジェクトルート>/

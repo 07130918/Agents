@@ -33,10 +33,11 @@ Harness委譲はwrapper内部のcommand名に依存せず、次の入力と出�
 
 委譲前に次を固定する。
 
-- Issueのsource identifier、取得した本文と全comment、取得時点のrevisionまたはcontent hash
+- Issueのsource identifier、title/body/acceptanceだけのgoverning projectionとrevision/hash、各commentを分離したstable ID/revision/body/authority status。Harness generation inputには`governing|pending` recordだけを渡す
 - acceptance criteria、宣言済みscope、非目標
 - base ref、base SHA、作業branch、委譲時点のheadまたはworking tree状態
-- 許可されたfile変更、commit、scoped remote fetch、push、PR更新、外部read/writeのpermission
+- `harness_execution_permissions`: 許可されたfile変更、commit、scoped remote fetch、repository/external read。Harnessではpush、PR更新、external writeを常にfalseにする
+- `caller_submission_permissions`: 提出時のscoped remote fetch、push、PR作成または更新など、`READY`後の提出にだけ使うpermission。呼び出し元がHarness外で保持し、Harnessのpermission setやartifactへ渡さない
 - Project instructionと利用可能なcontractのsource identifierまたはsnapshot
 
 Harnessは次のどちらかだけを返す。
@@ -44,7 +45,7 @@ Harnessは次のどちらかだけを返す。
 - `READY`: exact `base_sha`と`head_sha`、cleanなcandidate、同じtargetに結び付くrequired verification・gate・Final reviewの結果、未解決blockerがないことを返す。
 - blocker: 観測した状態、停止理由、完了済みartifact、無効化したartifact、再開stateと不足inputを返す。仕様判断、scope拡大、利用不能なrequired gate、独立reviewer不在を成功へ読み替えない。
 
-委譲後にIssue、project rule、base SHA、head SHA、scope、permissionのいずれかが変わった場合、受領済み`READY`を失効させる。変更内容をintakeへ反映し、影響するcontext、verification、gate、reviewを再実行して新しいtargetを固定するまでpublishしない。
+委譲後にIssue、project rule、base SHA、head SHA、scope、またはHarness実行・target・gateへ影響する`harness_execution_permissions`が変わった場合、受領済み`READY`を失効させる。変更内容をintakeへ反映し、影響するcontext、verification、gate、reviewを再実行して新しいtargetを固定するまでpublishしない。`caller_submission_permissions`の変更だけではHarness generationを変えず、呼び出し元が`publish_exact_candidate`の開始前に再検証する。
 
 ## 手順
 
@@ -109,7 +110,8 @@ Harnessへ委譲する場合は、ここでHarness delegation interfaceの入力
 
 - 通常経路では、candidate準備から提出まで`create-pr`のdefault経路へ委譲する
 - Harnessから`READY`を受け取った経路では、同じbase/head SHAを入力として`publish_exact_candidate`だけを実行する。品質gateやdocumentation同期を含むmonolithicなdefault経路を再実行しない
-- `publish_exact_candidate`が不一致を返した場合はPRを作成または更新せず、受領済み`READY`を失効させてHarness delegation interfaceのintakeから再開する
+- `publish_exact_candidate`にはHarness artifactのpermissionを流用せず、呼び出し元が保持して開始直前に再検証した`caller_submission_permissions`を明示的に渡す
+- `publish_exact_candidate`が`READY_INVALIDATED`を返した場合は追加のpush/PR操作を止め、expected/observed targetと既に行われた外部操作の有無を報告する。受領済み`READY`のrunへ追記せず、Harness delegation interfaceのintakeから新しいrunを開始する
 - どちらの経路も`create-pr`の共通契約と完了条件を満たし、issueをcloseするkeywordをPR本文へ含める
 
 ### 10. 完了報告する
