@@ -36,7 +36,7 @@ Harness委譲はwrapper内部のcommand名に依存せず、次の入力と出�
 - Issueのsource identifier、取得した本文と全comment、取得時点のrevisionまたはcontent hash
 - acceptance criteria、宣言済みscope、非目標
 - base ref、base SHA、作業branch、委譲時点のheadまたはworking tree状態
-- 許可されたfile変更、commit、push、PR更新、外部read/writeのpermission
+- 許可されたfile変更、commit、scoped remote fetch、push、PR更新、外部read/writeのpermission
 - Project instructionと利用可能なcontractのsource identifierまたはsnapshot
 
 Harnessは次のどちらかだけを返す。
@@ -60,7 +60,7 @@ Harnessは次のどちらかだけを返す。
 - 対象ファイル・変更範囲の見込みを明示する
 - テスト方針 (単体テストの追加有無、対象ケース) を明示する
 - 「やらないこと」を明示する — issue の範囲を超える改善案は後述の派生タスク提案に回し、今回のスコープには含めない
-- File変更、commit、push、PR更新、外部read/writeのうち今回許可された操作を明示する。権限が不明な副作用は許可済みと推測しない
+- File変更、commit、scoped remote fetch、push、PR更新、外部read/writeのうち今回許可された操作を明示する。権限が不明な副作用は許可済みと推測しない
 - この宣言は作業開始前の共有であり、ユーザー確認待ちではない。ブロッカーがなければ同じターンで手順 3 へ進む
 
 ### 3. 作業ブランチを作成する
