@@ -10,7 +10,7 @@
 |---|---|
 | AGENTS.md | Codex が読むプロジェクト共通指示 (フル内容) |
 | CLAUDE.md | Claude Code が読むプロジェクト共通指示 (フル内容) |
-| REVIEW_HARNESS.md | Personal skillに依存しないreview-remediation Harnessのentrypoint兼manifest |
+| REVIEW_HARNESS.md | Review-remediation Harnessのproject-local entrypoint兼manifest |
 | .review-harness/contracts/ | CLI非依存contractのreview済みexact snapshot |
 
 - 2 ファイルは**意図的な対称配置**。冗長になるが、各ツールがネイティブに読むファイルを
@@ -33,7 +33,7 @@ cp ~/Desktop/Agents/templates/AGENTS.md ~/Desktop/Agents/templates/CLAUDE.md <�
 
 ## Portable review Harness
 
-Independent reviewerを含むreview、修正、検証をpersonal skillなしでも実行するprojectでは、entrypointとcontract directoryを必ず同時にコピーする。
+Independent reviewerを含むreview、修正、検証workflowをproject-local contractとして固定する場合は、entrypointとcontract directoryを必ず同時にコピーする。
 
 ```bash
 cp ~/Desktop/Agents/templates/REVIEW_HARNESS.md <プロジェクトルート>/
