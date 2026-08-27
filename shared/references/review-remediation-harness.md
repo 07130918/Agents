@@ -29,7 +29,7 @@
 | Security | `security-audit`または同じsemantic contract | Risk trigger時だけrequired gateとして要求する |
 | Merge、仕様、risk受容 | Human | Harnessから実行または代行しない |
 
-このHarness自身はpersonal/global skillとして利用する。関連capabilityは実際に利用したskill/referenceのversionとcontent hashを記録し、required contractまたは実行capabilityがなければ別の一般reviewへ読み替えず停止する。Project repositoryへHarness skillやcontract全文を複製しない。
+このHarness自身はpersonal/global skillとして利用する。関連capabilityは実際に利用したskill/referenceのpath、capability revision、content hashを記録し、required contractまたは実行capabilityがなければ別の一般reviewへ読み替えず停止する。Project repositoryへHarness skillやcontract全文を複製しない。
 
 ## 入力
 
@@ -37,7 +37,7 @@ Run開始前に次を固定する。
 
 - Repository identity、base ref、full base SHA、作業branch、headまたはworking tree fingerprint。
 - Issueまたは明示scope、acceptance criteria、非目標、取得したexternal recordのrevisionとcontent hash。
-- Harness contractと利用するskill/referenceのversion、任意profile、project instruction、CI/manifest。
+- Harness contractと利用するskill/referenceのcapability revision、任意profile、project instruction、CI/manifest。
 - Permission、deadline、retry/cost limit、許可されたwrite pathとdiff上限。
 - Runtimeが発行したactor、session、thread、jobの識別情報。
 
@@ -45,11 +45,13 @@ Issue、comment、PRなど外部sourceを取得するには、source identifier�
 
 ## Personal contractを固定する
 
-Run開始時に、実際に読み込んだHarness wrapperとこのreferenceのpath、contract version、content hashを`input_snapshot`へ保存する。関連skill/referenceも実行時のpath、version、content hashを記録し、run中に値が変わった場合は既存のreview、verification、gate、READYを流用せず`CONTEXT_RESOLVING`から再開する。
+Run開始時に、実際に読み込んだHarness wrapperとこのreferenceのpath、contract version、capability revision、content hashを`input_snapshot`へ保存する。関連skill/referenceも同じ形式で固定し、run中に値が変わった場合は既存のreview、verification、gate、READYを流用せず`CONTEXT_RESOLVING`から再開する。
+
+Capability revisionは次の規則で推測なしに決める。Sourceがversionを明示する場合は`declared_version`へその値、`capability_revision`へ`version:<declared_version>`を保存する。Versionを明示しない場合は`declared_version: null`、`capability_revision: sha256:<content_sha256>`とし、content hashをcanonical revisionとして使う。SemVerなどの値を補作しない。Required capabilityはpath、capability revision、content hashをすべて固定できた場合だけresolvedにでき、対応version範囲が別途宣言されている場合だけversion互換性を判定する。
 
 Project repositoryのcandidateがHarness contract、permission、READY条件を変更または置換することはできない。Project側の入力はbase SHAにあるinstruction、任意profile、CI/manifest、policyへ限定し、同じrunでcandidateが追加したprofileやpolicyを権限縮小またはgate省略へ使わない。
 
-Harness wrapper、reference、required capabilityのpathまたはhashを固定できない、対応外version、読込失敗、run中のdriftがある場合は`EVALUATION_DEFERRED`にする。Project-localなHarness skill、`REVIEW_HARNESS.md`、contract snapshotの有無は検査せず、存在を要求しない。
+Harness wrapper、reference、required capabilityのpath、capability revision、content hashを固定できない、宣言済み対応範囲外のversion、読込失敗、run中のdriftがある場合は`EVALUATION_DEFERRED`にする。Project-localなHarness skill、`REVIEW_HARNESS.md`、contract snapshotの有無は検査せず、存在を要求しない。
 
 ## Project contextを解決する
 
@@ -78,6 +80,8 @@ Project script、package manager、build tool、test、hook、external diff/text
 Profile不在は`profile_status: absent`として記録するが、それだけでblockerにしない。Base側情報から全fieldを決定的に解決できれば`context_status: resolved`にできる。必須field不足は候補と不足根拠を記録して`EVALUATION_DEFERRED`、権威が同等の正本矛盾は`HUMAN_DECISION_REQUIRED`とする。
 
 `resolution_mode`は`profile|repository_baseline|human_approved_run_local|mixed`のいずれかとする。Profile不在でbase側情報だけから解決した場合は`repository_baseline`を使う。
+
+専用project reviewerがなく、信頼済みbase ruleも専用reviewerまたはproject固有lensを要求しない場合は、Initial reviewerとFinal reviewerがneutral review contractのgeneric lensを実行する。Initial `review`は`project_results: []`とgeneric lensを含む`coverage_status: Complete`、`blind_review`は`project_results: []`、`project_coverage_status: not_required`とgeneric lensを含むblind coverageを記録する。信頼済みbase ruleが専用reviewerまたはproject固有lensを要求する場合は、そのcapabilityとcoverageをrequiredにし、利用不能なら`EVALUATION_DEFERRED`にする。専用reviewer不在を、required lens自体の省略理由にしない。
 
 ### External record authority
 
@@ -123,13 +127,20 @@ Canonical run artifactはJSONとし、candidate worktree外のrun storeへappend
 
 `input_snapshot`と`target`だけは`target_ref: null`にできる。Target未解決中のdecisionとrun manifestも、理由をpayloadへ記録した場合だけnullを許す。その他は1つのtargetを参照する。
 
-Artifact参照はRoot、Evidence、Stage、Manifestの順に限定する。後順位から前順位、同一artifact、自分を含むmanifest、未確定artifactを参照しない。保存前に参照先の存在、hash、同じrun、許可されたtarget generationを確認する。違反時はartifactをREADY根拠へ使わず`EVALUATION_DEFERRED`にする。
+Artifact参照は次の非循環layerに限定する。
+
+1. Rootの`input_snapshot`と`target`はStageまたはManifestを参照しない。`target_ref`は必ずnullにする。
+2. Evidenceの`evidence`はRootだけを参照できる。
+3. Stageの`target_check`、`review`、`change_request`、`remediation`、`verification`、`gate`、`blind_review`、`final_review`、`decision`は、Root、Evidence、自分より小さい`monotonic_sequence`のStageだけを参照できる。
+4. Manifestの`run_manifest`は確定済みRoot、Evidence、Stageと直前Manifestを参照できるが、他artifactから参照されない。
+
+同一artifact、前方参照、自分を含むManifest、未確定artifactは参照しない。保存前に参照先の存在、hash、同じrun、許可されたtarget generationを確認する。違反時はartifactをREADY根拠へ使わず`EVALUATION_DEFERRED`にする。
 
 Target、Issue input、scope、permission、project rule、contract hashが変わった場合は新しいgenerationを作る。旧verification、gate、reviewを成功根拠へ流用しない。Historical artifactはreconciliationの参照だけに使える。
 
 ### 必須payloadとcheckpoint
 
-`input_snapshot.payload`は`input_kind`、`trust_source`、`source_identifier`、`source_sha`、`source_revision`、`content_sha256`、秘密情報を除いたexact `content`を持つ。External recordには`authority_status`と`authority_basis`も必要である。Personal Harness contractは実際のlocal path、contract version、content hashを、profileとproject ruleはbase SHAとGit blob hashを記録する。
+`input_snapshot.payload`は`input_kind`、`trust_source`、`source_identifier`、`source_sha`、`source_revision`、`content_sha256`、秘密情報を除いたexact `content`を持つ。External recordには`authority_status`と`authority_basis`も必要である。Personal Harness contractと関連capabilityは実際のlocal path、`declared_version`、`capability_revision`、content hashを、profileとproject ruleはbase SHAとGit blob hashを記録する。
 
 `target.payload`はpoprのtarget fingerprintを正本とし、repository identity、target source、exact base ref/SHA、head SHA、working tree status/mode/manifest、対象ならindex diff hash、PR remote、include/exclude scope、実際に使ったskill version、project ruleのsource/path/blob hashを持つ。Harness metadataとして`generation`、`previous_target_ref`、`transition_reason`を追加するが、popr fingerprintの意味は変更しない。
 
@@ -143,7 +154,7 @@ Stage artifactの必須payloadは次の通りとする。
 | `change_request` | `requests`。各要素は`review_finding|verification_failure|gate_failure`を識別する |
 | `remediation` | request IDごとの`decision`、`minimal_change`、`planned_paths`、`test_plan`、`scope_effect` |
 | `verification` | `commands`、各commandのexit codeと開始・終了時刻、`environment_snapshot_ref`、`output_refs`、`status`、`unverified_reason`、`mutated_target` |
-| `gate` | `gate_name`、`contract_version`、`execution_status`、`decision_status`、`decision_policy`、`acceptance_policy_ref`、`evidence_ref`、`mutated_target` |
+| `gate` | `gate_name`、`declared_version`、`capability_revision`、`content_sha256`、`execution_status`、`decision_status`、`decision_policy`、`acceptance_policy_ref`、`evidence_ref`、`mutated_target` |
 | `blind_review` | `blind_result`、`blind_received_artifacts`、`project_results`、`project_coverage_status`、`required_gates`、`independence_check` |
 | `final_review` | `blind_review_ref`、`reconciliation`、`popr_result`、`previous_review_ref`、`remediation_status`、`remediation_refs`、`independence_check` |
 | `decision` | `decision_kind`と、その判断を再現する観測値、根拠ref、blocker、Human action。Context解決では下記の専用field |
@@ -210,6 +221,15 @@ External writeはidempotency keyがあるかread-backで未実行を証明でき
 
 Targetを変更したstageは`TARGET_MUTATED`相当の結果を返し、影響するartifactをinvalidateする。Publish前後にbase/head/input driftを検出した場合はREADYを失効し、`CONTEXT_RESOLVING`から新targetを作る。
 
+各stageの失敗と差戻しは次のように一意に扱う。
+
+- `VERIFYING`または`TARGET_VERIFYING`: 信頼済み期待値に結び付く修正可能な失敗は`verification_failure` requestを作って`CHANGES_REQUESTED`へ進む。期待値または仕様が不明なら`HUMAN_DECISION_REQUIRED`、環境、権限、serviceで実行不能なら`VERIFICATION_BLOCKED`へ進む。Commandが許可済みlocal writeでtargetを変更した場合、working tree検証は新targetを固定して`VERIFYING`、candidate検証は`CANDIDATE_COMMIT_PENDING`へ戻る。Base、scope、rule、inputが変わった場合は`CONTEXT_RESOLVING`へ戻る。
+- `PRECOMMIT_DOCS_PENDING`: `PASS`またはsame-targetの`UPDATED`はcandidate準備へ進む。文書を実変更した場合は新targetの`VERIFYING`、project ruleまたはinputを変更した場合は`CONTEXT_RESOLVING`へ戻る。正本矛盾は`HUMAN_DECISION_REQUIRED`、実行失敗または利用不能は`EVALUATION_DEFERRED`にする。
+- `GATES_PENDING`: Same-targetのrequired gate成功は`REREVIEW_PENDING`へ進む。信頼済み期待値に結び付く修正可能な`BLOCKED`は`gate_failure` requestを作って`CHANGES_REQUESTED`へ進む。仕様選択、risk受容、外部副作用判断は`HUMAN_DECISION_REQUIRED`、未実行、実行失敗、利用不能、別targetは`EVALUATION_DEFERRED`にする。許可済みgateがtargetを変更した場合は`CANDIDATE_COMMIT_PENDING`、base、scope、rule、inputを変更した場合は`CONTEXT_RESOLVING`へ戻る。
+- `REREVIEW_PENDING`: Candidate project resultが新しいrequired gateを返した場合はblind artifactを保持して`GATES_PENDING`へ戻る。`New`、`Remaining`、`Regressed`のCriticalまたはMajorがありbudget内ならreview findingを参照する`change_request`を作って`CHANGES_REQUESTED`へ進む。Coverage不足は`EVALUATION_DEFERRED`、仕様矛盾は`HUMAN_DECISION_REQUIRED`、独立性不足は`INDEPENDENCE_BLOCKED`にする。新gateがtargetを変更した場合はblind artifactをinvalidateし、新targetでFinal reviewを最初から行う。
+
+`CHANGES_REQUESTED`へ入る前にsource review、verification、gate artifactを参照する`change_request`を確定する。Expected behaviorが不明、scopeまたはwrite permission外、次のattemptがlimit超過の場合は`FIXING`へ進まず、それぞれHumanまたは対応blockerへ遷移する。
+
 ## READYと停止条件
 
 次を全て満たす場合だけ`READY`にする。
@@ -217,7 +237,7 @@ Targetを変更したstageは`TARGET_MUTATED`相当の結果を返し、影響�
 - Harness contract hashとproject contextがresolved。
 - Exact base/head SHAとclean working treeを持つcandidate targetが固定済み。
 - Review coverageがCompleteで、Introduced/ExposedのCriticalとMajorが0件。
-- Required verification、docs/security/project gate、project lensが同じcandidate targetで成功。
+- Required verification、docs/security/project gateと、解決済みrequired lensが同じcandidate targetで成功。専用project lensが不要なrunは`project_coverage_status: not_required`かつgeneric lensを含むcoverageがCompleteである。
 - Docs gateが`PASS`または`UPDATED`かつ`mutated_target: false`。
 - External authorityに`pending`がなく、materialな仕様矛盾とunresolved blockerがない。
 - Final reviewerの独立性checkが成功。
@@ -232,7 +252,7 @@ Finding 0件、A grade、100%の確信はREADY条件にしない。MinorとNit�
 - Test環境、権限、serviceで実行不能: `VERIFICATION_BLOCKED`。
 - Fresh reviewerを確保できない: `INDEPENDENCE_BLOCKED`。
 - Retry、cycle、deadline、token、cost、diff上限へ到達: `BUDGET_EXHAUSTED`。
-- Required gateが未実行、失敗、利用不能、別target: `EVALUATION_DEFERRED`。
+- Required gateが未実行、実行失敗、利用不能、別target、または修正可能なfailureへ分類できない: `EVALUATION_DEFERRED`。信頼済み期待値へ結び付く修正可能なfailureは`CHANGES_REQUESTED`へ進む。
 
 Blockerからは記録されたresume stateへだけ戻る。`EVALUATION_DEFERRED`は`CONTEXT_RESOLVING`、verification blockerは停止したverification state、independence blockerは`REREVIEW_PENDING`を再開候補にするが、次の再検証に成功するまで遷移しない。Limitを黙って増やさず、変更にはHuman decision artifactを必要とする。
 
@@ -267,7 +287,7 @@ Fallbackで独立性、coverage、gate成功を偽装しない。
 
 ## 検証
 
-- Harness wrapper/referenceのversionとcontent hashを固定した。
+- Harness wrapper/referenceとrequired capabilityのpath、capability revision、content hashを固定した。
 - 全artifactが同じrunと正しいtarget generationへ接続され、参照graphが非循環である。
 - Required verificationとgateがcandidate SHAへ結び付く。
 - ImplementerとFinal reviewerのinstanceが分離され、blind scanの受領artifactが制限されている。
