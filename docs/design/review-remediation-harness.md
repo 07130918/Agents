@@ -182,7 +182,7 @@ Codexでfresh subagentを使える場合は、過去会話をforkせず、必要
 
 - Agentが生成するcanonical run artifactはJSONとする。曖昧な型変換を避け、将来のvalidatorとCIで同じ内容を検証できるためである。
 - Markdownはgoverning contract、PR本文、human向けreportに使えるが、run stateとresumeの正本にしない。
-- Run artifactはcandidate worktree外のharness管理storeへ保存する。論理pathは`<runtime_state_root>/review-harness/<repository_id>/<run_id>/`とし、実pathまたはstore URIをbootstrap manifestへ記録する。Stage完了後のartifactは上書きせずappend-onlyにする。
+- Run artifactはcandidate worktree外のharness管理storeへ保存する。論理pathは`<runtime_state_root>/review-harness/<repository_id>/<run_id>/`とし、`repository_id`はshared referenceのrepository identity inputから決定的に導出する。Stage完了後のartifactは上書きせずappend-onlyにする。
 - Canonical ledgerへのcommit pointはManifest headのCAS更新とし、single-writerのimmutable transaction descriptorからだけcrash recoveryする。Head未到達のcontent-addressed objectはartifact/lifecycleへ昇格させない。Crash、fork、invalid latestを古いvalid Manifestへのrollbackで隠さない。Exact protocolとpath grammarは実行正本へ集約する。
 - Personal Harness wrapper/referenceはrun artifactではないが、実際に読み込んだpath、`declared_version`、`capability_revision`、content hashを`input_snapshot`へ固定する。
 - Storeへappendできるのは`write_run_store`を持つOrchestratorだけとする。各roleはresultを返し、Orchestratorがruntime由来のproducer metadata、hash、sequenceを付けて保存する。Implementerとcandidate processにはstoreの書込権限を与えない。
@@ -342,7 +342,7 @@ Gate artifactは実行成否と採用可否を分ける。
 
 Orchestratorはtarget依存stageの開始前と完了後、READY判定前、base refをfetchした後、pushまたはPR作成後にtarget fingerprintの全componentを再取得する。
 
-- repository identityとtarget source
+- run store用repository identity inputとtarget source
 - exact base refとbase SHA
 - exact head SHA
 - working treeのcleanまたはdirty、mode、manifest
@@ -398,23 +398,7 @@ Personal Harness wrapper/referenceは実際に読み込んだlocal path、contra
 
 Project入力の例外はHumanが内容と適用runを明示承認したrun-local snapshotだけとする。この場合はsnapshotへHuman producerとapproval scopeを記録し、対応するdecision artifactからそのsnapshotを参照する。Implementerまたはcandidate contentだけを根拠に承認済みと扱わない。External recordは9.1のauthority判定に従い、governingだけを`external_authoritative`、その他を`external_observed`としてsource revisionとcontent hashを固定する。
 
-Resolved verification commandはstableな`id`、exact command、`read_only|local_write|external_write`のeffect、必須になる根拠、1以上のtimeout、必要serviceを持つ。Harnessはrun deadline以下のtimeoutを課せるが、required serviceまたはeffectを安全に分類できなければcommandを実行しない。自然言語の`required_when`を実行する汎用condition languageは設けない。
-
-Effectと必要permissionの対応は次で固定する。
-
-| Effect | 必要permission | Retry条件 |
-| --- | --- | --- |
-| `read_only` | `read_repository`、`run_local_commands` | transient failureだけ1回 |
-| `local_write` | `run_local_commands`。Repository内を変更する場合は`write_worktree`も必要 | 同じ入力から安全に再実行できるdeclared commandだけ1回 |
-| `external_write` | `run_local_commands`、`write_external_system`、操作対象と単位を記録したHuman decision | Idempotency keyがあるか、read-backで未実行を証明できる場合だけ1回 |
-
-この表の`read_only`はcontext解決後に実行するproject-defined commandを指す。9.1の固定bootstrap inspectionはproject commandではなく、Orchestratorが`read_repository`だけで実行できる。Bootstrap allowlistへ任意のproject commandを追加せず、追加が必要ならproject contextとして解決し、`run_local_commands`とeffect分類を適用する。
-
-Context resolutionの`effect`は必要permissionの下限宣言であり、command自身がpermissionを引き下げるauthorityではない。Orchestratorは実行toolのmetadata、network access、書込先から独立に分類し、宣言より強いeffectを適用できるが弱くしてはならない。External endpointまたは書込先を安全に分類できないcommandは`external_write`としてHuman判断へ送る。
-
-`external_write`がremote側で成功した可能性を残してtimeoutした場合は自動retryしない。Read-backで結果を一意に確定できなければ`HUMAN_DECISION_REQUIRED`へ遷移する。Paid APIはpermissionに加えて残budgetも必要とする。
-
-Personal Harnessはcontext resolutionへ記録されていないcommandを推測実行しない。必要permissionが1つでもfalseなら実行せずblockerへ遷移する。必須fieldを解決できない場合は、不足fieldだけを明示してHuman承認run-local inputで補完してから`CONTEXT_RESOLVING`へ戻る。Human inputも用意できなければfail-closedで停止する。
+Resolved verification commandはstableなID、exact command、effect、必須になる根拠、timeout、required servicesを持つ。Exact effect→permission mapping、独立した保守的分類、retry条件、分類不能時のfail-closed規則は`shared/references/review-remediation-harness.md`を唯一の実行正本とする。本設計では、commandの自己申告でpermissionを弱めず、context resolutionにないcommandを推測実行せず、deploy/production writeをHarnessのscope外に保つinvariantだけを所有する。自然言語の`required_when`を実行する汎用condition languageは設けない。
 
 ## 10. Permissionと外部副作用
 
@@ -440,7 +424,7 @@ IssueからPRまで明示された依頼は、現在scopeのcommit、現在repos
 
 `fetch_remote_refs`は`read_repository`または`run_local_commands`へ含めない。実行前にnormalized repository identity、remote名とURL、source/destination refspec、`prune`の有無、credential scope、timeoutをrun manifestへ固定する。Fetchは`--no-tags`かつ自動maintenance無効で実行する。許可するlocal writeはGit object database、fetch中のlock/temporary metadata、`FETCH_HEAD`、宣言したremote-tracking ref namespaceだけとし、working tree、index、local branch、tag、Git configへの変更は禁止する。`prepare_candidate`ではbase refの最新化、`publish_exact_candidate`ではcreate-pr contractが要求するfetch/pruneだけに使う。Permissionがfalseまたはallowlist外なら`HUMAN_DECISION_REQUIRED`、network、credential、Git capabilityが利用不能なら`EVALUATION_DEFERRED`にする。
 
-Fetchがtimeoutまたはtransient failureになった場合は、許可済みrefをread-backし、要求objectとref更新が完了済みなら成功として再実行しない。未完了を確認でき、同じallowlistとexecution keyを使う場合だけtransient retry budget内で1回再実行できる。Fetch後のbase/ref driftは`TARGET_MUTATED`または`READY_INVALIDATED`として扱い、旧artifactを流用しない。
+Fetchがtimeoutまたはtransient failureになった場合は、許可済みrefをread-backし、要求objectとref更新が完了済みなら成功として再実行しない。未完了を確認でき、同じallowlistとexecution keyを使う場合だけtransient retry budget内で1回再実行できる。Fetch後のbase/ref driftは`TARGET_MUTATED`、READY後はcreate-prのphase result `READY_INVALIDATED`として扱う。後者をManifest stateにはせず、invalidation decisionを保存して`READY -> CONTEXT_RESOLVING`へ遷移し、旧artifactを流用しない。
 
 ## 11. Gitとworktree
 
@@ -529,9 +513,9 @@ stateDiagram-v2
 | `SCOPE_CHANGE_REQUIRED` | しない | Humanのscope判断後 | 元Issueへ混ぜられない変更が必要 |
 | `HUMAN_DECISION_REQUIRED` | しない | decision artifact後 | 仕様またはrisk受容が必要 |
 | `INDEPENDENCE_BLOCKED` | しない | fresh reviewer確保後 | 独立reviewを証明できない |
-| `BUDGET_EXHAUSTED` | しない | Humanが新runを承認後 | 現runの上限へ到達 |
+| `BUDGET_EXHAUSTED` | しない | なし(新runのみ) | 現runの上限へ到達 |
 
-Blocker stateからの再開は、既存runのlimitを黙って増やさない。Humanがscopeまたはbudgetを変更する場合はdecision artifactを追加し、targetが変わるなら新しいtarget artifactを作る。`EVALUATION_DEFERRED`からは常に`CONTEXT_RESOLVING`へ戻し、target、Issue、personal Harness contract、project contextのinput hashを再固定してからreviewを再開する。
+Blocker stateからの再開は、既存runのlimitを黙って増やさない。Humanがscopeまたはpermissionを変更して同じrunを再開する場合はdecisionと新input snapshotを追加し、`CONTEXT_RESOLVING`へ戻る。`BUDGET_EXHAUSTED`だけは現在runのterminal stateとし、budget変更後の継続はprior runを参照する新しい`run_id`で開始する。`EVALUATION_DEFERRED`からは常に`CONTEXT_RESOLVING`へ戻し、target、Issue、personal Harness contract、project contextのinput hashを再固定してからreviewを再開する。
 
 9.1の必要条件を満たして`context_status: resolved`になったrunだけが通常の`REVIEW_PENDING`以降へ進める。必須fieldを解決できないrunは`CONTEXT_RESOLVING`からreviewへ進めず、不足情報またはcapabilityに対応するblockerを返す。
 
@@ -719,7 +703,7 @@ Fallbackは独立性やcoverageを偽装するために使わない。同じagen
 - `prepare_candidate`: `create-pr`の品質確認、documentation同期、stage確認、commit分割とmessage規約をstate machineへ個別stepとして公開し、steps 5-7全体を担う。入力には`fetch_remote_refs`とremote/refspec allowlistを含める。Default経路でbase未指定なら、許可済みremoteのdefault、`develop`、`main`をread-only解決してbase refとfetch前SHAを固定してからexact base refをfetchする。既に確定したsame-target artifactを二重実行せず、各stepの結果またはtarget mutationをHarnessへ返し、最後にcleanなexact candidate SHAを返す。
 - `publish_exact_candidate`: READY済みcandidate SHAとbase SHA、`fetch_remote_refs`と設定済みrefspec/prune allowlistを入力にし、fetch後の一致確認、既存remote/PR確認、同じSHAのpush、PR作成または更新だけを行う。File編集、targetを変更し得る品質gate、stage、追加commitは禁止する。
 
-両referenceはIssue #38でこのphase interfaceを実行可能なsemantic contractとして定義した。Harnessを使わない通常経路は後方互換のdefault経路を継続し、Harness経路は`READY`後にmonolithicな`create-pr`を再実行せず`publish_exact_candidate`だけを使う。Target driftは`READY_INVALIDATED`としてpublishせず、Issue/project contextへ戻って新しいtargetのverification、gate、Final reviewを完了する。
+両referenceはIssue #38でこのphase interfaceを実行可能なsemantic contractとして定義した。Harnessを使わない通常経路は後方互換のdefault経路を継続し、Harness経路は`READY`後にmonolithicな`create-pr`を再実行せず`publish_exact_candidate`だけを使う。Target driftではcreate-prがphase result `READY_INVALIDATED`を返し、Harnessはinvalidation decisionを保存してManifest stateを`READY -> CONTEXT_RESOLVING`へ遷移させ、新しいtargetのverification、gate、Final reviewを完了する。
 
 Issue #39ではproject-local distributionを不採用とし、`shared/references/review-remediation-harness.md`とpersonal Codex skillを導入した。Issue #40ではHarness専用project profileも不採用とし、Project repositoryへHarness entrypoint、contract snapshot、専用metadataを追加しない単一経路へ改訂する。Personal contractと既存workflowが衝突する場合は、その場で都合のよい規則を選ばず`EVALUATION_DEFERRED`とする。
 
