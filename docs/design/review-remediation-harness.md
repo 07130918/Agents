@@ -518,7 +518,7 @@ Counterはappend-onlyなrun manifest revisionで更新する。各state遷移も
 
 ### 15.1 Failure artifact
 
-失敗は自由文のlogだけで残さず、現在state、失敗分類、target ref、attempt、実行commandまたはtool、終了code、観測Evidence、必要なHuman action、再開条件をrun Manifestと原因Stageへ記録する。既存Stageが完全な値を持たない場合は`decision_kind: blocker_observation`を原因artifactにし、Manifestのblocker unionとexactに一致させる。秘密情報をartifactへ保存しない。
+失敗は自由文のlogだけで残さず、現在state、失敗分類、target ref、attempt、実行commandまたはtool、終了code、観測Evidence、必要なHuman action、再開条件をrun Manifestと原因Stageへ記録する。既存Stageが完全な値を持たない場合は`decision_kind: blocker_observation`を原因artifactにし、state、resume先、失敗分類、観測Evidence、Human action、再開条件をManifest blockerの対応fieldへbindする。Manifestだけがdecisionへの`cause_ref`を持ち、decision自身へ自己参照を複製しない。秘密情報をartifactへ保存しない。
 
 ただしcanonical ledger自体がinvalidでhead CASのexpected valueを確定できない場合は、そのledgerへblocker Manifestを追記しない。Runtime state rootのledger外へappend-only recovery reportを保存し、観測head、違反invariant、transaction descriptor hash、必要なHuman actionを返して停止する。このreportはartifact、state transition、READY根拠ではなく、同じrunを自動修復または古いrevisionへrollbackする権限を与えない。
 
