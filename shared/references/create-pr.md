@@ -120,10 +120,10 @@
 
 ### 入力
 
-- Repository、許可されたremoteとそのrepository identity、作業branch、PRのbase/head ref
+- Repository、許可されたremoteとそのrepository identity、PRのexpected base/head repository identity、作業branch、PRのbase/head ref
 - Full `base_sha`とfull `head_sha`
 - Harness経路では同じbase/headに結び付く`READY` statusと根拠artifactへの参照、通常経路では`DEFAULT_SUBMISSION_READY`と提出前条件の結果
-- Harness経路では、外部write前に確定したexact `title`、`body`、`draft`、重複なしソート済み`assignees`と`labels`を持つ`desired_submission`、そのRFC 8785 JCS bytesのSHA-256、対象repository/remote/base/headと当該metadata生成policyに限定した`write_external_system` permission
+- Harness経路では、外部write前に確定したexact `title`、`body`、`draft`、重複なしソート済み`assignees`と`labels`を持つ`desired_submission`、そのRFC 8785 JCS bytesのSHA-256、対象remote、base/head repository identity、branch、SHAと当該metadata生成policyに限定した`write_external_system` permission
 - `fetch_remote_refs` permissionと、remoteの設定済みsource/destination refspec、prune範囲、credential scope、timeoutを持つallowlist
 - Push、PR作成またはmetadata更新のpermission
 
@@ -141,13 +141,17 @@
 3. Local `HEAD`または作業branch先端が`head_sha`と異なる、working treeまたはindexがdirty、`<remote>/<base>`が`base_sha`と異なる場合はpushしない。
 4. Remote headを`absent`、`exact`、`ancestor`、`diverged_or_ahead`に分類する。`ancestor`はremote headが入力`head_sha`のancestorである場合だけとし、`diverged_or_ahead`ではforce pushせず停止する。
 5. Remote headが`absent`または`ancestor`の場合だけ、sourceをexact `head_sha`に固定して入力remoteの同名branchへnon-force pushする。`exact`ならpushを省略する。いずれもremote headをread-backし、`head_sha`との一致を確認する。
-6. 入力remoteのrepository identityで既存のopen PRをbase/head refから検索する。存在しなければ同じrepository identityへPRを作成し、存在すればtitle、本文、assignee、labelなどtargetを変えないmetadataだけを更新できる。Harness経路はintentの`desired_submission`をそのまま使い、phase内で再生成しない。Closedまたはmerged PRしかない場合は自動で再利用しない。
+6. Expected base repository identityで既存のopen PRをbase/head repository identity、base/head ref、head SHAから検索する。存在しなければexpected base/head repository identityの組へPRを作成し、すべて一致するPRが1件だけ存在すればtitle、本文、assignee、labelなどtargetを変えないmetadataだけを更新できる。Branch名とSHAが同じでもhead repository identityが異なるfork PRを更新対象にしない。Harness経路はintentの`desired_submission`をそのまま使い、phase内で再生成しない。Closedまたはmerged PRしかない場合は自動で再利用しない。
 7. 通常経路では`.github/pull_request_template.md`があれば構造を維持する。なければ標準templateを使い、最新commitだけでなく全commitの差分からPR titleと本文を作る。Harness経路ではこの条件を満たすdesired submissionがintentで確定済みであることを検証し、phase内で作り直さない。
-8. 入力remoteのrepository identityを明示してGitHubからPR URL、state、title、body、draft、assignee、label、base ref、head ref、base SHA、head SHAをread-backし、入力と一致することを確認する。Harness経路ではremote headがexactであり、一意なopen PRのすべてのdesired fieldが一致する場合だけ完了とする。
+8. Expected base repository identityを明示してGitHubからPR URL、state、title、body、draft、assignee、label、base/head repository identity、base/head ref、base/head SHAをread-backし、入力と一致することを確認する。Harness経路ではremote headがexactであり、一意なopen PRのidentities、refs、SHAs、すべてのdesired fieldが一致する場合だけ完了とする。
 
 ### 不一致時の出力と再開
 
-照合不一致またはpublish中のbase/head driftは`READY_INVALIDATED`として、期待値、観測値、外部操作の有無を返す。追加変更、gate再実行、commit、force pushは行わない。呼び出し側はIssue/project contextへ戻り、新しいbase/headで影響するverification、gate、Final reviewを完了して新しい`READY`を作る。Fetchのpermission、利用不能、timeoutはPhase共通failureへ従う。PushまたはPR操作のtimeoutで外部結果が不明な場合は同じ操作を推測retryせず、remoteとPRをread-backして確定できなければHuman handoffで停止する。
+Local target、base/head repository identity、branch、SHA、inputの不一致またはpublish中のdriftは`READY_INVALIDATED`として、期待値、観測値、外部操作の有無を返す。追加変更、gate再実行、commit、force pushは行わない。呼び出し側はIssue/project contextへ戻り、新しいtargetで影響するverification、gate、Final reviewを完了して新しい`READY`を作る。
+
+Remote headがexpected headまたは次のnon-force pushが安全なancestorで、PRが未作成、またはidentities/refs/SHAsが一致する一意なPRのtitle/body/assignee/labelだけがdesired stateと不一致な場合は`PARTIALLY_PERFORMED`とし、step別結果とfull read-backを返す。Harness callerはREADYを失効させずobservation checkpointを保存し、budget内でexact push skipまたはidempotent metadata設定から次attemptを開始できる。Draft不一致、複数PR、fork identity不一致、またはread-back不能は`PARTIALLY_PERFORMED`に丸めない。
+
+Fetchのpermission、利用不能、timeoutはPhase共通failureへ従う。PushまたはPR操作のtimeoutで外部結果が不明な場合は同じ操作を推測retryせず、remoteとPRをread-backして確定できなければHuman handoffで停止する。
 
 ### 既存の提出操作との対応
 

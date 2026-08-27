@@ -209,7 +209,7 @@ Dirty working treeをtargetに含める場合、Git objectから復元できな�
 
 Personal Harness wrapper/referenceは`input_snapshot`としてpath、`declared_version`、`capability_revision`、content hashを固定し、実際に使用したskillだけをpoprの既存`skill_versions`へ記録する。Instructionとpolicyのhashは`project_rules`と`input_refs`でtarget/input consistencyへ含める。
 
-Initial reviewでは明示されたworking treeを含められる。READY候補とFinal reviewでは`working_tree.status`が`clean`、`mode`が`exclude`で、`head_sha`がcandidate commitでなければならない。
+Initial reviewでは明示されたworking treeを含められる。READY候補とFinal reviewでは`working_tree.status == clean`、`working_tree.mode == excluded`、`head.sha == candidate commit`でなければならない。
 
 ### 8.4 Stage payload
 
@@ -379,7 +379,7 @@ Run開始時に次のpermissionを個別に記録する。
 | `commit` | false | create-pr contractに従う提出担当 | 明示的なcommitまたはPR依頼でtrueにできる |
 | `push` | false | create-pr contractに従う提出担当 | PR依頼でtrueにできる |
 | `create_or_update_pr` | false | create-pr contractに従う提出担当 | PR依頼でtrueにできる |
-| `write_external_system` | false | create-pr phase担当 | 明示的なPR依頼のrepository/remote/base/headとcreate-pr metadata policyに限定。その他のexternal writeは許可しない |
+| `write_external_system` | false | create-pr phase担当 | 明示的なPR依頼のremote、base/head repository identity、branch、SHAとcreate-pr metadata policyに限定。その他のexternal writeは許可しない |
 | `merge` | false | Human | Harnessはtrueへ変更できない |
 | `deploy_or_production_write` | false | Humanが別workflowで実行 | Harnessのscope外 |
 | `accept_risk_or_spec` | false | Human | agentへ委譲しない |
@@ -461,6 +461,7 @@ stateDiagram-v2
     READY --> READY: publish intent/result checkpoint
     READY --> CONTEXT_RESOLVING: publish前後のtargetまたはinput不一致
     READY --> HUMAN_DECISION_REQUIRED: publish結果をread-backで確定不能
+    READY --> BUDGET_EXHAUSTED: publish retry budget超過
     EVALUATION_DEFERRED --> CONTEXT_RESOLVING: 不足input、capability、targetを補完
     HUMAN_DECISION_REQUIRED --> CONTEXT_RESOLVING: decisionを新input/permission snapshotへ固定
     SCOPE_CHANGE_REQUIRED --> CONTEXT_RESOLVING: Humanが同一Issueへのscope変更を承認
@@ -473,7 +474,7 @@ stateDiagram-v2
 
 | State | 自動継続 | Resume可能 | 意味 |
 | --- | --- | --- | --- |
-| `READY` | しない | publish前後にtarget/input driftを検出した場合 | merge可能性の必要条件を満たした。mergeを実行する意味ではなく、drift時は失効する |
+| `READY` | publishの安全な部分完了だけbudget内で継続 | publish前後にtarget/input driftを検出した場合 | merge可能性の必要条件を満たした。mergeを実行する意味ではなく、drift時は失効する |
 | `EVALUATION_DEFERRED` | しない | 不足artifact解消後 | target、coverage、gate、project context、capabilityの不足 |
 | `VERIFICATION_BLOCKED` | しない | 環境回復後 | test/E2Eを実行できない |
 | `SCOPE_CHANGE_REQUIRED` | しない | Humanのscope判断後 | 元Issueへ混ぜられない変更が必要 |
@@ -669,7 +670,7 @@ Fallbackは独立性やcoverageを偽装するために使わない。同じagen
 - `prepare_candidate`: `create-pr`の品質確認、documentation同期、stage確認、commit分割とmessage規約をstate machineへ個別stepとして公開し、steps 5-7全体を担う。入力には`fetch_remote_refs`とremote/refspec allowlistを含める。Default経路でbase未指定なら、許可済みremoteのdefault、`develop`、`main`をread-only解決してbase refとfetch前SHAを固定してからexact base refをfetchする。既に確定したsame-target artifactを二重実行せず、各stepの結果またはtarget mutationをHarnessへ返し、最後にcleanなexact candidate SHAを返す。
 - `publish_exact_candidate`: READY済みcandidate SHAとbase SHA、`fetch_remote_refs`と設定済みrefspec/prune allowlistを入力にし、fetch後の一致確認、既存remote/PR確認、同じSHAのpush、PR作成または更新だけを行う。File編集、targetを変更し得る品質gate、stage、追加commitは禁止する。
 
-両referenceはIssue #38でこのphase interfaceを実行可能なsemantic contractとして定義した。Harnessを使わない通常経路は後方互換のdefault経路を継続し、Harness経路は`READY`後にmonolithicな`create-pr`を再実行せず`publish_exact_candidate`だけを使う。Target driftではcreate-prがphase result `READY_INVALIDATED`を返し、Harnessはinvalidation decisionを保存してManifest stateを`READY -> CONTEXT_RESOLVING`へ遷移させ、新しいtargetのverification、gate、Final reviewを完了する。
+両referenceはIssue #38でこのphase interfaceを実行可能なsemantic contractとして定義した。Harnessを使わない通常経路は後方互換のdefault経路を継続し、Harness経路は`READY`後にmonolithicな`create-pr`を再実行せず`publish_exact_candidate`だけを使う。Target driftではcreate-prがphase result `READY_INVALIDATED`を返し、Harnessはinvalidation decisionを保存してManifest stateを`READY -> CONTEXT_RESOLVING`へ遷移させ、新しいtargetのverification、gate、Final reviewを完了する。Exact targetを保ったPR未作成または更新可能metadataだけの不一致は`PARTIALLY_PERFORMED`としてREADYを保ち、同じoperationのread-back済みstepからbudget内で再開する。Publish retry budgetを使い切ったrunは`READY -> BUDGET_EXHAUSTED`で停止し、self-contained handoffを入力にした新runだけが再開できる。
 
 Issue #39ではproject-local distributionを不採用とし、`shared/references/review-remediation-harness.md`とpersonal Codex skillを導入した。Issue #40ではHarness専用project profileも不採用とし、Project repositoryへHarness entrypoint、contract snapshot、専用metadataを追加しない単一経路へ改訂する。Personal contractと既存workflowが衝突する場合は、その場で都合のよい規則を選ばず`EVALUATION_DEFERRED`とする。
 
