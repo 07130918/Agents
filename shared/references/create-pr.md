@@ -15,7 +15,7 @@
 
 ## 共通契約
 
-- PR作成依頼は、現在scopeの変更をcommit、pushしてPRを作る権限に加え、現在repositoryの解決済みremoteだけを対象とする`fetch_remote_refs` permissionを含む。Default経路ではremote default、`develop`、`main`のread-only名前解決、選択したbaseのexact fetch、publish時の設定済みfetch refspec範囲のpruneだけを許可し、別repository、別remote、tagは含めない。Merge権限は含まない。
+- PR作成依頼は、現在scopeの変更をcommit、pushしてPRを作る権限に加え、現在repositoryの解決済みfetch transport locatorだけを対象とする`fetch_remote_refs` permissionを含む。Default経路ではremote default、`develop`、`main`のread-only名前解決、選択したbaseのexact fetch、publish時の設定済みfetch refspec範囲のpruneだけを許可し、別repository、別remote、tagは含めない。またcanonical GitHub identity解決、same-repository open PR検索、post-write read-backだけを対象に、host、API locator、credential scope、network、timeout、paid-call budgetを固定した`read_external_source` permissionを含む。Merge権限は含まない。
 - PRは宣言済みscopeだけを含め、無関係な整形、依存更新、別課題を混ぜない。
 - 1 commitを単独revertしたとき、その変更目的だけが戻る単位に分ける。
 - 各commitは単独checkout時にもbuild、型check、関連testが通る状態を保つ。後続commitがなければ動かない変更は同じcommitにまとめる。
@@ -25,6 +25,12 @@
 - PR titleと本文は日本語で書き、全commitと最終diffの実態を反映する。
 - PR作成時は`07130918`をassigneeに設定し、変更内容に合うlabelを付ける。
 - Bot reviewは指摘の根拠を検証し、妥当な指摘だけを反映する。Copilotへのreview依頼はuserが手動で行う。
+
+## Git transport locator
+
+Fetch permissionとGitHub publish identityを同じ概念にしない。`fetch_transport_locator`と`push_transport_locator`は、configured remote、`remote.<name>.url`、`remote.<name>.pushurl`、適用される`url.*.insteadOf`と`url.*.pushInsteadOf`をread-onlyで解決した、credentialを含まないexact effective URLである。GitのURL解決をもう一度適用してもbytesが変わらないfixed pointで、fetch用とpush用が各1件だけの場合に確定できる。0件、複数件、cycle、2回目のrewrite、embedded credential、未知remote helper、取得不能があれば推測せず停止する。
+
+Fetchとpushはremote名でなく固定済みeffective URLをcommand引数に使う。Fetchは`git -c maintenance.auto=false fetch --no-tags <fetch_transport_locator> <source>:<destination>`相当、pushは`git push --no-verify <push_transport_locator> <head_sha>:refs/heads/<head-ref>`相当とする。これにより実行時のremote config再解決とpre-push hookを介在させない。Raw configured URL、全push URL、rewrite rule、effective locator、`core.hooksPath`と対象pre-push hookの存在をEvidenceへ保存し、publish以外のGit hookは起動しない。Embedded credentialを検出した場合は外部操作前に停止し、秘密部分を除いた診断と元値のhashだけをEvidenceへ保存してraw値を永続化しない。Prepare-only runはfetch transport locatorだけで動作し、GitHub API identityを要求しない。
 
 ## 公開phase interface
 
@@ -37,16 +43,16 @@
 
 ### Phase共通のartifact規則
 
-- 入力と出力にはrepository、branch、base ref、full `base_sha`、full `head_sha`またはworking tree fingerprint、宣言済みscope、permission、適用したcontract revisionを含める。Fetchを行うphaseは`fetch_remote_refs`と、repository identity、remote名とURL、source/destination refspec、prune範囲、credential scope、timeoutを持つallowlistも含める。
+- 入力と出力にはrepository、branch、base ref、full `base_sha`、full `head_sha`またはworking tree fingerprint、宣言済みscope、permission、適用したcontract revisionを含める。Fetchを行うphaseは`fetch_remote_refs`と、remote名、exact `fetch_transport_locator`、source/destination refspec、prune範囲、credential scope、timeoutを持つallowlistも含める。
 - 完了済みartifactを再利用できるのは、同じtarget fingerprint、scope、contract revisionに結び付き、required statusを満たす場合だけとする。単なる完了申告や別SHAの結果を理由にstepを省略しない。
 - File、index、commit、base、scope、project ruleを変更したstepは`TARGET_MUTATED`として旧target、新target、無効化対象、再開stepを呼び出し側へ返す。Default経路もこの結果を受け取るcallerとしてcontextを更新してから再開する。
 - Blockerは`BLOCKED`として停止理由、完了済みartifact、再開step、不足inputを返す。Phase内でpermissionや仕様を補完しない。
 
 ### Fetch permissionと共通failure
 
-`prepare_candidate`と`publish_exact_candidate`はfetch前に`fetch_remote_refs`とallowlistを検証する。通常のPR依頼では共通契約の範囲だけをpermissionへ固定し、Harness callerはrun manifestのより狭いpermissionをそのまま渡す。Fetchは`git -c maintenance.auto=false fetch --no-tags`相当とし、Git object database、fetch中のlock/temporary metadata、`FETCH_HEAD`、許可済みremote-tracking ref以外を変更しない。
+`prepare_candidate`と`publish_exact_candidate`はfetch前に`fetch_remote_refs`とallowlistを検証する。通常のPR依頼では共通契約の範囲だけをpermissionへ固定し、Harness callerはrun manifestのより狭いpermissionをそのまま渡す。Fetchはremote名を再解決せず、exact `fetch_transport_locator`へ`git -c maintenance.auto=false fetch --no-tags`相当を実行し、Git object database、fetch中のlock/temporary metadata、`FETCH_HEAD`、許可済みremote-tracking ref以外を変更しない。
 
-- Permissionがfalse、repository identity、remote、refspec、prune範囲がallowlist外: `HUMAN_DECISION_REQUIRED`。
+- Permissionがfalse、fetch transport locator、remote、refspec、prune範囲がallowlist外: `HUMAN_DECISION_REQUIRED`。
 - Network、credential、Git capabilityが利用不能: `EVALUATION_DEFERRED`。
 - Timeoutまたはtransient failure: 許可済みrefをread-backし、要求objectと更新が完了済みなら成功として再実行しない。未完了を確認できた同じexecution keyだけ1回retryし、確定不能なら`EVALUATION_DEFERRED`。
 - `prepare_candidate`でfetch後のbaseが固定済み`base_sha`と異なる: `TARGET_MUTATED`。
@@ -66,7 +72,7 @@
 ### 入力
 
 - Repositoryと作業branch
-- Fetch対象のremoteとrepository identity。Default経路は現在repositoryの`origin`を使う
+- Fetch対象のremoteとexact `fetch_transport_locator`。Default経路は現在repositoryの`origin`設定から解決する
 - 明示されたbase refとfetch前に固定したfull `base_sha`。Default経路で未指定の場合はContext固定のread-only remote解決で両方を確定する
 - `fetch_remote_refs` permissionと、base解決候補、選択したbaseのsource/destination refspec、credential scope、timeoutを持つallowlist
 - 宣言済みscopeとcommit permission
@@ -77,9 +83,9 @@
 
 1. `git branch --show-current`と`git status --short --branch`を確認する。
 2. 現在branchが空、`HEAD`、`main`、`develop`なら停止する。
-3. 入力remoteのURLとrepository identityを照合する。Default経路でbase refが未指定なら、permissionで許可された`git ls-remote --symref <remote> HEAD`相当のnetwork readでremote defaultを確認し、解決できなければ`refs/heads/develop`、`refs/heads/main`の順に存在を確認する。選択したbase refとremoteが返したfull SHAをfetch前の`base_sha`として固定する。明示baseでは入力`base_sha`を使い、値がなければ同じremote readでexact refのfull SHAを固定する。
+3. 入力remoteの設定が保存済み`fetch_transport_locator` Evidenceと一致することを照合する。Default経路でbase refが未指定なら、permissionで許可された`git ls-remote --symref <fetch_transport_locator> HEAD`相当のnetwork readでremote defaultを確認し、解決できなければ`refs/heads/develop`、`refs/heads/main`の順に存在を確認する。選択したbase refとremoteが返したfull SHAをfetch前の`base_sha`として固定する。明示baseでは入力`base_sha`を使い、値がなければ同じlocatorへのremote readでexact refのfull SHAを固定する。
 4. Base ref、`base_sha`、`refs/heads/<base>:refs/remotes/<remote>/<base>`、credential scope、timeoutが`fetch_remote_refs` allowlist内であることを確認する。Default経路のpermissionは手順3の`HEAD`、`develop`、`main`候補と、選択後のexact refspecだけを許可する。
-5. `git -c maintenance.auto=false fetch --no-tags <remote> refs/heads/<base>:refs/remotes/<remote>/<base>`相当で選択したbaseだけを最新化する。
+5. `git -c maintenance.auto=false fetch --no-tags <fetch_transport_locator> refs/heads/<base>:refs/remotes/<remote>/<base>`相当で選択したbaseだけを最新化する。
 6. Fetch後の`<remote>/<base>`が固定済み`base_sha`と異なる場合は`TARGET_MUTATED`を返し、新しいbaseでcontextを固定し直すまで品質gateへ進まない。一致したbaseを比較元としてcommit済み差分、working tree、index、untracked fileを確認する。
 7. `.env`、認証情報、秘密情報らしいfileが含まれる場合はcommitせず、対象を報告する。
 
@@ -122,14 +128,14 @@
 
 V1のremote repository identityはGitHub APIが返すimmutable node IDを使い、RFC 8785 JCS object `{"provider":"github","host":"<normalized-host>","repository_node_id":"<immutable-node-id>"}`として固定する。`host`は認証先APIに対応するASCII hostnameを小文字化し、末尾dotとdefault portを除いた値とする。`repository_node_id`は空でないexact API valueとし、owner、repository名、remote名、URL、branch、SHAをidentityの代用にしない。
 
-Configured remote URLはAPI照会用locatorとしてだけ使い、外部write前に同じ認証hostからrepository node IDと現在のowner/nameを取得して、remote URLから解決したlocatorとの対応をEvidenceへ保存する。V1はsame-repository PRだけを扱い、入力remote、expected base repository、expected head repositoryのcanonical identityがすべてexactに一致しなければ外部write前に`EVALUATION_DEFERRED`で停止する。Fork PRは異なるremoteを1つのpublish operationへ暗黙に補わず、将来base fetch locatorとhead push locatorを分離するまで非対応とする。Immutable IDまたはURLとの対応を取得できない場合もURL hashやowner/nameから補作せず`EVALUATION_DEFERRED`にする。GitHub以外のproviderはV1の`publish_exact_candidate`対象外とする。
+Fixed `fetch_transport_locator`と`push_transport_locator`はAPI照会用locatorとしても使い、外部write前に同じ認証hostから各locatorのrepository node IDと現在のowner/nameを取得して対応をEvidenceへ保存する。V1はsame-repository PRだけを扱い、両transport locator、expected base repository、expected head repositoryのcanonical identityがすべてexactに一致しなければ外部write前に`EVALUATION_DEFERRED`で停止する。Fork PRは異なるremoteを1つのpublish operationへ暗黙に補わず、将来複数repository operationを設計するまで非対応とする。Immutable IDまたはlocatorとの対応を取得できない場合もURL hashやowner/nameから補作せず`EVALUATION_DEFERRED`にする。GitHub以外のproviderはV1の`publish_exact_candidate`対象外とする。
 
 ### 入力
 
-- Repository、許可されたremoteとそのcanonical repository identity、同じobjectを持つPRのexpected base/head repository identity、作業branch、PRのbase/head ref
+- Repository、許可されたremote、exact `fetch_transport_locator`と`push_transport_locator`、両locatorから解決した同じcanonical repository identity、同じobjectを持つPRのexpected base/head repository identity、作業branch、PRのbase/head ref
 - Full `base_sha`とfull `head_sha`
 - Harness経路では同じbase/headに結び付く`READY` statusと根拠artifactへの参照、通常経路では`DEFAULT_SUBMISSION_READY`と提出前条件の結果
-- Harness経路では、外部write前に確定したexact `title`、`body`、`draft`、重複なしソート済み`assignees`と`labels`を持つ`desired_submission`、そのRFC 8785 JCS bytesのSHA-256、対象remote、base/head repository identity、branch、SHAと当該metadata生成policyに限定した`write_external_system` permission
+- Harness経路では、外部write前に確定したexact `title`、`body`、`draft`、重複なしソート済み`assignees`と`labels`を持つ`desired_submission`、そのRFC 8785 JCS bytesのSHA-256、対象transport locator、same-repository identity、branch、SHAと当該metadata生成policyに限定した`write_external_system` permission
 - Canonical identity解決、同一repositoryのopen PR検索、post-write read-backだけを許可する`read_external_source` permissionと、GitHub host、API locator、credential scope、network、timeout、paid-call budgetのallowlist
 - `fetch_remote_refs` permissionと、remoteの設定済みsource/destination refspec、prune範囲、credential scope、timeoutを持つallowlist
 - Push、PR作成またはmetadata更新のpermission
@@ -144,10 +150,10 @@ Configured remote URLはAPI照会用locatorとしてだけ使い、外部write�
 ### 手順
 
 1. Harness経路の`READY`または通常経路の`DEFAULT_SUBMISSION_READY`が入力のbase/head SHAと同じtargetに結び付き、identity解決とPR read-backのexternal read、fetch、push、PR操作が許可されていることを確認する。Harness経路では`desired_submission`のJCS hash、metadata policyへの適合、operation限定の`write_external_system` permissionも照合する。
-2. 入力remote、expected base、expected headのcanonical repository identityがすべて一致し、設定済みfetch refspecがpermission対象であることを確認する。`git -c maintenance.auto=false fetch --no-tags --prune <remote>`後、local `HEAD`、作業branch先端、`<remote>/<base>`、working tree、indexをread-onlyで照合する。Harness callerは`fetch_remote_refs` permissionでremote、設定済みsource/destination refspec、prune範囲を許可していなければ実行しない。
+2. Fixed fetch/push transport locatorとexpected base/headのcanonical repository identityがすべて一致し、設定済みfetch refspecがpermission対象であることを確認する。`git -c maintenance.auto=false fetch --no-tags --prune <fetch_transport_locator>`後、local `HEAD`、作業branch先端、`<remote>/<base>`、working tree、indexをread-onlyで照合する。Harness callerは`fetch_remote_refs` permissionでlocator、設定済みsource/destination refspec、prune範囲を許可していなければ実行しない。
 3. Local `HEAD`または作業branch先端が`head_sha`と異なる、working treeまたはindexがdirty、`<remote>/<base>`が`base_sha`と異なる場合はpushしない。
 4. Remote headを`absent`、`exact`、`ancestor`、`diverged_or_ahead`に分類する。`ancestor`はremote headが入力`head_sha`のancestorである場合だけとし、`diverged_or_ahead`ではforce pushせず停止する。
-5. Remote headが`absent`または`ancestor`の場合だけ、sourceとdestinationをexact `<head_sha>:refs/heads/<head-ref>`へ固定して入力remoteへnon-force pushする。Local作業branch名を暗黙のdestinationにしない。`exact`ならpushを省略する。いずれもremoteのexact head refをread-backし、`head_sha`との一致を確認する。
+5. Remote headが`absent`または`ancestor`の場合だけ、`git push --no-verify <push_transport_locator> <head_sha>:refs/heads/<head-ref>`相当のnon-force pushを実行する。Remote名やlocal作業branch名をcommandのsource/destinationにしない。`exact`ならpushを省略する。いずれもfixed push locatorのexact head refをread-backし、`head_sha`との一致を確認する。
 6. Expected base repository identityで既存のopen PRをbase/head repository identity、base/head ref、head SHAから検索する。存在しなければexpected base/head repository identityの組へPRを作成し、すべて一致するPRが1件だけ存在すればtitle、本文、assignee、labelなどtargetを変えないmetadataだけを更新できる。Branch名とSHAが同じでもhead repository identityが異なるfork PRを更新対象にしない。Harness経路はintentの`desired_submission`をそのまま使い、phase内で再生成しない。Closedまたはmerged PRしかない場合は自動で再利用しない。
 7. 通常経路では`.github/pull_request_template.md`があれば構造を維持する。なければ標準templateを使い、最新commitだけでなく全commitの差分からPR titleと本文を作る。Harness経路ではこの条件を満たすdesired submissionがintentで確定済みであることを検証し、phase内で作り直さない。
 8. Expected base repository identityを明示してGitHubからPR URL、state、title、body、draft、assignee、label、base/head repository identity、base/head ref、base/head SHAをread-backし、入力と一致することを確認する。Harness経路ではremote headがexactであり、一意なopen PRのidentities、refs、SHAs、すべてのdesired fieldが一致する場合だけ完了とする。
@@ -177,7 +183,7 @@ Fetchのpermission、利用不能、timeoutはPhase共通failureへ従う。Push
 
 ### 既存の提出操作との対応
 
-通常経路で使っていたpush、`gh pr create`、`gh pr view`は、このphaseの照合と禁止事項を満たす場合に限って実行する。Pushは入力remoteだけを対象に、exact `<head_sha>:refs/heads/<head-ref>` refspecを使い、push後のremote headが同じSHAであることを確認する。
+通常経路で使っていたpush、`gh pr create`、`gh pr view`は、このphaseの照合と禁止事項を満たす場合に限って実行する。Pushはfixed `push_transport_locator`だけを対象に、`--no-verify`とexact `<head_sha>:refs/heads/<head-ref>` refspecを使い、push後のremote headが同じSHAであることを確認する。
 
 ## 標準PR本文
 
@@ -211,7 +217,7 @@ Fetchのpermission、利用不能、timeoutはPhase共通failureへ従う。Push
 - GitHub認証が無ければ、完了済みcommitと実行すべき`gh auth login`を示して停止する。
 - 品質gateまたはdocumentation同期が失敗したらPRを作らず、失敗commandと再開条件を報告する。
 - Push後にPR作成だけ失敗した場合はremote headをread-backし、branch URL、観測したSHA、PR作成から再開できる条件を示す。
-- `--no-verify`は使わない。
+- Commitでは`--no-verify`を使わない。Publish pushでは未分類のpre-push hookを起動しないため、固定済みcontractどおり`--no-verify`を必須にする。
 
 ## 関連skill
 
