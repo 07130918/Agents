@@ -70,7 +70,7 @@ Project script、package manager、build tool、test、hook、external diff/text
 
 次の順に確認し、後順位のsourceで上順位の明示値を黙って上書きしない。
 
-1. `AGENTS.md`、`CLAUDE.md`、`CONTRIBUTING.md`、承認済み設計書など、base側のrepository instruction。
+1. 対象pathへ適用されるbase側の`AGENTS.md`、`CLAUDE.md`、`CONTRIBUTING.md`と、それらが正本として明示的に参照する文書。参照されていない設計書は自動採用せず、`evidence_only`またはHuman承認run-local inputとして扱う。
 2. Base側のCI設定、package manifest、Makefileなどの決定的情報。
 3. Authorityを確認したIssue、PR、外部decision。
 4. Human承認run-local input。
@@ -129,6 +129,8 @@ Canonical run artifactはJSONとし、candidate worktree外のrun storeへappend
 
 `input_snapshot`と`target`だけは`target_ref: null`にできる。Target未解決中のdecisionとrun manifestも、payloadに`target_status: unresolved`と`target_absence_reason`を記録した場合だけnullを許す。その他は1つのtargetを参照する。
 
+Artifactの共通refは`artifact_id`、run directory相対の`artifact_path`、保存済みbytesの`sha256`だけを持つ。`target_ref`、`input_refs`、`previous_manifest_ref`、payload内の`*_ref`と`*_refs`はこの型を使う。例外は`run_manifest.artifact_refs`で、各要素を`{"ref": <common_ref>, "lifecycle_status": "current|historical|invalidated", "invalidation_reason_ref": <common_ref|null>}`とする。`invalidated`だけ`invalidation_reason_ref`を必須にし、他statusではnullにする。
+
 Artifact参照は次の非循環layerに限定する。
 
 1. Rootの`input_snapshot`と`target`はStageまたはManifestを参照しない。`target_ref`は必ずnullにする。
@@ -150,7 +152,7 @@ Stage artifactの必須payloadは次の通りとする。
 
 | Artifact | 必須payload |
 | --- | --- |
-| `target_check` | `expected_target_ref`、`status: unchanged|changed|unresolved`、`observed_components`、`changed_components`、`unresolved_components`、`observation_evidence_refs`、条件付き`transition_patch_ref`、`checked_at` |
+| `target_check` | `expected_target_ref`、`status: unchanged|changed|unresolved`、`observed_components`、`changed_components`、`unresolved_components`、`observation_evidence_refs`、条件付き`transition_diff_ref`、`checked_at` |
 | `evidence` | `evidence_kind`、`media_type`、`content_sha256`、`content_path`またはinline `content`、`completeness: full|redacted|truncated`、`redactions`、`truncation` |
 | `review` | `popr_result`、`generic_risk_result`、`generic_coverage_status`、`project_results`、`project_coverage_status`、`blocking_finding_ids`、`required_gates`、`coverage_status` |
 | `change_request` | `requests`。各要素は`review_finding|verification_failure|gate_failure`を識別する |
@@ -163,13 +165,15 @@ Stage artifactの必須payloadは次の通りとする。
 
 Context解決の`decision.payload`は`decision_kind: context_resolution`、`resolution_mode`、`contract_status`、`contract_ref`、`considered_sources`、`selected_sources`、`authority_decisions`、`resolved_source_of_truth`、`resolved_scope`、`resolved_lenses`、`resolved_commands`、`resolved_gates`、`resolved_risk_triggers`、`resolved_permissions`、`resolved_limits`、`unresolved_inputs`を持つ。各selected sourceとresolved fieldは対応するinput/evidence refとcontent hashを含める。値が空になり得るfieldは、空配列だけでなく`not_required_reason`とその判断根拠refを持つ。候補を無視して空の`unresolved_inputs`を返さず、いずれかのresolved fieldが欠落するdecisionを`context_status: resolved`の根拠にしない。
 
-`run_manifest.payload`は`revision`、`previous_manifest_ref`、`state`、`previous_state`、`transition_id`、`transition_cause_ref`、`current_target_generation`、`current_target_ref`、`input_refs`、`artifact_refs`と各refの`current|historical|invalidated`、`permissions`、`limits`、`counters`、`input_source`、`contract_status`、`contract_ref`、`context_status`、`resolution_mode`、`project_context_refs`、`context_resolution_ref`、`last_completed_stage`、`resume_state`、`blocker`を持つ。`artifact_refs`へManifestを含めない。最初のrevisionだけ`previous_manifest_ref: null`を許し、以後は直前Manifestのpathとhashを参照する。
+`run_manifest.payload`は`revision`、`previous_manifest_ref`、`state`、`previous_state`、`transition_id`、`transition_cause_ref`、`current_target_generation`、`current_target_ref`、`input_refs`、lifecycle wrapperを使う`artifact_refs`、`permissions`、`limits`、`counters`、`input_source`、`issue_ref`、`scope_input_ref`、`contract_status`、`contract_ref`、`context_status`、`resolution_mode`、`project_context_refs`、`context_resolution_ref`、`last_completed_stage`、`resume_state`、`blocker`を持つ。`artifact_refs`へManifestを含めない。最初のrevisionだけ`previous_manifest_ref: null`を許し、以後は直前Manifestのpathとhashを参照する。
 
 `input_source: issue`では`issue_ref`を必須にして`scope_input_ref: null`、`explicit_scope`では`scope_input_ref`を必須にして`issue_ref: null`とする。`contract_status`は`resolved|unavailable|drifted`とし、`resolved`だけhash付き`contract_ref`を持てる。`context_status: resolved`には`contract_status: resolved`、external authority確定、全`resolved_*` fieldの存在と根拠ref、空の`unresolved_inputs`、空でない`project_context_refs`、`context_resolution_ref`を要求する。各state遷移、target generation変更、stage完了、blocker、外部副作用の前後で新revisionをappend-only保存する。
 
 `target_check.status`は、全componentを観測でき差分がなければ`unchanged`、全componentを観測でき差分が1件以上あれば`changed`、1件でも再取得または比較できなければ`unresolved`とする。`unresolved`では`unresolved_components`へcomponent、理由、観測証拠refを記録し、既存artifactを再利用せず`EVALUATION_DEFERRED`にする。`changed`と`unresolved`を相互に丸めない。
 
-各verification commandの`stdout_ref`と`stderr_ref`は、出力が空でも空bytesをhashした個別`evidence`を参照する。秘密情報はredaction位置と理由を記録できるが、単なる切詰めを`full`または`redacted`と表現しない。`completeness: truncated`のevidenceは、完全なbytesを別の保護済みcontent pathとhashで参照できない限りREADYまたはresumeの根拠へ使わない。`remediation.decision: fix`で変更した場合は`patch_ref`、`mutated_target: true`のstageは`mutation_patch_ref`、tracked contentまたはfile modeの差分で`target_check.status: changed`になった場合は`transition_patch_ref`を必須にする。新generationへ進むManifestは、その`target_check`またはStage artifactを`transition_cause_ref`で参照する。
+各verification commandの`stdout_ref`と`stderr_ref`は、出力が空でも空bytesをhashした個別`evidence`を参照する。秘密情報はredaction位置と理由を記録できるが、単なる切詰めを`full`または`redacted`と表現しない。`completeness: truncated`のevidenceはHuman向けpreviewに限定し、READYまたはresumeの根拠へ常に使わない。完全なbytesを保存できる場合は別の`completeness: full|redacted` artifactとして保存し、Stageからそのartifactを参照する。各`content_sha256`は同じartifactの`content_path`またはinline `content`のbytesだけをhashする。`remediation.decision: fix`で変更した場合は`patch_ref`、`mutated_target: true`のstageは`mutation_patch_ref`を必須にする。
+
+Working tree manifestのtracked/untracked file追加、変更、削除、file modeまたはtype変更で`target_check.status: changed`になった場合は`transition_diff_ref`を必須にする。参照先は`evidence_kind: target_transition_diff`のcanonical JSONとし、path、change kind、before/afterのmode/typeとcontent hash、immutable Git objectから再取得できないbefore/after contentの`content_ref`を持つ。Text、binary、symlinkを同じmanifest deltaで表し、binary bytesをtext化しない。新generationへ進むManifestは、その`target_check`またはtargetを変更したStage artifactを`transition_cause_ref`で参照する。
 
 Orchestratorはtarget依存stageの開始前と完了後、外部writeの前後、resume、Final review開始前、READY判定前に`target_check`を保存する。Publish前はfetch後のbase refも、PR作成後はremoteのexact base/headも照合する。Checkは保存済みtargetだけでなく、input refs、contract/project rule hash、external source revisionも現在値と比較する。差分または再取得不能があれば旧artifactをREADY根拠へ使わず、該当blockerを記録する。
 

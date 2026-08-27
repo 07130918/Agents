@@ -222,7 +222,7 @@ Codexでfresh subagentを使える場合は、過去会話をforkせず、必要
 
 `input_snapshot`と`target`は`target_ref`を`null`にする。Target未解決中に保存する`run_manifest`と`decision`も、payloadに`target_status: unresolved`と`target_absence_reason`を持つ場合だけ`target_ref: null`にできる。その他のartifactは必ず1つのtargetを参照する。異なる`target_ref.sha256`のverification、gate、blind reviewを同じREADY判定の成功根拠へ混ぜない。Previous reviewとremediationはtarget generation chainでcandidateへ到達できる場合だけreconciliation用のhistorical refとして許可し、その成功statusをcurrent targetへ流用しない。
 
-`target_ref`、`input_refs`、payload内の`*_ref`はすべて次の共通型を使い、`*_refs`はこの共通型の配列とする。Hashは保存済みUTF-8 fileのbytesに対するSHA-256とし、参照時に再計算する。
+`target_ref`、`input_refs`、payload内の`*_ref`はすべて次の共通型を使い、`*_refs`はこの共通型の配列とする。例外は後述する`run_manifest.artifact_refs`のlifecycle wrapperだけである。Hashは保存済みfileのbytesに対するSHA-256とし、参照時に再計算する。
 
 ```json
 {
@@ -231,6 +231,22 @@ Codexでfresh subagentを使える場合は、過去会話をforkせず、必要
   "sha256": "<artifact_content_hash>"
 }
 ```
+
+`run_manifest.artifact_refs`は、共通refを変更せずlifecycleを外側へ付ける。
+
+```json
+{
+  "ref": {
+    "artifact_id": "<stable_artifact_id>",
+    "artifact_path": "<run_directory_relative_path>",
+    "sha256": "<artifact_content_hash>"
+  },
+  "lifecycle_status": "current|historical|invalidated",
+  "invalidation_reason_ref": null
+}
+```
+
+`invalidated`だけ`invalidation_reason_ref`へ共通refを必須にし、`current|historical`ではnullにする。
 
 Issue本文と受入条件、全comment、仕様として参照する関連Issueまたはdecision、personal Harness contract、base側instructionとproject rule、run-local input、acceptance policy、Humanが提供した追加仕様は`input_snapshot`として保存し、run manifestと依存stageの`input_refs`へ加える。Issue bundleはtitle、body、updated revisionに加え、各commentのstable ID、revision、author、author role、bodyと、関連sourceのidentifier/revisionを保持する。External recordごとに`authority_status: governing|evidence_only|pending`と`authority_basis`を記録し、どのcommentまたは関連sourceを要件として採用したかを`context_resolution.authority_decisions`へ残す。未採用の情報を暗黙に仕様へ昇格させない。
 
@@ -301,24 +317,21 @@ Initial reviewでは明示されたworking treeを含められる。READY候補�
 
 ### 8.4 Stage payload
 
-| Artifact | 必須payload | 参照する正本 |
-| --- | --- | --- |
-| `target_check` | `expected_target_ref`、`status: unchanged|changed|unresolved`、`observed_components`、`changed_components`、`unresolved_components`、`observation_evidence_refs`、条件付き`transition_patch_ref`、`checked_at` | poprのtarget fingerprint契約 |
-| `input_snapshot` | `input_kind`、`trust_source`、`source_identifier`、`source_sha`、`source_revision`、`content_sha256`、`content`。External recordは`authority_status`と`authority_basis`も必須 | Issue、personal contract、base側instruction/policy、Human承認run-local input、外部source |
-| `evidence` | `evidence_kind`、`media_type`、`content_sha256`、`content_path`またはinline `content`、`completeness: full|redacted|truncated`、`redactions`、`truncation` | 実行command、tool、gateのraw output |
-| `review` | `popr_result`、`generic_risk_result`、`generic_coverage_status`、`project_results`、`project_coverage_status`、`blocking_finding_ids`、`required_gates`、`coverage_status` | popr、generic comprehensive reviewer、project reviewer契約 |
-| `change_request` | `requests`。各要素は`review_finding`、`verification_failure`、`gate_failure`のtagged union | Review result、verification/gate artifact、Issue scope |
-| `remediation` | request IDごとの`decision`、`minimal_change`、`planned_paths`、`changed_paths`、条件付き`patch_ref`、`test_plan`、`scope_effect` | Change requestとIssue scope |
-| `verification` | `commands`、各commandの`exit_code`、`started_at`、`finished_at`、`stdout_ref`、`stderr_ref`、`environment_snapshot_ref`、`status`、`unverified_reason`、`mutated_target`、条件付き`mutation_patch_ref` | Project contextとCI |
-| `gate` | `gate_name`、`declared_version`、`capability_revision`、`content_sha256`、`execution_status`、`decision_status`、`decision_policy`、`acceptance_policy_ref`、`evidence_ref`、`mutated_target` | 各gateの正本 |
-| `blind_review` | `blind_result`、`generic_risk_result`、`generic_coverage_status`、`blind_received_artifacts`、`project_results`、`project_coverage_status`、`required_gates`、`independence_check` | popr、generic comprehensive reviewer、project reviewerのblind scan契約 |
-| `final_review` | `blind_review_ref`、`reconciliation`、`popr_result`、`previous_review_ref`、`remediation_status`、`remediation_refs`、`independence_check` | poprの再review契約 |
-| `decision` | `decision_kind`。Context解決では`resolution_mode`、`contract_status`、`contract_ref`、`considered_sources`、`selected_sources`、`authority_decisions`、`resolved_source_of_truth`、`resolved_scope`、`resolved_lenses`、`resolved_commands`、`resolved_gates`、`resolved_risk_triggers`、`resolved_permissions`、`resolved_limits`、`unresolved_inputs`、Human判断では`decision`、`satisfied_conditions`、`blockers`、`human_action`、budget観測では`limit_id`、`limit_event`、`limit_value`、`observed_value`、`counter_snapshot`、`prior_manifest_revision`、`prior_manifest_sha256` | 本文書のcontext解決、停止条件、budget guard |
-| `run_manifest` | `state`、`previous_state`、`transition_id`、`transition_cause_ref`、`revision`、`previous_manifest_ref`、`permissions`、`limits`、`counters`、`input_source`、`issue_ref`、`scope_input_ref`、`contract_status`、`contract_ref`、`context_status`、`resolution_mode`、`project_context_refs`、`context_resolution_ref`、`current_target_generation`、`artifact_refs`、`last_completed_stage` | 本文書のstate/retry/resume契約 |
+Schema 2.0のartifact type別required payload、conditional ref、Manifest lifecycle wrapperの実行正本は`shared/references/review-remediation-harness.md`の「必須payloadとcheckpoint」とする。本設計は同じfield一覧を複製せず、各artifactが保護するinvariantだけを記録する。
 
-Context解決の各`resolved_*` fieldは対応するinput/evidence refとcontent hashを持つ。値が空になり得るfieldは、空配列だけでなく`not_required_reason`と判断根拠refを記録する。いずれかのfieldが欠落するdecisionを`context_status: resolved`へ使わない。
+| Artifact群 | 保護するinvariant |
+| --- | --- |
+| Inputとtarget | Governing input、exact target、project rule、contract revisionをimmutableに固定する |
+| Evidence | Command output、diff、report、environmentをhash付きで保存し、切詰めを完全な証拠と誤認しない |
+| Target check | `unchanged`、`changed`、`unresolved`を区別し、観測不能をdriftへ丸めない |
+| Reviewとremediation | Finding、change request、最小修正、実際の変更証拠をstable IDで接続する |
+| Verificationとgate | Commandごとの完全なstdout/stderr、target mutation、decision policyをsame-targetで照合する |
+| Context decision | Source of truth、scope、lens、command、gate、risk、permission、limitの完全性と根拠を検証する |
+| Manifest | Current target/input、artifact lifecycle、state、counter、resume先、blockerを追記型revisionで復元する |
 
-各verification commandの`stdout_ref`と`stderr_ref`は、出力が空でも空bytesをhashした別々の`evidence`を参照する。Redactionは位置と理由を記録し、単なる切詰めを`full`または`redacted`と表現しない。`completeness: truncated`は完全なbytesの保護済みcontent pathとhashがなければREADYまたはresumeの根拠へ使わない。`remediation.decision: fix`で変更した場合は`patch_ref`、`mutated_target: true`のstageは`mutation_patch_ref`、tracked contentまたはfile modeの差分で`target_check.status: changed`になった場合は`transition_patch_ref`を必須にする。新generationへ進むManifestは、その`target_check`またはStage artifactを`transition_cause_ref`で参照する。
+`completeness: truncated`のevidenceはHuman向けpreviewに限定し、READYまたはresumeの根拠へ使わない。完全なbytesを保存する場合は別の`full|redacted` artifactにし、Stageからそのartifactを参照する。
+
+Working tree manifestのtracked/untracked file追加、変更、削除、file modeまたはtype変更は、text、binary、symlinkを同じcanonical manifest deltaで記録する。Immutable Git objectから再取得できないcontentは別のcontent evidenceへ接続し、binary bytesをtext化しない。新generationのManifestは、差分を観測したtarget checkまたはtargetを変更したStageをtransition causeとして参照する。
 
 `change_request.requests`は次の形でreview findingとverification failureを区別する。
 
