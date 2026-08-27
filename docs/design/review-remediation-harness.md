@@ -372,21 +372,21 @@ Run開始時に次のpermissionを個別に記録する。
 | --- | --- | --- | --- |
 | `read_repository` | true | reviewer、tester、gate、orchestrator | Orchestratorはcontext解決前に9.1の固定bootstrap inspectionを実行可。対象scope外への探索は正本確認に必要な最小範囲だけ |
 | `write_run_store` | true | orchestrator | Candidate worktree外のappend-only storeだけ。各roleのresultをruntime metadata付きで保存する |
-| `read_external_source` | 明示されたIssue/PR/source identifier/hostだけtrue | orchestrator、tester、CI、gate | `allowed_source_identifiers`、host、credential scope、network、paid-call costを固定。Read-only APIだけを許可し、規範authorityは与えない |
+| `read_external_source` | 明示されたIssue/PR/source identifier/hostだけtrue | orchestrator、tester、CI、gate、create-pr phase担当 | `allowed_source_identifiers`、host、credential scope、network、paid-call costを固定。PR依頼ではcanonical identity解決、same-repository open PR検索、post-write read-backだけを追加できる。Read-only APIだけを許可し、規範authorityは与えない |
 | `fetch_remote_refs` | false | orchestrator、create-pr phase担当 | CommitまたはPR依頼で明示されたrepository identity、remote、refspec、prune範囲だけtrueにできる。Network readとGit object database、fetch metadata、許可済みremote-tracking refの更新だけを許可 |
 | `write_worktree` | 変更依頼時だけtrue | implementer、更新を許可されたtester/docs/gate | Reviewerは常にfalse。Resolved commandのallowed pathとfile/diff limitを超えない |
 | `run_local_commands` | 解決済みproject contextの宣言分だけtrue | tester、CI、gate | 累積effectsが不明なら停止 |
 | `commit` | false | create-pr contractに従う提出担当 | 明示的なcommitまたはPR依頼でtrueにできる |
 | `push` | false | create-pr contractに従う提出担当 | PR依頼でtrueにできる |
 | `create_or_update_pr` | false | create-pr contractに従う提出担当 | PR依頼でtrueにできる |
-| `write_external_system` | false | create-pr phase担当 | 明示的なPR依頼のremote、base/head repository identity、branch、SHAとcreate-pr metadata policyに限定。その他のexternal writeは許可しない |
+| `write_external_system` | false | create-pr phase担当 | 明示的なPR依頼のremote、同一であるbase/head repository identity、branch、SHAとcreate-pr metadata policyに限定。その他のexternal writeは許可しない |
 | `merge` | false | Human | Harnessはtrueへ変更できない |
 | `deploy_or_production_write` | false | Humanが別workflowで実行 | Harnessのscope外 |
 | `accept_risk_or_spec` | false | Human | agentへ委譲しない |
 
-IssueからPRまで明示された依頼は、現在scopeのcommit、現在repositoryの解決済みremote/refspecに限定した`fetch_remote_refs`、push、PR作成と、create-pr metadata policyの範囲だけの`write_external_system`を許可する。Exact requestとmetadata policyはHuman input/permission snapshotへ固定し、desired submissionは外部write前のintentでexactに固定する。別remote、tag、merge、deploy、Issueへのcomment、別SaaS operation、risk受容は許可しない。Verificationまたはgate commandがexternal writeを必要とする場合はv1 Harnessで実行せず`EVALUATION_DEFERRED`にする。
+IssueからPRまで明示された依頼は、現在scopeのcommit、現在repositoryの解決済みremote/refspecに限定した`fetch_remote_refs`、push、PR作成と、create-pr metadata policyの範囲だけの`write_external_system`を許可する。Canonical identity解決、same-repository open PR検索、post-write read-backに限定した`read_external_source`も同じpermission snapshotへ固定する。V1はremote、base repository、head repositoryのcanonical identityが同じPRだけをpublishし、fork PRはbase fetch locatorとhead push locatorを分離する将来契約まで`EVALUATION_DEFERRED`で停止する。Exact requestとmetadata policyはHuman input/permission snapshotへ固定し、desired submissionは外部write前のintentでexactに固定する。別remote、tag、merge、deploy、Issueへのcomment、別SaaS operation、risk受容は許可しない。Verificationまたはgate commandがexternal writeを必要とする場合はv1 Harnessで実行せず`EVALUATION_DEFERRED`にする。
 
-`fetch_remote_refs`は`read_repository`または`run_local_commands`へ含めない。実行前にnormalized repository identity、remote名とURL、source/destination refspec、`prune`の有無、credential scope、timeoutをrun manifestへ固定する。Fetchは`--no-tags`かつ自動maintenance無効で実行する。許可するlocal writeはGit object database、fetch中のlock/temporary metadata、`FETCH_HEAD`、宣言したremote-tracking ref namespaceだけとし、working tree、index、local branch、tag、Git configへの変更は禁止する。`prepare_candidate`ではbase refの最新化、`publish_exact_candidate`ではcreate-pr contractが要求するfetch/pruneだけに使う。Permissionがfalseまたはallowlist外なら`HUMAN_DECISION_REQUIRED`、network、credential、Git capabilityが利用不能なら`EVALUATION_DEFERRED`にする。
+`fetch_remote_refs`は`read_repository`または`run_local_commands`へ含めない。実行前にcreate-prのcanonical repository identity、remote名とURL、source/destination refspec、`prune`の有無、credential scope、timeoutをrun manifestへ固定する。Fetchは`--no-tags`かつ自動maintenance無効で実行する。許可するlocal writeはGit object database、fetch中のlock/temporary metadata、`FETCH_HEAD`、宣言したremote-tracking ref namespaceだけとし、working tree、index、local branch、tag、Git configへの変更は禁止する。`prepare_candidate`ではbase refの最新化、`publish_exact_candidate`ではcreate-pr contractが要求するfetch/pruneだけに使う。Permissionがfalseまたはallowlist外なら`HUMAN_DECISION_REQUIRED`、network、credential、Git capabilityが利用不能なら`EVALUATION_DEFERRED`にする。
 
 Fetchがtimeoutまたはtransient failureになった場合は、許可済みrefをread-backし、要求objectとref更新が完了済みなら成功として再実行しない。未完了を確認でき、同じallowlistとexecution keyを使う場合だけtransient retry budget内で1回再実行できる。Fetch後のbase/ref driftは`TARGET_MUTATED`、READY後はcreate-prのphase result `READY_INVALIDATED`として扱う。後者をManifest stateにはせず、invalidation decisionを保存して`READY -> CONTEXT_RESOLVING`へ遷移し、旧artifactを流用しない。
 
@@ -600,7 +600,7 @@ Counterはappend-onlyなrun manifest revisionで更新する。各state遷移も
 - Stage artifactはappend-onlyとし、同じ`artifact_id`を上書きしない。
 - Commit、push、PR作成には対象branch、SHA、既存PRを照合してから実行する。
 - 同じSHAが既にpush済みなら再pushを成功条件にしない。
-- create-prのcanonical base/head repository identity、ref、head SHAに一致するopen PRが一意に存在すれば新規PRを重複作成しない。別forkの同名branchを同一視しない。
+- create-prのcanonical same-repository identity、base/head ref、head SHAに一致するopen PRが一意に存在すれば新規PRを重複作成しない。別forkの同名branchを同一視せず、V1ではfork PRを作成または更新しない。
 - External writeはREADY後の`publish_exact_candidate`だけを扱う。Exact desired PR metadata、operation/attempt ID、push/PR/read-backの各statusをartifactへ記録し、確定できない操作を自動再実行しない。
 - Resume時にtargetが変わっていた場合は、以前のverification、gate、Final reviewを成功扱いしない。
 
@@ -670,7 +670,7 @@ Fallbackは独立性やcoverageを偽装するために使わない。同じagen
 
 - `issue-to-pr`: Issue intake、scope、branch、permissionを固定した後、review/fix/verify subflowをHarnessへ委譲する。Harnessから`READY`またはblockerを受け取り、PR提出またはHuman handoffへ戻る。
 - `prepare_candidate`: `create-pr`の品質確認、documentation同期、stage確認、commit分割とmessage規約をstate machineへ個別stepとして公開し、steps 5-7全体を担う。入力には`fetch_remote_refs`とremote/refspec allowlistを含める。Default経路でbase未指定なら、許可済みremoteのdefault、`develop`、`main`をread-only解決してbase refとfetch前SHAを固定してからexact base refをfetchする。既に確定したsame-target artifactを二重実行せず、各stepの結果またはtarget mutationをHarnessへ返し、最後にcleanなexact candidate SHAを返す。
-- `publish_exact_candidate`: READY済みcandidate SHAとbase SHA、`fetch_remote_refs`と設定済みrefspec/prune allowlistを入力にし、fetch後の一致確認、既存remote/PR確認、同じSHAのpush、PR作成または更新だけを行う。File編集、targetを変更し得る品質gate、stage、追加commitは禁止する。
+- `publish_exact_candidate`: READY済みcandidate SHAとbase SHA、同一であるremote/base/head canonical repository identity、`read_external_source`、`fetch_remote_refs`と設定済みrefspec/prune allowlistを入力にし、fetch後の一致確認、既存remote/PR確認、exact `<head_sha>:refs/heads/<head-ref>`のpush、PR作成または更新だけを行う。File編集、targetを変更し得る品質gate、stage、追加commitは禁止する。Fork PRはV1 capability不足として外部write前に停止する。
 
 両referenceはIssue #38でこのphase interfaceを実行可能なsemantic contractとして定義した。Harnessを使わない通常経路は後方互換のdefault経路を継続し、Harness経路は`READY`後にmonolithicな`create-pr`を再実行せず`publish_exact_candidate`だけを使う。Target driftではcreate-prがphase result `READY_INVALIDATED`を返し、Harnessはinvalidation decisionを保存してManifest stateを`READY -> CONTEXT_RESOLVING`へ遷移させ、新しいtargetのverification、gate、Final reviewを完了する。Exact targetを保った安全な未実行または中間状態は`NOT_PERFORMED|PARTIALLY_PERFORMED`としてREADYを保ち、同じoperationのread-back済みstepからbudget内で再開する。一意に分類できない`RESULT_UNKNOWN`は自動retryせずHumanへhandoffする。Publish retry budgetを使い切ったrunは`READY -> BUDGET_EXHAUSTED`で停止し、self-contained handoffを入力にした新runだけが再開できる。
 
