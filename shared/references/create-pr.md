@@ -15,7 +15,7 @@
 
 ## 共通契約
 
-- PR作成依頼は、現在scopeの変更をcommit、pushしてPRを作る権限に加え、現在repositoryの解決済みfetch transport locatorだけを対象とする`fetch_remote_refs` permissionを含む。Default経路ではremote default、`develop`、`main`のread-only名前解決、選択したbaseのexact fetch、publish時の設定済みbase refspec範囲のprune、fixed push locatorのexact head refをancestor判定用にsource-only fetchすることだけを許可し、別repository、別remote、tagは含めない。またcanonical GitHub identity解決、fixed push locatorのexact head refに対するpre-write lookup、same-repository open PR検索、post-write read-backだけを対象に、host、API/transport locator、credential scope、network、timeout、paid-call budgetを固定した`read_external_source` permissionを含む。Merge権限は含まない。
+- CommitまたはPR作成依頼は、現在scopeの変更をcommitする権限に加え、現在repositoryと選択remoteのGit transport入力だけをread-onlyで調べる`inspect_git_transport_context` permissionと、解決済みfetch transport locatorだけを対象とする`fetch_remote_refs` permissionを含む。Inspectionはpermission snapshotに列挙したconfig scope/key pattern、environment名、Git/helper executable metadataへ限定し、credential helperやaskpassを実行せず、secret raw valueまたはそのhashを永続化しない。Default経路ではremote default、`develop`、`main`のread-only名前解決と選択したbaseのexact fetchだけを許可する。PR作成依頼はさらにpushとPR作成、publish時の設定済みbase refspec範囲のprune、fixed push locatorのexact head refをancestor判定用にsource-only fetchする権限を含むが、別repository、別remote、tagは含めない。またcanonical GitHub identity解決、fixed push locatorのexact head refに対するpre-write lookup、same-repository open PR検索、post-write read-backだけを対象に、host、API/transport locator、credential scope、network、timeout、paid-call budgetを固定した`read_external_source` permissionを含む。Merge権限は含まない。
 - PRは宣言済みscopeだけを含め、無関係な整形、依存更新、別課題を混ぜない。
 - 1 commitを単独revertしたとき、その変更目的だけが戻る単位に分ける。
 - 各commitは単独checkout時にもbuild、型check、関連testが通る状態を保つ。後続commitがなければ動かない変更は同じcommitにまとめる。
@@ -30,9 +30,87 @@
 
 Fetch permissionとGitHub publish identityを同じ概念にしない。`fetch_transport_locator`と`push_transport_locator`は、configured remote、`remote.<name>.url`、`remote.<name>.pushurl`、適用される`url.*.insteadOf`と`url.*.pushInsteadOf`をread-onlyで解決した、credentialを含まないexact effective URLである。GitのURL解決をもう一度適用してもbytesが変わらないfixed pointで、fetch用とpush用が各1件だけの場合に確定できる。0件、複数件、cycle、2回目のrewrite、embedded credential、未知remote helper、取得不能があれば推測せず停止する。
 
-Fetchとpushはremote名でなく固定済みeffective URLをcommand引数に使う。Fetchは`git -c maintenance.auto=false -c core.hooksPath=<verified-null-or-empty-hooks-path> fetch --no-tags <fetch_transport_locator> <source>:<destination>`相当、pushは同じhook overrideを付けた`git push --no-verify <push_transport_locator> <head_sha>:refs/heads/<head-ref>`相当とする。`ls-remote`を含むGit network transport callにも同じcommand-scoped overrideを使い、`pre-push`だけでなく`reference-transaction`など全local hookを起動しない。Null pathを証明できないruntimeはruntime所有、candidate/run store外、symlinkを含まず、実行前後に空であるhooks directoryを使い、そのlocal scratch writeをpermissionへ含める。どちらも証明できなければ停止する。Raw configured URL、全push URL、rewrite rule、effective locator、configured `core.hooksPath`、採用したoverrideをHarness経路ではEvidence、default経路ではself-containedなphase-local recordへ保存する。Embedded credentialを検出した場合は外部操作前に停止し、秘密部分を除いた診断と元値のhashだけを保存してraw値を永続化しない。Prepare-only runはfetch transport locatorだけで動作し、GitHub API identityを要求しない。
+Fetchとpushはremote名でなく固定済みeffective URLをcommand引数に使う。Fetchは`git -c maintenance.auto=false -c core.hooksPath=<verified-null-or-empty-hooks-path> fetch --no-tags <fetch_transport_locator> <source>:<destination>`相当、pushは同じhook overrideを付けた`git push --no-verify <push_transport_locator> <head_sha>:refs/heads/<head-ref>`相当とする。`ls-remote`を含むGit network transport callにも同じcommand-scoped overrideを使い、`pre-push`だけでなく`reference-transaction`など全local hookを起動しない。Null pathを証明できないruntimeはruntime所有、candidate/run store外、symlinkを含まず、実行前後に空であるhooks directoryを使い、そのlocal scratch writeをpermissionへ含める。どちらも証明できなければ停止する。Raw configured URL、全push URL、rewrite rule、effective locator、configured `core.hooksPath`、採用したoverrideをHarness経路ではEvidence、default経路ではself-containedなphase-local recordへ保存する。Embedded credentialを検出した場合は外部操作前に停止し、秘密部分を除いたlocator、検出位置、停止理由だけを保存してraw値とそのhashを永続化しない。Prepare-only runはfetch transport locatorだけで動作し、GitHub API identityを要求しない。
 
 URLだけでtransport境界が固定されたとは扱わない。実行に使うGit versionについて、destination、transport executable、proxy、credential取得、TLS/SSH trust、config注入、local hook起動へ影響し得るrepository/system/global configとenvironmentを列挙し、`transport_execution_context`へsource、秘密値を除くexact valueまたはhash、利用するhelper/executableと引数、採用したhooks override、その観測可能なeffectを固定する。対象には少なくとも`core.sshCommand`、`core.gitProxy`、`core.hooksPath`、`http.*`、`credential.*`、`GIT_SSH*`、`GIT_PROXY_COMMAND`、`GIT_ASKPASS`、`SSH_ASKPASS`、proxy/TLS環境変数、`GIT_CONFIG_*`を含める。Credentialのsecret自体は保存またはcontext hashへ含めず、provider identity、lookup scope、helper executableだけを固定する。ContextのJCS valueとcontent hashをphase input/outputへ結び付ける。Harness経路だけは同じvalueを`evidence_kind: git_transport_execution_context`としてrun storeへ保存しEvidence refを必須にする。Default経路はrun storeへ依存せず、phase-local input/outputへexact JCS valueとhashをinline保存し、Evidence refを要求しない。各設定は影響しないよう明示的に除去するか、そのexact helper、destination、credential scope、filesystem/network effectをpermissionへ含める。Unknown helper、実行fileまたはconfig/envの再取得不能、未許可destination/effect、context hashの実行直前driftがあればnetwork call前に停止する。Locator解決、identity照合、fetch、push、read-backは同じcontextを使い、実行後もcontext hashを照合する。
+
+### Transport execution context schema 1.0
+
+`transport_execution_context`の論理値は次のexact objectとする。すべてのfieldを必須とし、非該当値はfield省略や空文字でなく明示的な`null`または空配列にする。記載のない追加keyを拒否し、この論理値をRFC 8785 JCS bytesへ直列化したSHA-256をcontext hashとする。
+
+```json
+{
+  "schema_version": "1.0",
+  "permission_snapshot_sha256": "<lowercase_hex_64>",
+  "repository_identity": {
+    "identity_kind": "git_common_dir_realpath",
+    "identity_value": "<absolute_realpath>"
+  },
+  "remote_name": "<remote_name>",
+  "fetch_transport_locator": "<credential_free_fixed_point_url>",
+  "push_transport_locator": null,
+  "git_executable": {
+    "realpath": "<absolute_realpath>",
+    "sha256": "<lowercase_hex_64>",
+    "version": "<exact_version_output>"
+  },
+  "inspection": {
+    "config_scopes": ["system", "global", "local", "worktree", "command"],
+    "config_key_patterns": ["<exact_key_or_pattern>"],
+    "environment_names": ["<exact_name>"]
+  },
+  "config_entries": [
+    {
+      "sequence": 0,
+      "scope": "system",
+      "origin": "<absolute_realpath_or_command>",
+      "key": "<exact_key>",
+      "value_state": "plain",
+      "value": "<exact_nonsecret_value>",
+      "nonsecret_projection": null,
+      "redaction_reason": null
+    }
+  ],
+  "environment_entries": [
+    {
+      "name": "<exact_name>",
+      "value_state": "unset",
+      "value": null,
+      "nonsecret_projection": null,
+      "redaction_reason": null
+    }
+  ],
+  "helpers": [
+    {
+      "helper_kind": "credential",
+      "source": "<config_key_or_environment_name_or_locator_scheme>",
+      "command": "<exact_command_name>",
+      "executable_realpath": "<absolute_realpath>",
+      "executable_sha256": "<lowercase_hex_64>",
+      "arguments": ["<exact_nonsecret_argv_item>"],
+      "lookup_scope": null,
+      "destinations": ["<credential_free_destination>"],
+      "effects": ["process_exec", "credential_access"]
+    }
+  ],
+  "hooks_override": {
+    "kind": "platform_null",
+    "path": "<absolute_realpath>",
+    "identity": "<stable_device_or_directory_identity>",
+    "empty_before": true,
+    "empty_after": true
+  },
+  "credential_scope": null,
+  "allowed_destinations": ["<credential_free_destination>"],
+  "effects": ["filesystem_read", "process_exec", "credential_access", "network_read", "network_write", "filesystem_write"]
+}
+```
+
+`push_transport_locator`はprepare-onlyならnull、publishではcredentialを含まないfixed point URLを必須にする。`inspection.config_scopes`は実際に検査したscopeだけを`system|global|local|worktree|command`の順序を保った部分列、key patternとenvironment名はUTF-8 byte順の重複なし配列にする。Key patternはGit versionに応じた完全なtransport入力集合を固定し、少なくとも前段の列挙を含める。`config_entries.sequence`はGitの低い優先度から高い優先度へ0始まりで隙間なく付け、Gitが返した同一scope内の順序を保つ。`environment_entries`はname順、`helpers`は`helper_kind`、`source`、`command`のUTF-8 byte tuple順、`destinations`はUTF-8 byte順にし、`arguments`だけはargvの意味順を変えない。`effects`は`filesystem_read|process_exec|credential_access|network_read|network_write|filesystem_write`の記載順を保った部分列とする。
+
+Config entryの`value_state`は`plain|secret`、environment entryは`unset|plain|secret`である。Config entryは実際に存在する値だけをsequence付きで含め、environment entryは`inspection.environment_names`の全要素を1件ずつ含める。`plain`は`value`だけをexact stringにし、`nonsecret_projection`と`redaction_reason`をnullにする。`unset`は3 fieldをすべてnullにする。`secret`は`value: null`とし、credentialを除いたdestinationやprovider表現が作れる場合だけ`nonsecret_projection`へ保存し、空でない`redaction_reason`を必須にする。`origin`はconfig fileのabsolute realpathまたはliteral `command`とする。Secret raw valueとそのhashはcontext内外へ保存しない。Helperの`helper_kind`は`transport|proxy|credential|askpass|ssh|tls`とし、利用するhelperだけを配列へ含め、realpathとexecutable hashを必須にする。Helperを利用しない場合は空配列にする。`lookup_scope`とtop-level `credential_scope`は非秘密のexact stringまたはnullである。Helper commandまたはargumentにsecretが埋め込まれている、helperを実行しなければidentity/effectを確定できない、またはunknown inputが残る場合はcontextを確定しない。
+
+`hooks_override.kind`は`platform_null|runtime_empty_directory`である。前者は検証済みnull deviceのrealpathとstable device identity、後者はruntime所有かつcandidate/run store外のdirectory realpathとfilesystem identityを固定する。前者はGitがhookを解決不能であること、後者はhook entryが0件であることを実行前後に検証して`empty_before|empty_after`へ保存し、falseなら失敗とする。Object key順はJCSへ委ね、上記以外のarray順を独自に変えない。Permission snapshot hash、Git executable、inspection集合、entry、helper、hook、destination、effectのいずれかが実行直前または直後に変われば同じoperationとして続行しない。
 
 ## 公開phase interface
 
@@ -45,15 +123,17 @@ URLだけでtransport境界が固定されたとは扱わない。実行に使�
 
 ### Phase共通のartifact規則
 
-- 入力と出力にはrepository、branch、base ref、full `base_sha`、full `head_sha`またはworking tree fingerprint、宣言済みscope、permission、適用したcontract revisionを含める。Fetchを行うphaseは`fetch_remote_refs`と、remote名、exact `fetch_transport_locator`、`transport_execution_context`のexact JCS valueとhash、source/destination refspec、prune範囲、credential scope、timeoutを持つallowlistも含める。Harness経路だけEvidence refを追加で必須にし、default経路は同じvalue/hashをself-containedなphase-local recordとして返す。
+- 入力と出力にはrepository、branch、base ref、full `base_sha`、full `head_sha`またはworking tree fingerprint、宣言済みscope、permission、適用したcontract revisionを含める。Git transportを使うphaseは`inspect_git_transport_context`と、その対象repository、remote、config scope/key pattern、environment名、Git/helper executable metadata、effectを固定したallowlistおよびpermission snapshot hashを含める。Fetchを行うphaseはさらに`fetch_remote_refs`と、remote名、exact `fetch_transport_locator`、`transport_execution_context`のexact JCS valueとhash、source/destination refspec、prune範囲、credential scope、timeoutを持つallowlistも含める。Harness経路だけEvidence refを追加で必須にし、default経路は同じvalue/hashをself-containedなphase-local recordとして返す。
 - 完了済みartifactを再利用できるのは、同じtarget fingerprint、scope、contract revisionに結び付き、required statusを満たす場合だけとする。単なる完了申告や別SHAの結果を理由にstepを省略しない。
 - File、index、commit、base、scope、project ruleを変更したstepは`TARGET_MUTATED`として旧target、新target、無効化対象、再開stepを呼び出し側へ返す。Default経路もこの結果を受け取るcallerとしてcontextを更新してから再開する。
 - Blockerは`BLOCKED`として停止理由、完了済みartifact、再開step、不足inputを返す。Phase内でpermissionや仕様を補完しない。
 
-### Fetch permissionと共通failure
+### Transport inspection、fetch permissionと共通failure
 
-`prepare_candidate`と`publish_exact_candidate`はfetch前に`fetch_remote_refs`とallowlistを検証する。通常のPR依頼では共通契約の範囲だけをpermissionへ固定し、Harness callerはrun manifestのより狭いpermissionをそのまま渡す。Base fetchはremote名を再解決せずexact `fetch_transport_locator`を使い、publishのhead ancestor判定用source-only fetchはexact `push_transport_locator`を使う。いずれも`git -c maintenance.auto=false -c core.hooksPath=<verified-null-or-empty-hooks-path> fetch --no-tags`相当とし、Git object database、fetch中のlock/temporary metadata、`FETCH_HEAD`、許可済みremote-tracking ref以外を変更しない。
+`prepare_candidate`と`publish_exact_candidate`はtransport context解決前に`inspect_git_transport_context`、fetch前に`fetch_remote_refs`と各allowlistを検証する。通常のcommit/PR依頼では共通契約の範囲だけをpermissionへ固定し、Harness callerはrun manifestのより狭いpermissionをそのまま渡す。Inspectionは許可済みGit read-only照会とGit executableのversion取得だけを実行し、helper、askpass、credential provider、network transportを起動しない。Base fetchはremote名を再解決せずexact `fetch_transport_locator`を使い、publishのhead ancestor判定用source-only fetchはexact `push_transport_locator`を使う。いずれも`git -c maintenance.auto=false -c core.hooksPath=<verified-null-or-empty-hooks-path> fetch --no-tags`相当とし、Git object database、fetch中のlock/temporary metadata、`FETCH_HEAD`、許可済みremote-tracking ref以外を変更しない。
 
+- `inspect_git_transport_context`がfalse、対象repository、remote、config scope/key pattern、environment名、executable metadata、effectがallowlist外: `HUMAN_DECISION_REQUIRED`。
+- 設定source、environment、Git/helper executable metadataを秘密値なしで安全に取得できない、またはunknown helper/inputが残る: `EVALUATION_DEFERRED`。
 - Permissionがfalse、fetch transport locator、remote、refspec、prune範囲がallowlist外: `HUMAN_DECISION_REQUIRED`。
 - Network、credential、Git capabilityが利用不能: `EVALUATION_DEFERRED`。
 - Timeoutまたはtransient failure: 許可済みrefをread-backし、要求objectと更新が完了済みなら成功として再実行しない。未完了を確認できた同じexecution keyだけ1回retryし、確定不能なら`EVALUATION_DEFERRED`。
@@ -76,6 +156,7 @@ URLだけでtransport境界が固定されたとは扱わない。実行に使�
 - Repositoryと作業branch
 - Fetch対象のremoteとexact `fetch_transport_locator`。Default経路は現在repositoryの`origin`設定から解決する
 - 明示されたbase refとfetch前に固定したfull `base_sha`。Default経路で未指定の場合はContext固定のread-only remote解決で両方を確定する
+- `inspect_git_transport_context` permissionと、Transport execution context schema 1.0のinspection対象およびeffectを持つallowlist
 - `fetch_remote_refs` permissionと、base解決候補、選択したbaseのsource/destination refspec、credential scope、timeoutを持つallowlist
 - 宣言済みscopeとcommit permission
 - Working tree、index、既存HEADの状態
@@ -135,6 +216,7 @@ Fixed `fetch_transport_locator`と`push_transport_locator`はAPI照会用locator
 ### 入力
 
 - Repository、許可されたremote、exact `fetch_transport_locator`と`push_transport_locator`、`transport_execution_context`のexact JCS valueとhash、両locatorから解決した同じcanonical repository identity、同じobjectを持つPRのexpected base/head repository identity、作業branch、PRのbase/head ref。Harness経路だけtransport context Evidence refを追加で必須にする
+- `inspect_git_transport_context` permissionと、対象repository、remote、config scope/key pattern、environment名、Git/helper executable metadata、effectを固定したallowlistおよびpermission snapshot hash
 - Full `base_sha`とfull `head_sha`
 - Harness経路では同じbase/headに結び付く`READY` statusと根拠artifactへの参照、通常経路では`DEFAULT_SUBMISSION_READY`と提出前条件の結果
 - Harness経路では、外部write前に確定したexact `title`、`body`、`draft`、重複なしソート済み`assignees`と`labels`を持つ`desired_submission`、そのRFC 8785 JCS bytesのSHA-256、対象transport locator、same-repository identity、branch、SHAと当該metadata生成policyに限定した`write_external_system` permission
