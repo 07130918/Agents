@@ -629,6 +629,8 @@ Counterはappend-onlyなrun manifest revisionで更新する。各state遷移も
 
 失敗は自由文のlogだけで残さず、現在state、失敗分類、target ref、attempt、実行commandまたはtool、終了code、再開条件をrun manifestとstage artifactへ記録する。秘密情報をartifactへ保存しない。
 
+ただしcanonical ledger自体がinvalidでhead CASのexpected valueを確定できない場合は、そのledgerへblocker Manifestを追記しない。Runtime state rootのledger外へappend-only recovery reportを保存し、観測head、違反invariant、transaction descriptor hash、必要なHuman actionを返して停止する。このreportはartifact、state transition、READY根拠ではなく、同じrunを自動修復または古いrevisionへrollbackする権限を与えない。
+
 ### 15.2 Resume手順
 
 1. Single-writer lock下でimmutable transaction descriptorを検査し、expected/proposed headと全staged/write-set hashが一意に一致するtransactionだけを完了する。不一致、競合、説明不能なuncommitted objectはledgerへ接続せず停止する。

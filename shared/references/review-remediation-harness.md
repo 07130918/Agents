@@ -123,6 +123,7 @@ Schema 2.0のJSON bytesは[RFC 8785](https://www.rfc-editor.org/rfc/rfc8785)のJ
     "context_id": "<runtime_context_id>",
     "parent_context_id": null,
     "fresh_context": false,
+    "model": null,
     "received_artifacts": []
   },
   "input_refs": [],
@@ -133,9 +134,11 @@ Schema 2.0のJSON bytesは[RFC 8785](https://www.rfc-editor.org/rfc/rfc8785)のJ
 
 `input_snapshot`と`target`だけは`target_ref: null`にできる。Target未解決中のdecisionとrun manifestも、payloadに`target_status: unresolved`と`target_absence_reason`を記録した場合だけnullを許す。その他は1つのtargetを参照する。
 
+`producer.role`は`orchestrator|initial_reviewer|project_reviewer|implementer|tester|final_reviewer|docs_gate|security_gate|ci|human`のいずれかとする。`instance_id`、`context_id`、親子関係、`fresh_context`、`received_artifacts`はOrchestratorがruntime metadataから付与する。`model`はruntimeが返すexact model ID、Humanまたは取得不能時はnullとし、取得不能時は`model_unavailable_reason`を必須にする。`received_artifacts`はcommon refを`artifact_id`順に並べる。
+
 Artifactの共通refは`artifact_id`、run directory相対の`artifact_path`、保存済みbytesの`sha256`だけを持つ。`target_ref`、`input_refs`、`previous_manifest_ref`、payload内の`*_ref`と`*_refs`はこの型を使う。例外は`run_manifest.artifact_refs`で、各要素を`{"ref": <common_ref>, "lifecycle_status": "current|historical|invalidated", "invalidation_reason_ref": <common_ref|null>}`とする。`invalidated`だけ`invalidation_reason_ref`を必須にし、他statusではnullにする。
 
-`repository_id`はnormalized repository identityのSHA-256から作る`sha256-<小文字16進64文字>`、`run_id`と`transaction_id`は`[A-Za-z0-9][A-Za-z0-9._-]{0,127}`、`artifact_id`は`<run_id>/<state>/<sequence>`とし、`state`は本contractのstate名、`sequence`は先頭0なしの10進非負整数とする。Common refの`sha256`は小文字16進64文字に限定する。`artifact_path`とrun-storeを読むすべての`content_path`は`/`区切りの相対pathとし、各segmentを`[A-Za-z0-9][A-Za-z0-9._-]{0,127}`へ限定する。Absolute path、空segment、`.`、`..`、backslash、NULを拒否する。
+`repository_id`はtarget fingerprintで固定済みのrepository identity stringを変更せずUTF-8化し、そのbytesのSHA-256から`sha256-<小文字16進64文字>`として作る。Harness内でremote URL、owner/name、local pathを相互変換する独自normalizationは行わず、identity stringが変われば別repository/runとして扱う。`run_id`と`transaction_id`は`[A-Za-z0-9][A-Za-z0-9._-]{0,127}`、`artifact_id`は`<run_id>/<state>/<sequence>`とし、`state`は本contractのstate名、`sequence`は先頭0なしの10進非負整数とする。Common refの`sha256`は小文字16進64文字に限定する。`artifact_path`とrun-storeを読むすべての`content_path`は`/`区切りの相対pathとし、各segmentを`[A-Za-z0-9][A-Za-z0-9._-]{0,127}`へ限定する。Absolute path、空segment、`.`、`..`、backslash、NULを拒否する。
 
 Writerとvalidatorはrun rootを一度realpathで固定し、run-store pathを文字列連結だけで開かない。各componentをsymlink followなしで辿り、正規化後も同じrun root配下であること、最終objectが通常fileであることを確認する。Artifactの`run_id`、`artifact_id`先頭、実際のrun directoryを一致させ、別runへの参照を拒否する。Repository相対pathもabsolute、空segment、`.`、`..`、NULを拒否してrepository root配下へ限定するが、targetとして記録されたsymlink自体のtypeとlink targetはfollowせず観測できる。Local skill pathやexternal source identifierはrun-store pathとしてdereferenceせず、取得済みcontentをinput snapshotへ保存する。
 
@@ -169,11 +172,25 @@ Head CAS成功後はtransaction descriptorを変更せず、同じ`transaction_i
 
 Transactionを安全に完了またはcommit済みと確認した後、canonical namespaceの全Manifestとheadを検査する。同一revisionの複数file、同じprevious manifestを指すfork、transactionで説明できないorphan Manifest、欠落、飛越し、partial/invalid canonical file、head不一致が1件でもあれば、より古いvalid revisionへfallbackせず`EVALUATION_DEFERRED`にする。最大の観測済みcommitted revisionとheadが一致し、その唯一chain全体がvalidな場合だけ再開する。
 
+Canonical chainがvalidな場合のblockerだけを新しいdecision/Manifestとしてappendする。Chain自体がinvalidでhead CASのexpected valueを確定できない場合は、そのledgerへartifactまたはManifestを追記しない。代わりにruntime state rootのledger外`recovery-reports/<repository_id>/<run_id>/<report_id>.json`へJCSのrecovery reportをexclusive createで保存する。`report_id`は`run_id`と同じ文字規則の新しい一意IDとし、既存reportを上書きしない。Reportはartifact、lifecycle、state transition、READY根拠ではなく、`report_version`、`report_id`、repository/run ID、RFC 3339の観測時刻、`observed_head_base64`とそのSHA-256、違反kind/field/invariant、観測したManifest path/hash、transaction ID/descriptor hash、診断、`required_human_action: start_new_run|restore_verified_store`を持つ。該当するManifestまたはtransactionがないfieldはnullにする。保存不能なら同じJCS valueをHumanへ直接返す。Harnessは壊れたrunを修復、古いheadへrollback、または自動再開せず、Humanが検証済みstoreを外部手順で復元するか、新runを明示開始するまで停止する。
+
 Target、Issue input、scope、permission、project rule、contract hashが変わった場合は新しいgenerationを作る。旧verification、gate、reviewを成功根拠へ流用しない。Historical artifactはreconciliationの参照だけに使える。
 
 ### 必須payloadとcheckpoint
 
-`input_snapshot.payload`は`input_kind`、`trust_source`、`source_identifier`、`source_sha`、`source_revision`、`content_sha256`、秘密情報を除いたexact `content`を持つ。External recordには`authority_status`と`authority_basis`も必要である。Personal Harness contractと関連capabilityは実際のlocal path、`declared_version`、`capability_revision`、content hashを、project ruleはbase SHAとGit blob hashを記録する。
+`input_snapshot.payload`は`input_kind`、`trust_source`、空でないstableな`source_identifier`、`source_sha`、`source_object_id`、`source_revision`、`content_format: utf8_text|jcs_json`、`content_sha256`、秘密情報を除いたexact `content`を持つ。`content_sha256`は保存した`content`がstringなら改行を正規化しないUTF-8 bytes、JSON valueならRFC 8785 JCS bytesだけをhashする。元sourceの秘密情報を除いた場合はredaction位置と理由を別fieldへ記録し、stored content hashを元source hashと表現しない。非該当locatorは空文字やplaceholderでなく明示的nullにする。
+
+`input_kind`は次のdiscriminatorとする。
+
+| Input kind | Source locator |
+| --- | --- |
+| `project_rule|acceptance_policy` | `source_sha`とGit blobの`source_object_id`を必須、`source_revision: null` |
+| `issue_bundle|external_record` | Stableな`source_revision`を必須、`source_sha: null`、`source_object_id: null` |
+| `personal_contract|required_capability` | `source_revision`に`version:<declared_version>`または`sha256:<content_sha256>`を必須、`source_sha: null`、`source_object_id: null` |
+| `human_approved_run_local|explicit_scope` | `source_revision`に`approval:<stable_approval_id>`を必須、`source_sha: null`、`source_object_id: null` |
+| `permission_set` | Human変更時は`approval:<stable_approval_id>`、defaultは`sha256:<content_sha256>`を`source_revision`へ保存し、`source_sha: null`、`source_object_id: null` |
+
+`trust_source`は`personal_contract|base|human_approved_run_local|external_authoritative|external_observed`のいずれかとする。`external_authoritative`は`authority_status: governing`、`external_observed`は`authority_status: evidence_only|pending`だけに使い、external inputは`authority_basis`を必須にする。`issue_bundle`はtitle、body、Issue revision、各commentのstable ID、revision、author、author role、body、採用した関連sourceのidentifier/revisionを保持する。Source APIがbundle全体のrevisionを返さない場合、`source_revision`はこれらcomponentのstable IDとrevisionを並べたJCS valueのSHA-256を`sha256:<小文字16進64文字>`で保存する。Git SHA/object IDはrepository object formatに一致する小文字16進40または64文字とする。
 
 Permission setは`input_kind: permission_set`の`input_snapshot`として、permission名、boolean、対象identity、allowed path/ref/source、effect、approval scopeをexact `content`へ保存する。Run開始時のdefaultもHumanによる追加・縮小も新しいimmutable snapshotにし、inline値だけを正本にしない。Human承認は先に`human_approved_run_local` input snapshotへ固定し、それを参照するdecisionを保存する。Permission setが変わった場合は新generationを作り、必ず`CONTEXT_RESOLVING`からcontext、review、verification、gateを再評価する。
 
@@ -198,9 +215,13 @@ Stage artifactの必須payloadは次の通りとする。
 
 Context解決の`decision.payload`は`decision_kind: context_resolution`、`resolution_mode`、`contract_status`、`contract_ref`、`considered_sources`、`selected_sources`、`authority_decisions`、`resolved_source_of_truth`、`resolved_scope`、`resolved_lenses`、`resolved_commands`、`resolved_gates`、`resolved_risk_triggers`、`resolved_permissions`、`resolved_limits`、`unresolved_inputs`を持つ。各selected sourceとresolved fieldは対応するinput/evidence refとcontent hashを含める。値が空になり得るfieldは、空配列だけでなく`not_required_reason`とその判断根拠refを持つ。候補を無視して空の`unresolved_inputs`を返さず、いずれかのresolved fieldが欠落するdecisionを`context_status: resolved`の根拠にしない。
 
-`run_manifest.payload`は`revision`、`previous_manifest_ref`、`state`、`previous_state`、`transition_id`、`transition_cause_ref`、`current_target_generation`、`current_target_ref`、`input_refs`、`permission_set_ref`、lifecycle wrapperを使う`artifact_refs`、`limits`、`counters`、`input_source`、`issue_ref`、`scope_input_ref`、`contract_status`、`contract_ref`、`context_status`、`resolution_mode`、`project_context_refs`、`context_resolution_ref`、`last_completed_stage`、`resume_state`、`blocker`を持つ。`artifact_refs`へManifestを含めない。最初のrevisionだけ`previous_manifest_ref: null`を許し、以後は直前Manifestのpathとhashを参照する。
+`run_manifest.payload`は`revision`、`previous_manifest_ref`、`state`、`previous_state`、`transition_id`、`transition_cause_ref`、`current_target_generation`、`current_target_ref`、`input_refs`、`permission_set_ref`、lifecycle wrapperを使う`artifact_refs`、`limits`、`counters`、`input_source`、`issue_ref`、`scope_input_ref`、`contract_status`、`contract_ref`、`context_status`、`resolution_mode`、`pending_reason_refs`、`conflict_refs`、`project_context_refs`、`context_resolution_ref`、`last_completed_stage`、`resume_state`、`blocker`を持つ。`artifact_refs`へManifestを含めない。最初のrevisionだけ`previous_manifest_ref: null`を許し、以後は直前Manifestのpathとhashを参照する。
 
-`input_source: issue`では`issue_ref`を必須にして`scope_input_ref: null`、`explicit_scope`では`scope_input_ref`を必須にして`issue_ref: null`とする。`contract_status`は`resolved|unavailable|drifted`とし、`resolved`だけhash付き`contract_ref`を持てる。`context_status: resolved`には`contract_status: resolved`、validな`permission_set_ref`、external authority確定、全`resolved_*` fieldの存在と根拠ref、空の`unresolved_inputs`、空でない`project_context_refs`、`context_resolution_ref`を要求する。各state遷移、target generation変更、stage完了、blocker、外部副作用の前後で新revisionをappend-only保存する。
+`input_source: issue`では`issue_ref`を必須にして`scope_input_ref: null`、`explicit_scope`では`scope_input_ref`を必須にして`issue_ref: null`とする。`contract_status`は`resolved|unavailable|drifted`とし、`resolved`だけhash付き`contract_ref`を持てる。`context_status`は`resolved|pending|conflicted`とし、`resolved`だけ`resolution_mode: repository_baseline|human_approved_run_local|mixed`を持ち、`pending_reason_refs`と`conflict_refs`は空配列にする。`pending`は`resolution_mode: null`、空でない`pending_reason_refs`、空の`conflict_refs`を、`conflicted`は`resolution_mode: null`、空の`pending_reason_refs`、空でない`conflict_refs`を要求する。各要素は未解決または矛盾を記録したartifactのcommon refとする。`context_status: resolved`には`contract_status: resolved`、validな`permission_set_ref`、external authority確定、全`resolved_*` fieldの存在と根拠ref、空の`unresolved_inputs`、空でない`project_context_refs`、`context_resolution_ref`を要求する。各state遷移、target generation変更、stage完了、blocker、外部副作用の前後で新revisionをappend-only保存する。
+
+`final_review.remediation_status`は`required|not_required`のいずれかとする。Current targetのgeneration lineageでoriginを問わず`change_request`が`FIXING`を1回でも発生させた場合は`required`とし、`remediation_refs`へ対応する全remediation artifactを含める。Lineage全体に該当change requestがない場合だけ`not_required`と空の`remediation_refs`を許可する。
+
+`gate.decision_policy`は`native_status|project_or_human`とする。`acceptance_policy_ref`は`native_status`の場合だけnullにでき、`project_or_human`ではgoverningなacceptance policyまたはHuman承認input snapshotへのcommon refを必須にする。その他のnullable refは、各payload contractが状態と不在理由を明示した場合だけnullを許す。
 
 `target_check.status`は、全componentを観測でき差分がなければ`unchanged`、全componentを観測でき差分が1件以上あれば`changed`、1件でも再取得または比較できなければ`unresolved`とする。`unresolved`では`unresolved_components`へcomponent、理由、観測証拠refを記録し、既存artifactを再利用せず`EVALUATION_DEFERRED`にする。`changed`と`unresolved`を相互に丸めない。
 
@@ -235,7 +256,7 @@ Runtime由来のinstance/context metadataを取得できない、新しいinstan
 Run開始時に次を個別に記録する。
 
 - `read_repository`: 初期true。固定read-only inspectionだけ。
-- `write_run_store`: 初期true。Candidate外のappend-only storeだけ。
+- `write_run_store`: 初期true。Candidate外のappend-only ledger、transaction、ledger外recovery reportだけ。
 - `read_external_source`: 明示sourceだけtrue。Authorityは別判定。
 - `fetch_remote_refs`: 初期false。CommitまたはPR依頼で明示されたrepository identity、remote、refspec、prune範囲だけtrueにできる。
 - `write_worktree`: 変更依頼かつallowed path/limitがある場合だけtrue。
@@ -347,6 +368,8 @@ Fallbackで独立性、coverage、gate成功を偽装しない。
 - Harness wrapper/reference、generic comprehensive reviewer、required capabilityのpath、capability revision、content hashを固定した。
 - 全artifactが同じrunと正しいtarget generationへ接続され、参照graphが非循環である。
 - Canonical JSON bytes、mutable content attachment、Manifest lifecycle遷移がSchema 2.0の規則へ一致する。
+- Input kindごとのsource locator/null規則とstored content hashが一致する。
+- Ledger破損時はcanonical chainへ追記せず、ledger外recovery reportを返す。
 - Required verificationとgateがcandidate SHAへ結び付く。
 - ImplementerとFinal reviewerのinstanceが分離され、blind scanの受領artifactが制限されている。
 - Critical/Major 0、poprとgeneric comprehensive coverage Complete、unresolved blockerなしを確認した。
