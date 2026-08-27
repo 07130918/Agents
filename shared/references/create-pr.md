@@ -56,7 +56,7 @@
 ### 入力
 
 - Repositoryと作業branch
-- Fetch後に固定したbase refとfull `base_sha`
+- Fetch対象のremote、base ref、fetch前に固定したfull `base_sha`
 - 宣言済みscopeとcommit permission
 - Working tree、index、既存HEADの状態
 - 再利用候補の品質gateとdocumentation artifact
@@ -65,9 +65,9 @@
 
 1. `git branch --show-current`と`git status --short --branch`を確認する。
 2. 現在branchが空、`HEAD`、`main`、`develop`なら停止する。
-3. `git fetch --prune origin`でremote refsを最新化する。
-4. `git symbolic-ref refs/remotes/origin/HEAD`を優先してbaseを決める。失敗時は`develop`、次に`main`を使う。
-5. 比較元のfull `base_sha`を記録し、`origin/<base>`との一致を確認する。`git diff --name-status origin/<base>...HEAD`、`git diff --name-status`、`git diff --cached --name-status`、untracked fileを確認する。
+3. 入力remoteを使ってremote refsを最新化する。Default経路では`origin`を使う。
+4. 入力base refを使う。Default経路でbase refがまだ未指定の場合だけ、入力remoteのdefault branch、`develop`、`main`の順に解決する。
+5. Fetch後の`<remote>/<base>`が入力`base_sha`と異なる場合は`TARGET_MUTATED`を返し、新しいbaseでcontextを固定し直すまで品質gateへ進まない。一致したbaseを比較元としてcommit済み差分、working tree、index、untracked fileを確認する。
 6. `.env`、認証情報、秘密情報らしいfileが含まれる場合はcommitせず、対象を報告する。
 
 ### 2. 品質gateを通す
@@ -95,8 +95,8 @@
 
 ### 5. Candidateを確定する
 
-1. `git diff --name-only origin/<base>...HEAD`、`git diff --stat origin/<base>...HEAD`、`git log --oneline origin/<base>..HEAD`を確認する。
-2. 必要に応じて`git diff origin/<base>...HEAD --no-color`を読み、scope外変更がないことを確認する。
+1. 入力remoteを使い、baseからHEADまでの変更file、差分量、commit一覧を確認する。
+2. 必要に応じて入力remoteのbaseからHEADまでのdiffを読み、scope外変更がないことを確認する。
 3. Working treeとindexがcleanで、`HEAD`が作業branchの先端であることを確認する。
 4. Full `base_sha`とfull `head_sha`を取得し、品質gateとdocumentation artifactがこのcandidateまたは明示されたpre-commit targetへ正しく結び付くことを確認する。
 5. `CANDIDATE_READY`としてbranch、base ref、`base_sha`、`head_sha`、scope、artifact参照、target mutation履歴を返す。
@@ -107,7 +107,7 @@
 
 ### 入力
 
-- Repository、remote、作業branch、PRのbase/head ref
+- Repository、許可されたremoteとそのrepository identity、作業branch、PRのbase/head ref
 - Full `base_sha`とfull `head_sha`
 - Harness経路では同じbase/headに結び付く`READY` statusと根拠artifactへの参照、通常経路では`DEFAULT_SUBMISSION_READY`と提出前条件の結果
 - Push、PR作成またはmetadata更新のpermission
@@ -122,13 +122,13 @@
 ### 手順
 
 1. Harness経路の`READY`または通常経路の`DEFAULT_SUBMISSION_READY`が入力のbase/head SHAと同じtargetに結び付き、pushとPR操作が許可されていることを確認する。
-2. `git fetch --prune origin`後、local `HEAD`、作業branch先端、`origin/<base>`、working tree、indexをread-onlyで照合する。
-3. Local `HEAD`または作業branch先端が`head_sha`と異なる、working treeまたはindexがdirty、`origin/<base>`が`base_sha`と異なる場合はpushしない。
-4. Remote headが存在する場合はexact `head_sha`との一致を確認する。異なるcommitを指す場合はforce pushせず停止する。
-5. Remote headが存在しない場合だけ、sourceをexact `head_sha`に固定して同名branchへpushする。Push後にremote headをread-backし、`head_sha`との一致を確認する。
-6. 既存のopen PRをbase/head refで検索する。存在しなければPRを作成し、存在すればtitle、本文、assignee、labelなどtargetを変えないmetadataだけを更新できる。Closedまたはmerged PRしかない場合は自動で再利用しない。
+2. 入力remoteのrepository identityがpermission対象と一致することを確認し、`git fetch --prune <remote>`後、local `HEAD`、作業branch先端、`<remote>/<base>`、working tree、indexをread-onlyで照合する。
+3. Local `HEAD`または作業branch先端が`head_sha`と異なる、working treeまたはindexがdirty、`<remote>/<base>`が`base_sha`と異なる場合はpushしない。
+4. Remote headを`absent`、`exact`、`ancestor`、`diverged_or_ahead`に分類する。`ancestor`はremote headが入力`head_sha`のancestorである場合だけとし、`diverged_or_ahead`ではforce pushせず停止する。
+5. Remote headが`absent`または`ancestor`の場合だけ、sourceをexact `head_sha`に固定して入力remoteの同名branchへnon-force pushする。`exact`ならpushを省略する。いずれもremote headをread-backし、`head_sha`との一致を確認する。
+6. 入力remoteのrepository identityで既存のopen PRをbase/head refから検索する。存在しなければ同じrepository identityへPRを作成し、存在すればtitle、本文、assignee、labelなどtargetを変えないmetadataだけを更新できる。Closedまたはmerged PRしかない場合は自動で再利用しない。
 7. `.github/pull_request_template.md`があれば構造を維持する。なければ標準templateを使い、最新commitだけでなく全commitの差分からPR titleと本文を作る。
-8. GitHubからPR URL、state、draft、assignee、label、base ref、head ref、base SHA、head SHAをread-backし、入力と一致することを確認する。
+8. 入力remoteのrepository identityを明示してGitHubからPR URL、state、draft、assignee、label、base ref、head ref、base SHA、head SHAをread-backし、入力と一致することを確認する。
 
 ### 不一致時の出力と再開
 
@@ -136,7 +136,7 @@
 
 ### 既存の提出操作との対応
 
-通常経路で使っていたpush、`gh pr create`、`gh pr view`は、このphaseの照合と禁止事項を満たす場合に限って実行する。`git push -u origin <branch>`を使う場合も、直前にbranch先端が入力`head_sha`と一致し、push後のremote headが同じSHAであることを確認する。
+通常経路で使っていたpush、`gh pr create`、`gh pr view`は、このphaseの照合と禁止事項を満たす場合に限って実行する。Branch名をsourceにするpushを使う場合も、入力remoteだけを対象とし、直前にbranch先端が入力`head_sha`と一致し、push後のremote headが同じSHAであることを確認する。
 
 ## 標準PR本文
 
