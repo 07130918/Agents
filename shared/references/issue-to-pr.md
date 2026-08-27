@@ -25,9 +25,9 @@ GitHub issue を起点に、調査・実装計画・実装・品質ゲート・�
 このworkflowには次の2経路があり、Harnessの有無だけでIssue intake、scope、permission、PR提出policyを変えない。
 
 - 通常経路: 従来どおり手順1-8を実行し、手順9で`create-pr`のdefault経路へ委譲する。
-- Harness委譲経路: 手順1-3でintakeを固定した後、手順4-8に相当するreview/fix/verify subflowをportable Harnessまたは任意のpersonal adapterへ委譲する。`READY`なら`publish_exact_candidate`へ進み、blockerならHuman handoffで停止する。
+- Harness委譲経路: 手順1-3でintakeを固定した後、手順4-8に相当するreview/fix/verify subflowをpersonal `review-remediation-harness`へ委譲する。`READY`なら`publish_exact_candidate`へ進み、blockerならHuman handoffで停止する。
 
-Harness委譲はinstalled skill名に依存しない。Repository内のportable contract、Human承認済みの同一snapshot、personal adapterのいずれから呼び出す場合も、次の入力と出力が一致すれば同じinterfaceとして扱う。Harnessを利用できない、または利用しない場合は通常経路を継続できる。
+Harness委譲はwrapper内部のcommand名に依存せず、次の入力と出力が一致するsemantic interfaceとして扱う。Personal Harnessを利用できない、または利用しない場合は通常経路を継続できる。
 
 ### Harness delegation interface
 
@@ -36,7 +36,7 @@ Harness委譲はinstalled skill名に依存しない。Repository内のportable 
 - Issueのsource identifier、取得した本文と全comment、取得時点のrevisionまたはcontent hash
 - acceptance criteria、宣言済みscope、非目標
 - base ref、base SHA、作業branch、委譲時点のheadまたはworking tree状態
-- 許可されたfile変更、commit、push、PR更新、外部read/writeのpermission
+- 許可されたfile変更、commit、scoped remote fetch、push、PR更新、外部read/writeのpermission
 - Project instructionと利用可能なcontractのsource identifierまたはsnapshot
 
 Harnessは次のどちらかだけを返す。
@@ -60,7 +60,7 @@ Harnessは次のどちらかだけを返す。
 - 対象ファイル・変更範囲の見込みを明示する
 - テスト方針 (単体テストの追加有無、対象ケース) を明示する
 - 「やらないこと」を明示する — issue の範囲を超える改善案は後述の派生タスク提案に回し、今回のスコープには含めない
-- File変更、commit、push、PR更新、外部read/writeのうち今回許可された操作を明示する。権限が不明な副作用は許可済みと推測しない
+- File変更、commit、scoped remote fetch、push、PR更新、外部read/writeのうち今回許可された操作を明示する。権限が不明な副作用は許可済みと推測しない
 - この宣言は作業開始前の共有であり、ユーザー確認待ちではない。ブロッカーがなければ同じターンで手順 3 へ進む
 
 ### 3. 作業ブランチを作成する
@@ -82,7 +82,7 @@ Harnessへ委譲する場合は、ここでHarness delegation interfaceの入力
 
 - プロジェクトの `CLAUDE.md` / `AGENTS.md` に記載されたコマンド (例: `make check`、`npm run lint`、`uv run pytest` 等) で lint / format / 型チェック / テストをすべて通す
 - 通常経路でproject固有のコマンドが見つからない場合は、リポジトリの`package.json` scriptsや`Makefile`から変更scopeに妥当なコマンドを特定する
-- Harness委譲経路ではportable contractのfail-closed resolverへ従う。複数候補から変更scopeとの対応を一意に説明できないcommandは推測実行せず、候補と不足根拠をblockerとして返す
+- Harness委譲経路ではpersonal Harness contractのfail-closed resolverへ従う。複数候補から変更scopeとの対応を一意に説明できないcommandは推測実行せず、候補と不足根拠をblockerとして返す
 
 ### 6. 実装とドキュメントを同期する
 

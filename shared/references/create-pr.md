@@ -15,7 +15,7 @@
 
 ## 共通契約
 
-- PR作成依頼は、現在scopeの変更をcommit、pushしてPRを作る権限を含む。merge権限は含まない。
+- PR作成依頼は、現在scopeの変更をcommit、pushしてPRを作る権限に加え、現在repositoryの解決済みremoteだけを対象とする`fetch_remote_refs` permissionを含む。Default経路ではremote default、`develop`、`main`のread-only名前解決、選択したbaseのexact fetch、publish時の設定済みfetch refspec範囲のpruneだけを許可し、別repository、別remote、tagは含めない。Merge権限は含まない。
 - PRは宣言済みscopeだけを含め、無関係な整形、依存更新、別課題を混ぜない。
 - 1 commitを単独revertしたとき、その変更目的だけが戻る単位に分ける。
 - 各commitは単独checkout時にもbuild、型check、関連testが通る状態を保つ。後続commitがなければ動かない変更は同じcommitにまとめる。
@@ -28,7 +28,7 @@
 
 ## 公開phase interface
 
-`create-pr`は次の2 phaseを公開する。これはinstalled skill固有のcommandではなく、portable caller、personal adapter、Humanのいずれも同じ入力、禁止事項、出力を使えるsemantic interfaceである。
+`create-pr`は次の2 phaseを公開する。これはinstalled skill内部のcommand名ではなく、personal HarnessまたはHumanが同じ入力、禁止事項、出力を使えるsemantic interfaceである。
 
 - `prepare_candidate`: context固定、品質gate、documentation同期、stage確認、commit作成を行い、cleanなexact candidate SHAを返す。
 - `publish_exact_candidate`: Harness経路の`READY`または通常経路の`DEFAULT_SUBMISSION_READY`に固定されたexact base/head SHAを照合し、同じSHAのpushとPR作成またはmetadata更新だけを行う。
@@ -37,10 +37,20 @@
 
 ### Phase共通のartifact規則
 
-- 入力と出力にはrepository、branch、base ref、full `base_sha`、full `head_sha`またはworking tree fingerprint、宣言済みscope、permission、適用したcontract revisionを含める。
+- 入力と出力にはrepository、branch、base ref、full `base_sha`、full `head_sha`またはworking tree fingerprint、宣言済みscope、permission、適用したcontract revisionを含める。Fetchを行うphaseは`fetch_remote_refs`と、repository identity、remote名とURL、source/destination refspec、prune範囲、credential scope、timeoutを持つallowlistも含める。
 - 完了済みartifactを再利用できるのは、同じtarget fingerprint、scope、contract revisionに結び付き、required statusを満たす場合だけとする。単なる完了申告や別SHAの結果を理由にstepを省略しない。
 - File、index、commit、base、scope、project ruleを変更したstepは`TARGET_MUTATED`として旧target、新target、無効化対象、再開stepを呼び出し側へ返す。Default経路もこの結果を受け取るcallerとしてcontextを更新してから再開する。
 - Blockerは`BLOCKED`として停止理由、完了済みartifact、再開step、不足inputを返す。Phase内でpermissionや仕様を補完しない。
+
+### Fetch permissionと共通failure
+
+`prepare_candidate`と`publish_exact_candidate`はfetch前に`fetch_remote_refs`とallowlistを検証する。通常のPR依頼では共通契約の範囲だけをpermissionへ固定し、Harness callerはrun manifestのより狭いpermissionをそのまま渡す。Fetchは`git -c maintenance.auto=false fetch --no-tags`相当とし、Git object database、fetch中のlock/temporary metadata、`FETCH_HEAD`、許可済みremote-tracking ref以外を変更しない。
+
+- Permissionがfalse、repository identity、remote、refspec、prune範囲がallowlist外: `HUMAN_DECISION_REQUIRED`。
+- Network、credential、Git capabilityが利用不能: `EVALUATION_DEFERRED`。
+- Timeoutまたはtransient failure: 許可済みrefをread-backし、要求objectと更新が完了済みなら成功として再実行しない。未完了を確認できた同じexecution keyだけ1回retryし、確定不能なら`EVALUATION_DEFERRED`。
+- `prepare_candidate`でfetch後のbaseが固定済み`base_sha`と異なる: `TARGET_MUTATED`。
+- `publish_exact_candidate`でbase/headが固定targetと異なる: `READY_INVALIDATED`。
 
 ## 完了条件
 
@@ -56,7 +66,9 @@
 ### 入力
 
 - Repositoryと作業branch
-- Fetch対象のremote、base ref、fetch前に固定したfull `base_sha`
+- Fetch対象のremoteとrepository identity。Default経路は現在repositoryの`origin`を使う
+- 明示されたbase refとfetch前に固定したfull `base_sha`。Default経路で未指定の場合はContext固定のread-only remote解決で両方を確定する
+- `fetch_remote_refs` permissionと、base解決候補、選択したbaseのsource/destination refspec、credential scope、timeoutを持つallowlist
 - 宣言済みscopeとcommit permission
 - Working tree、index、既存HEADの状態
 - 再利用候補の品質gateとdocumentation artifact
@@ -65,10 +77,11 @@
 
 1. `git branch --show-current`と`git status --short --branch`を確認する。
 2. 現在branchが空、`HEAD`、`main`、`develop`なら停止する。
-3. 入力remoteを使ってremote refsを最新化する。Default経路では`origin`を使う。
-4. 入力base refを使う。Default経路でbase refがまだ未指定の場合だけ、入力remoteのdefault branch、`develop`、`main`の順に解決する。
-5. Fetch後の`<remote>/<base>`が入力`base_sha`と異なる場合は`TARGET_MUTATED`を返し、新しいbaseでcontextを固定し直すまで品質gateへ進まない。一致したbaseを比較元としてcommit済み差分、working tree、index、untracked fileを確認する。
-6. `.env`、認証情報、秘密情報らしいfileが含まれる場合はcommitせず、対象を報告する。
+3. 入力remoteのURLとrepository identityを照合する。Default経路でbase refが未指定なら、permissionで許可された`git ls-remote --symref <remote> HEAD`相当のnetwork readでremote defaultを確認し、解決できなければ`refs/heads/develop`、`refs/heads/main`の順に存在を確認する。選択したbase refとremoteが返したfull SHAをfetch前の`base_sha`として固定する。明示baseでは入力`base_sha`を使い、値がなければ同じremote readでexact refのfull SHAを固定する。
+4. Base ref、`base_sha`、`refs/heads/<base>:refs/remotes/<remote>/<base>`、credential scope、timeoutが`fetch_remote_refs` allowlist内であることを確認する。Default経路のpermissionは手順3の`HEAD`、`develop`、`main`候補と、選択後のexact refspecだけを許可する。
+5. `git -c maintenance.auto=false fetch --no-tags <remote> refs/heads/<base>:refs/remotes/<remote>/<base>`相当で選択したbaseだけを最新化する。
+6. Fetch後の`<remote>/<base>`が固定済み`base_sha`と異なる場合は`TARGET_MUTATED`を返し、新しいbaseでcontextを固定し直すまで品質gateへ進まない。一致したbaseを比較元としてcommit済み差分、working tree、index、untracked fileを確認する。
+7. `.env`、認証情報、秘密情報らしいfileが含まれる場合はcommitせず、対象を報告する。
 
 ### 2. 品質gateを通す
 
@@ -110,6 +123,7 @@
 - Repository、許可されたremoteとそのrepository identity、作業branch、PRのbase/head ref
 - Full `base_sha`とfull `head_sha`
 - Harness経路では同じbase/headに結び付く`READY` statusと根拠artifactへの参照、通常経路では`DEFAULT_SUBMISSION_READY`と提出前条件の結果
+- `fetch_remote_refs` permissionと、remoteの設定済みsource/destination refspec、prune範囲、credential scope、timeoutを持つallowlist
 - Push、PR作成またはmetadata更新のpermission
 
 ### 禁止事項
@@ -121,8 +135,8 @@
 
 ### 手順
 
-1. Harness経路の`READY`または通常経路の`DEFAULT_SUBMISSION_READY`が入力のbase/head SHAと同じtargetに結び付き、pushとPR操作が許可されていることを確認する。
-2. 入力remoteのrepository identityがpermission対象と一致することを確認し、`git fetch --prune <remote>`後、local `HEAD`、作業branch先端、`<remote>/<base>`、working tree、indexをread-onlyで照合する。
+1. Harness経路の`READY`または通常経路の`DEFAULT_SUBMISSION_READY`が入力のbase/head SHAと同じtargetに結び付き、fetch、push、PR操作が許可されていることを確認する。
+2. 入力remoteのrepository identityと設定済みfetch refspecがpermission対象と一致することを確認し、`git -c maintenance.auto=false fetch --no-tags --prune <remote>`後、local `HEAD`、作業branch先端、`<remote>/<base>`、working tree、indexをread-onlyで照合する。Harness callerは`fetch_remote_refs` permissionでremote、設定済みsource/destination refspec、prune範囲を許可していなければ実行しない。
 3. Local `HEAD`または作業branch先端が`head_sha`と異なる、working treeまたはindexがdirty、`<remote>/<base>`が`base_sha`と異なる場合はpushしない。
 4. Remote headを`absent`、`exact`、`ancestor`、`diverged_or_ahead`に分類する。`ancestor`はremote headが入力`head_sha`のancestorである場合だけとし、`diverged_or_ahead`ではforce pushせず停止する。
 5. Remote headが`absent`または`ancestor`の場合だけ、sourceをexact `head_sha`に固定して入力remoteの同名branchへnon-force pushする。`exact`ならpushを省略する。いずれもremote headをread-backし、`head_sha`との一致を確認する。
@@ -132,7 +146,7 @@
 
 ### 不一致時の出力と再開
 
-照合不一致またはpublish中のbase/head driftは`READY_INVALIDATED`として、期待値、観測値、外部操作の有無を返す。追加変更、gate再実行、commit、force pushは行わない。呼び出し側はIssue/project contextへ戻り、新しいbase/headで影響するverification、gate、Final reviewを完了して新しい`READY`を作る。Network timeoutなどで外部結果が不明な場合は同じ操作を推測retryせず、remoteとPRをread-backして確定できなければHuman handoffで停止する。
+照合不一致またはpublish中のbase/head driftは`READY_INVALIDATED`として、期待値、観測値、外部操作の有無を返す。追加変更、gate再実行、commit、force pushは行わない。呼び出し側はIssue/project contextへ戻り、新しいbase/headで影響するverification、gate、Final reviewを完了して新しい`READY`を作る。Fetchのpermission、利用不能、timeoutはPhase共通failureへ従う。PushまたはPR操作のtimeoutで外部結果が不明な場合は同じ操作を推測retryせず、remoteとPRをread-backして確定できなければHuman handoffで停止する。
 
 ### 既存の提出操作との対応
 
