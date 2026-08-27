@@ -225,9 +225,9 @@ Artifact graphは次の非循環layerに固定する。
 1. Root: `input_snapshot`と`target`。Stage artifactを参照しない。
 2. Evidence: command output、log、diff、report、environment snapshotを保持する`evidence`。Rootだけを参照でき、Stage artifactを参照しない。
 3. Stage: `target_check`、`review`、`change_request`、`remediation`、`verification`、`gate`、`blind_review`、`final_review`、`decision`。Root、Evidence、または自分より小さい`monotonic_sequence`のStage artifactだけを参照できる。
-4. Manifest: `run_manifest`。確定済みartifactを列挙するが、他artifactから参照されない。
+4. Manifest: `run_manifest`。確定済みRoot、Evidence、Stageを`artifact_refs`へ列挙し、2 revision目以降は専用の`previous_manifest_ref`で直前Manifestだけを参照する。他artifactからManifestは参照されない。
 
-自己参照と前方参照は禁止する。`evidence`はそれを消費するStage artifactより先に確定する。Initial resultは`review`、blind resultとcandidate project resultは`blind_review`、reconciliationと最終popr resultは`final_review`へ埋め込み、別のresult artifactを相互参照しない。`blind_review`をappend-onlyで確定してhashを検証するまではprevious reviewとremediationをFinal reviewerへ開示せず、`final_review.blind_review_ref`から先行artifactを参照する。埋め込むresultは元producerのrecordとcontent hashを保持する。未reviewのrun artifactをProject profile、acceptance policy、その他のgoverned sourceへ自動昇格させない。
+自己参照と前方参照は禁止する。最初のManifestだけ`previous_manifest_ref: null`とし、以後は直前revisionの共通ref型だけを許可する。Manifestを`artifact_refs`へ含めたり、revisionを飛び越えて参照したりしない。`evidence`はそれを消費するStage artifactより先に確定する。Initial resultは`review`、blind resultとcandidate project resultは`blind_review`、reconciliationと最終popr resultは`final_review`へ埋め込み、別のresult artifactを相互参照しない。`blind_review`をappend-onlyで確定してhashを検証するまではprevious reviewとremediationをFinal reviewerへ開示せず、`final_review.blind_review_ref`から先行artifactを参照する。埋め込むresultは元producerのrecordとcontent hashを保持する。未reviewのrun artifactをProject profile、acceptance policy、その他のgoverned sourceへ自動昇格させない。
 
 正規に存在しない参照は、空objectや架空IDではなく次のstate付きunionで表す。
 
@@ -299,7 +299,7 @@ Initial reviewでは明示されたworking treeを含められる。READY候補�
 | `blind_review` | `blind_result`、`blind_received_artifacts`、`project_results`、`project_coverage_status`、`required_gates`、`independence_check` | poprとproject reviewerのblind scan契約 |
 | `final_review` | `blind_review_ref`、`reconciliation`、`popr_result`、`previous_review_ref`、`remediation_status`、`remediation_refs`、`independence_check` | poprの再review契約 |
 | `decision` | `decision_kind`。Context解決では`resolution_mode`、`contract_status`、`contract_ref`、`considered_sources`、`selected_sources`、`authority_decisions`、`resolved_commands`、`resolved_gates`、`unresolved_inputs`、Human判断では`decision`、`satisfied_conditions`、`blockers`、`human_action`、budget観測では`limit_id`、`limit_event`、`limit_value`、`observed_value`、`counter_snapshot`、`prior_manifest_revision`、`prior_manifest_sha256` | 本文書のcontext解決、停止条件、budget guard |
-| `run_manifest` | `state`、`previous_state`、`transition_id`、`transition_cause_ref`、`revision`、`permissions`、`limits`、`counters`、`input_source`、`issue_ref`、`scope_input_ref`、`contract_status`、`contract_ref`、`context_status`、`resolution_mode`、`project_context_refs`、`context_resolution_ref`、`profile_status`、`profile_ref`、`current_target_generation`、`artifact_refs`、`last_completed_stage` | 本文書のstate/retry/resume契約 |
+| `run_manifest` | `state`、`previous_state`、`transition_id`、`transition_cause_ref`、`revision`、`previous_manifest_ref`、`permissions`、`limits`、`counters`、`input_source`、`issue_ref`、`scope_input_ref`、`contract_status`、`contract_ref`、`context_status`、`resolution_mode`、`project_context_refs`、`context_resolution_ref`、`profile_status`、`profile_ref`、`current_target_generation`、`artifact_refs`、`last_completed_stage` | 本文書のstate/retry/resume契約 |
 
 `change_request.requests`は次の形でreview findingとverification failureを区別する。
 
@@ -676,7 +676,7 @@ Run-wide budget guardは全自動継続stateでstage開始前と完了後に評�
 - Immediate resource limit: deadline到達、観測済みtoken超過、または次のpaid external call予約がbudgetを超える場合は、その時点で停止する。
 - Attempt limit: remediation cycle、same-request attempt、transient retryは、次の試行開始前に`counter >= max`なら追加試行を拒否する。`counter < max`なら先にcounterを増やしてその試行を開始し、verificationまたはre-reviewまで完了させる。試行完了時にcounterがmaxと等しいだけでは停止せず、結果が未解消でさらに試行が必要になった時点で`BUDGET_EXHAUSTED`にする。
 
-Guardが停止を決めたら、Orchestratorは先に`decision_kind: limit_observation`のStage artifactへlimit、`hard_exceeded|next_reservation_rejected|next_attempt_rejected`の`limit_event`、観測値、counter snapshot、直前manifestのrevisionとhashを確定する。次のrun manifest revisionがそのartifactを`transition_cause_ref`として`BUDGET_EXHAUSTED`へ遷移する。Manifest自身または別manifestをartifact refで参照しない。`READY`は通常は自動継続しないが、publish前後のcheckpointでtargetまたはinput不一致を検出した場合だけ失効して`CONTEXT_RESOLVING`へ戻る。
+Guardが停止を決めたら、Orchestratorは先に`decision_kind: limit_observation`のStage artifactへlimit、`hard_exceeded|next_reservation_rejected|next_attempt_rejected`の`limit_event`、観測値、counter snapshot、直前manifestのrevisionとhashを確定する。次のrun manifest revisionがそのartifactを`transition_cause_ref`として`BUDGET_EXHAUSTED`へ遷移する。Manifest自身または別Manifestを`artifact_refs`へ含めず、Manifest間の接続には直前revisionだけを指す`previous_manifest_ref`を使う。`READY`は通常は自動継続しないが、publish前後のcheckpointでtargetまたはinput不一致を検出した場合だけ失効して`CONTEXT_RESOLVING`へ戻る。
 
 ## 13. READY条件と自動loop停止条件
 
@@ -761,7 +761,7 @@ Counterはappend-onlyなrun manifest revisionで更新する。各state遷移も
 
 ### 15.2 Resume手順
 
-1. 最大revisionのvalidなrun manifestを読み、`state`、`previous_state`、`transition_id`、counter、Issue/personal contract/project context snapshot、すべてのartifact refのhashを検証する。
+1. 最大revisionのvalidなrun manifestを読み、`previous_manifest_ref`を直前revisionへ順に辿って欠落、飛越し、cycleがないことを確認し、各Manifestのhash、`state`、`previous_state`、`transition_id`、counter、Issue/personal contract/project context snapshot、すべてのartifact refのhashを検証する。
 2. External authoritative inputをsourceから再取得し、revisionとcontent hashを照合する。変更されていれば新snapshotを作って`CONTEXT_RESOLVING`へ戻す。
 3. Repository identity、current branch、candidate SHA、working treeを再取得する。
 4. Manifestのcurrent target generationと現在状態が一致するか確認する。不一致なら暗黙に上書きせず新しいgenerationのtargetを固定する。
