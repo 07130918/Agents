@@ -26,37 +26,63 @@
 - PR作成時は`07130918`をassigneeに設定し、変更内容に合うlabelを付ける。
 - Bot reviewは指摘の根拠を検証し、妥当な指摘だけを反映する。Copilotへのreview依頼はuserが手動で行う。
 
+## 公開phase interface
+
+`create-pr`は次の2 phaseを公開する。これはinstalled skill固有のcommandではなく、portable caller、personal adapter、Humanのいずれも同じ入力、禁止事項、出力を使えるsemantic interfaceである。
+
+- `prepare_candidate`: context固定、品質gate、documentation同期、stage確認、commit作成を行い、cleanなexact candidate SHAを返す。
+- `publish_exact_candidate`: Harness経路の`READY`または通常経路の`DEFAULT_SUBMISSION_READY`に固定されたexact base/head SHAを照合し、同じSHAのpushとPR作成またはmetadata更新だけを行う。
+
+通常の`create-pr`依頼は後方互換のdefault経路として、`prepare_candidate`と既存の提出前条件を満たす`DEFAULT_SUBMISSION_READY`を固定してから`publish_exact_candidate`を続けて実行する。このstatusはHarnessの`READY`を意味せず、独立Final reviewなどHarness固有の保証を主張しない。Harness callerは2 phaseの間にcandidate SHAを対象とするrequired gateとFinal reviewを実行し、Harnessの`READY`後はpublish phaseだけを呼ぶ。`READY`後にdefault経路を最初から再実行してはならない。
+
+### Phase共通のartifact規則
+
+- 入力と出力にはrepository、branch、base ref、full `base_sha`、full `head_sha`またはworking tree fingerprint、宣言済みscope、permission、適用したcontract revisionを含める。
+- 完了済みartifactを再利用できるのは、同じtarget fingerprint、scope、contract revisionに結び付き、required statusを満たす場合だけとする。単なる完了申告や別SHAの結果を理由にstepを省略しない。
+- File、index、commit、base、scope、project ruleを変更したstepは`TARGET_MUTATED`として旧target、新target、無効化対象、再開stepを呼び出し側へ返す。Default経路もこの結果を受け取るcallerとしてcontextを更新してから再開する。
+- Blockerは`BLOCKED`として停止理由、完了済みartifact、再開step、不足inputを返す。Phase内でpermissionや仕様を補完しない。
+
 ## 完了条件
 
 - Project指定のlint、format、型check、testが成功している。
 - 実行できない必須checkは理由と代替確認がPR本文に記録されている。
 - `sync-docs-code`が`PASS`または`UPDATED`で、`BLOCKED`ではない。
 - Commit済みの`<base>...HEAD`と未commit差分の両方を確認し、PR対象に未commit変更が残っていない。
-- PR URL、assignee、label、base、headを確認できる。
+- `prepare_candidate`完了時は、branch、base ref、full `base_sha`、full `head_sha`、cleanなworking tree、品質・documentation artifactの対象とcandidateへの適用関係を確認できる。
+- Default経路または`publish_exact_candidate`完了時は、PR URL、assignee、label、base、headとremoteのexact head SHAを確認できる。
 
-## 手順
+## `prepare_candidate`
+
+### 入力
+
+- Repositoryと作業branch
+- Fetch対象のremote、base ref、fetch前に固定したfull `base_sha`
+- 宣言済みscopeとcommit permission
+- Working tree、index、既存HEADの状態
+- 再利用候補の品質gateとdocumentation artifact
 
 ### 1. Contextを固定する
 
 1. `git branch --show-current`と`git status --short --branch`を確認する。
 2. 現在branchが空、`HEAD`、`main`、`develop`なら停止する。
-3. `git fetch --prune origin`でremote refsを最新化する。
-4. `git symbolic-ref refs/remotes/origin/HEAD`を優先してbaseを決める。失敗時は`develop`、次に`main`を使う。
-5. 比較元を`origin/<base>`に固定し、`git diff --name-status origin/<base>...HEAD`、`git diff --name-status`、`git diff --cached --name-status`、untracked fileを確認する。
+3. 入力remoteを使ってremote refsを最新化する。Default経路では`origin`を使う。
+4. 入力base refを使う。Default経路でbase refがまだ未指定の場合だけ、入力remoteのdefault branch、`develop`、`main`の順に解決する。
+5. Fetch後の`<remote>/<base>`が入力`base_sha`と異なる場合は`TARGET_MUTATED`を返し、新しいbaseでcontextを固定し直すまで品質gateへ進まない。一致したbaseを比較元としてcommit済み差分、working tree、index、untracked fileを確認する。
 6. `.env`、認証情報、秘密情報らしいfileが含まれる場合はcommitせず、対象を報告する。
 
 ### 2. 品質gateを通す
 
 1. ProjectのAGENTS.md、CLAUDE.md、package script、Makefile、CIから必須commandを特定する。
-2. 変更に該当するlint、format、型check、unit testを実行する。
+2. 同じtargetの有効なartifactがない変更について、該当するlint、format、型check、unit testを実行する。
 3. Bug修正またはUI変更は、再現手順を実環境で再実行する。
 4. 必須checkが失敗した状態ではcommitとPR作成へ進まない。
 
 ### 3. Documentationを同期する
 
-1. `sync-docs-code`を同じbase、HEAD、working treeへ実行する。
+1. 同じtargetの有効なartifactがなければ、`sync-docs-code`を同じbase、HEAD、working treeへ実行する。
 2. `PASS`または`UPDATED`と関連検証の成功を確認する。
-3. `BLOCKED`ならPRを作成しない。
+3. `UPDATED`がtargetを変更した場合は`TARGET_MUTATED`を返し、影響する品質gateとdocumentation同期を新targetで再実行する。
+4. `BLOCKED`ならPRを作成しない。
 
 ### 4. Commitを作成する
 
@@ -67,18 +93,50 @@
 5. `git status --short`を確認し、PR対象の変更が残っていれば次のcommitへ進む。
 6. 全commit作成後、必要な品質gateを再実行する。
 
-### 5. PR差分を確定する
+### 5. Candidateを確定する
 
-1. `git diff --name-only origin/<base>...HEAD`、`git diff --stat origin/<base>...HEAD`、`git log --oneline origin/<base>..HEAD`を確認する。
-2. 必要に応じて`git diff origin/<base>...HEAD --no-color`を読み、scope外変更がないことを確認する。
-3. `.github/pull_request_template.md`があれば構造を維持する。なければ標準templateを使う。
-4. 最新commitだけでなく、全commitの差分からPR titleと本文を作る。
+1. 入力remoteを使い、baseからHEADまでの変更file、差分量、commit一覧を確認する。
+2. 必要に応じて入力remoteのbaseからHEADまでのdiffを読み、scope外変更がないことを確認する。
+3. Working treeとindexがcleanで、`HEAD`が作業branchの先端であることを確認する。
+4. Full `base_sha`とfull `head_sha`を取得し、品質gateとdocumentation artifactがこのcandidateまたは明示されたpre-commit targetへ正しく結び付くことを確認する。
+5. `CANDIDATE_READY`としてbranch、base ref、`base_sha`、`head_sha`、scope、artifact参照、target mutation履歴を返す。
 
-### 6. PushしてPRを作成する
+`prepare_candidate`はpushまたはPR作成を行わない。Harness経路では、この出力後にrequired gateとFinal reviewをexact candidate SHAへ実行する。
 
-1. `git push -u origin <branch>`で現在branchをpushする。
-2. `gh pr create`でbase、head、title、本文、assignee、labelを指定する。
-3. `gh pr view`でURL、state、draft、assignee、label、base、headを確認する。
+## `publish_exact_candidate`
+
+### 入力
+
+- Repository、許可されたremoteとそのrepository identity、作業branch、PRのbase/head ref
+- Full `base_sha`とfull `head_sha`
+- Harness経路では同じbase/headに結び付く`READY` statusと根拠artifactへの参照、通常経路では`DEFAULT_SUBMISSION_READY`と提出前条件の結果
+- Push、PR作成またはmetadata更新のpermission
+
+### 禁止事項
+
+- File編集、format、code生成、targetを変更し得る品質gateまたはdocumentation同期
+- Stage、commit、amend、rebase、merge
+- 入力と異なるcommitのpush
+- 不一致をphase内で修正してpublishを続けること
+
+### 手順
+
+1. Harness経路の`READY`または通常経路の`DEFAULT_SUBMISSION_READY`が入力のbase/head SHAと同じtargetに結び付き、pushとPR操作が許可されていることを確認する。
+2. 入力remoteのrepository identityがpermission対象と一致することを確認し、`git fetch --prune <remote>`後、local `HEAD`、作業branch先端、`<remote>/<base>`、working tree、indexをread-onlyで照合する。
+3. Local `HEAD`または作業branch先端が`head_sha`と異なる、working treeまたはindexがdirty、`<remote>/<base>`が`base_sha`と異なる場合はpushしない。
+4. Remote headを`absent`、`exact`、`ancestor`、`diverged_or_ahead`に分類する。`ancestor`はremote headが入力`head_sha`のancestorである場合だけとし、`diverged_or_ahead`ではforce pushせず停止する。
+5. Remote headが`absent`または`ancestor`の場合だけ、sourceをexact `head_sha`に固定して入力remoteの同名branchへnon-force pushする。`exact`ならpushを省略する。いずれもremote headをread-backし、`head_sha`との一致を確認する。
+6. 入力remoteのrepository identityで既存のopen PRをbase/head refから検索する。存在しなければ同じrepository identityへPRを作成し、存在すればtitle、本文、assignee、labelなどtargetを変えないmetadataだけを更新できる。Closedまたはmerged PRしかない場合は自動で再利用しない。
+7. `.github/pull_request_template.md`があれば構造を維持する。なければ標準templateを使い、最新commitだけでなく全commitの差分からPR titleと本文を作る。
+8. 入力remoteのrepository identityを明示してGitHubからPR URL、state、draft、assignee、label、base ref、head ref、base SHA、head SHAをread-backし、入力と一致することを確認する。
+
+### 不一致時の出力と再開
+
+照合不一致またはpublish中のbase/head driftは`READY_INVALIDATED`として、期待値、観測値、外部操作の有無を返す。追加変更、gate再実行、commit、force pushは行わない。呼び出し側はIssue/project contextへ戻り、新しいbase/headで影響するverification、gate、Final reviewを完了して新しい`READY`を作る。Network timeoutなどで外部結果が不明な場合は同じ操作を推測retryせず、remoteとPRをread-backして確定できなければHuman handoffで停止する。
+
+### 既存の提出操作との対応
+
+通常経路で使っていたpush、`gh pr create`、`gh pr view`は、このphaseの照合と禁止事項を満たす場合に限って実行する。Branch名をsourceにするpushを使う場合も、入力remoteだけを対象とし、直前にbranch先端が入力`head_sha`と一致し、push後のremote headが同じSHAであることを確認する。
 
 ## 標準PR本文
 
@@ -111,7 +169,7 @@
 
 - GitHub認証が無ければ、完了済みcommitと実行すべき`gh auth login`を示して停止する。
 - 品質gateまたはdocumentation同期が失敗したらPRを作らず、失敗commandと再開条件を報告する。
-- Push後にPR作成だけ失敗した場合は、branch URLと再実行commandを示す。
+- Push後にPR作成だけ失敗した場合はremote headをread-backし、branch URL、観測したSHA、PR作成から再開できる条件を示す。
 - `--no-verify`は使わない。
 
 ## 関連skill
