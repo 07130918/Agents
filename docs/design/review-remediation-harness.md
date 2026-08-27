@@ -66,6 +66,8 @@ Aはpersonal環境がないagentやteam memberへ共有できず、Bは未最適
 
 `REVIEW_HARNESS.md`は短いCLI非依存entrypoint兼manifestとし、`contract_version`、同梱contractのpath、upstream source、content hashを列挙する。実行に必要なCLI非依存contractは`.review-harness/contracts/`へupstreamのexact snapshotとして同梱する。最低限、Harness、neutral review、docs gate、Issue intake、candidate prepare/publishのsemantic contractへ到達でき、securityなど条件付きgateはtrigger時に利用可能でなければ停止する。対象repositoryでsnapshotを独自編集せず、project固有差分は任意の`.review-harness/profile.yaml`へ分離する。将来のupgradeは通常のcode reviewを通し、現在runはtargetのbase SHAにあるbundleを使う。
 
+Bundleを使う前に、Orchestratorはmanifestのcontract pathがrepository-relative、`.review-harness/contracts/`配下、重複なし、symlinkなしであることを確認し、必須memberの存在とUTF-8 bytesのSHA-256を再計算して宣言hashと照合する。欠落、未宣言member、重複path、path traversal、symlink、version不一致、hash不一致が1つでもあればcontractを読み進めず`EVALUATION_DEFERRED`にする。自動validatorの実装はpilot後まで延期できるが、手動運用でもこのintegrity check自体は省略しない。結果は`context_resolution.bundle_integrity`へmemberごとのpath、expected hash、observed hash、statusとして記録する。
+
 `AGENTS.md`、`CLAUDE.md`などruntimeが自動読込するproject instruction fileがある場合は、短い索引として`REVIEW_HARNESS.md`を指せる。自動読込がないagentまたはhuman-only運用では「`REVIEW_HARNESS.md`を読み、Issueまたは明示scopeをこの契約で進める」という明示promptをportable invocationとする。入口fileがbase側にないrepositoryでは、Humanが内容と適用runを承認したexact run-local snapshotを渡せる。Personal skillはこの起動を短縮してよいが、portable contractのversion、READY条件、権限を変更してはならない。
 
 ### 3.4 外部知見の採否
@@ -213,9 +215,9 @@ Codexでfresh subagentを使える場合は、過去会話をforkせず、必要
 }
 ```
 
-Issue本文と受入条件、全comment、仕様として参照する関連Issueまたはdecision、portable contract、base側instructionとproject rule、任意Project profile、run-local input、acceptance policy、Humanが提供した追加仕様は`input_snapshot`として保存し、run manifestと依存stageの`input_refs`へ加える。Issue bundleはtitle、body、updated revisionに加え、各commentのstable ID、revision、author、bodyと、関連sourceのidentifier/revisionを保持する。どのcommentまたは関連sourceを要件として採用したかも記録し、未採用の情報を暗黙に仕様へ昇格させない。
+Issue本文と受入条件、全comment、仕様として参照する関連Issueまたはdecision、portable contract、base側instructionとproject rule、任意Project profile、run-local input、acceptance policy、Humanが提供した追加仕様は`input_snapshot`として保存し、run manifestと依存stageの`input_refs`へ加える。Issue bundleはtitle、body、updated revisionに加え、各commentのstable ID、revision、author、author role、bodyと、関連sourceのidentifier/revisionを保持する。External recordごとに`authority_status: governing|evidence_only|pending`と`authority_basis`を記録し、どのcommentまたは関連sourceを要件として採用したかを`context_resolution.authority_decisions`へ残す。未採用の情報を暗黙に仕様へ昇格させない。
 
-`input_snapshot.payload`は`input_kind`、`trust_source`、`source_identifier`、`source_sha`、`source_revision`、`content_sha256`、秘密情報を除いたexact `content`を持つ。`trust_source`は`base`、`human_approved_run_local`、`external_authoritative`のいずれかとし、Git管理されたportable contract、profile、policyでは`source_sha`とGit blob hashも記録する。同じtarget SHAでもinput hashが変われば、変更されたinputに依存するreview、verification、gate、Final reviewを無効化し、`CONTEXT_RESOLVING`から再開する。参照先artifactのhash不一致は破損として`EVALUATION_DEFERRED`にする。
+`input_snapshot.payload`は`input_kind`、`trust_source`、`source_identifier`、`source_sha`、`source_revision`、`content_sha256`、秘密情報を除いたexact `content`を持つ。`trust_source`は`base`、`human_approved_run_local`、`external_authoritative`、`external_observed`のいずれかとする。`external_authoritative`は`authority_status: governing`のrecordだけ、`external_observed`は`evidence_only|pending`のrecordだけに使う。Git管理されたportable contract、profile、policyでは`source_sha`とGit blob hashも記録する。同じtarget SHAでもinput hashが変われば、変更されたinputに依存するreview、verification、gate、Final reviewを無効化し、`CONTEXT_RESOLVING`から再開する。参照先artifactのhash不一致は破損として`EVALUATION_DEFERRED`にする。
 
 Artifact graphは次の非循環layerに固定する。
 
@@ -229,7 +231,7 @@ Artifact graphは次の非循環layerに固定する。
 正規に存在しない参照は、空objectや架空IDではなく次のstate付きunionで表す。
 
 - `run_manifest.input_source`は`issue`または`explicit_scope`とし、前者は`issue_ref`、後者は`scope_input_ref`を必須にして他方を`null`にする。
-- `run_manifest.context_status`は`resolved|pending|conflicted`、`resolution_mode`は`profile|portable_baseline|human_approved_run_local|mixed`とする。`resolved`だけ`project_context_refs`と、入力解決根拠を記録した`context_resolution_ref`を必須にする。
+- `run_manifest.context_status`は`resolved|pending|conflicted`、`resolution_mode`は`profile|portable_baseline|human_approved_run_local|mixed`とする。`resolved`にはbundle integrityの成功、external authorityの確定、すべての必須field解決を要求し、`project_context_refs`と入力解決根拠を記録した`context_resolution_ref`を必須にする。
 - `run_manifest.profile_status`は`resolved|absent|invalid`とする。`resolved`だけ`profile_ref`を必須にし、`absent`は`profile_ref: null`と`profile_absence_reason`を持つ。`invalid`はcontextを`resolved`にできず、profile error refを必須にする。Profileの`absent`自体はblockerではない。
 - `final_review.remediation_status`は`required|not_required`とする。Candidateのtarget generation lineageでoriginを問わず`change_request`が一度でも`FIXING`を発生させた場合は`required`とし、`remediation_refs`へ対応する全artifactを含める。Lineage全体にchange requestがない場合だけ`not_required`と空の`remediation_refs`を許可する。
 - `acceptance_policy_ref`は`native_status`の場合だけ`null`にできる。その他のnullable refは各payload contractが状態と不在理由を明示しない限り禁止する。
@@ -286,7 +288,7 @@ Initial reviewでは明示されたworking treeを含められる。READY候補�
 | Artifact | 必須payload | 参照する正本 |
 | --- | --- | --- |
 | `target_check` | `expected_target_ref`、`status`、`observed_components`、`changed_components` | poprのtarget fingerprint契約 |
-| `input_snapshot` | `input_kind`、`trust_source`、`source_identifier`、`source_sha`、`source_revision`、`content_sha256`、`content` | Issue、portable contract、base側instruction/profile/policy、Human承認run-local input、外部正本 |
+| `input_snapshot` | `input_kind`、`trust_source`、`source_identifier`、`source_sha`、`source_revision`、`content_sha256`、`content`。External recordは`authority_status`と`authority_basis`も必須 | Issue、portable contract、base側instruction/profile/policy、Human承認run-local input、外部source |
 | `evidence` | `evidence_kind`、`media_type`、`content_sha256`、`content_path`またはinline `content`、`redactions` | 実行command、tool、gateのraw output |
 | `review` | `popr_result`、`project_results`、`blocking_finding_ids`、`required_gates`、`coverage_status` | poprとproject reviewer契約 |
 | `change_request` | `requests`。各要素は`review_finding`、`verification_failure`、`gate_failure`のtagged union | Review result、verification/gate artifact、Issue scope |
@@ -295,7 +297,7 @@ Initial reviewでは明示されたworking treeを含められる。READY候補�
 | `gate` | `gate_name`、`contract_version`、`execution_status`、`decision_status`、`decision_policy`、`acceptance_policy_ref`、`evidence_ref`、`mutated_target` | 各gateの正本 |
 | `blind_review` | `blind_result`、`blind_received_artifacts`、`project_results`、`project_coverage_status`、`required_gates`、`independence_check` | poprとproject reviewerのblind scan契約 |
 | `final_review` | `blind_review_ref`、`reconciliation`、`popr_result`、`previous_review_ref`、`remediation_status`、`remediation_refs`、`independence_check` | poprの再review契約 |
-| `decision` | `decision_kind`。Context解決では`resolution_mode`、`considered_sources`、`selected_sources`、`resolved_commands`、`resolved_gates`、`unresolved_inputs`、Human判断では`decision`、`satisfied_conditions`、`blockers`、`human_action`、budget観測では`limit_id`、`limit_event`、`limit_value`、`observed_value`、`counter_snapshot`、`prior_manifest_revision`、`prior_manifest_sha256` | 本文書のcontext解決、停止条件、budget guard |
+| `decision` | `decision_kind`。Context解決では`resolution_mode`、`bundle_integrity`、`considered_sources`、`selected_sources`、`authority_decisions`、`resolved_commands`、`resolved_gates`、`unresolved_inputs`、Human判断では`decision`、`satisfied_conditions`、`blockers`、`human_action`、budget観測では`limit_id`、`limit_event`、`limit_value`、`observed_value`、`counter_snapshot`、`prior_manifest_revision`、`prior_manifest_sha256` | 本文書のcontext解決、停止条件、budget guard |
 | `run_manifest` | `state`、`previous_state`、`transition_id`、`transition_cause_ref`、`revision`、`permissions`、`limits`、`counters`、`input_source`、`issue_ref`、`scope_input_ref`、`context_status`、`resolution_mode`、`project_context_refs`、`context_resolution_ref`、`profile_status`、`profile_ref`、`current_target_generation`、`artifact_refs`、`last_completed_stage` | 本文書のstate/retry/resume契約 |
 
 `change_request.requests`は次の形でreview findingとverification failureを区別する。
@@ -435,13 +437,15 @@ Orchestratorは次の順にbase側の候補を収集し、採用、除外、矛�
 
 Context解決前のrepository inspectionは`read_repository`だけを使い、filesystem readとportable contractが固定したread-only Git inspectionに限定する。許可するGit操作はrepository identity、ref、tree、blob、diff、status、file mode、content hashを取得する`git rev-parse`、`git symbolic-ref`、`git remote get-url`、`git status`、`git diff`、`git show`、`git ls-tree`、`git cat-file`、`git hash-object`相当である。実装はoptional lockとindex refreshを無効化し、external diff、textconv、`hash-object -w`などwriteまたは外部processを起動し得るoptionを使わない。Read-onlyを証明できなければbootstrap allowlistへ入れない。Repository content、index、ref、remote、外部systemを変更するcommand、project script、package manager、task runnerはbootstrapで実行しない。Runtimeが同じ情報を専用read toolで取得できる場合はshell commandを必要としない。
 
-Bootstrap orchestrationはこれに加えて、artifact保存用の`write_run_store`と、Issue/PRなど明示されたauthoritative inputだけを読む`read_external_authoritative`を使える。External readはrun開始時に`allowed_source_identifiers`、API/host、credential scope、network availability、paid-call costを固定し、allowlist外の探索、書込API、credential拡張へ使わない。Permissionがfalse、source revisionを再取得できない、credentialがない、または次のcallがpaid budgetを超える場合はAPIを呼ばず、Humanがexact content、source identifier、revision、content hashを承認した`human_approved_run_local` snapshotを要求する。Snapshotも用意できなければ`EVALUATION_DEFERRED`にする。
+Bootstrap orchestrationはこれに加えて、artifact保存用の`write_run_store`と、Issue/PRなど明示されたexternal sourceだけを読む`read_external_source`を使える。このpermissionは取得を許すだけで、取得recordを規範入力にするauthorityを与えない。External readはrun開始時に`allowed_source_identifiers`、API/host、credential scope、network availability、paid-call costを固定し、allowlist外の探索、書込API、credential拡張へ使わない。Permissionがfalse、source revisionを再取得できない、credentialがない、または次のcallがpaid budgetを超える場合はAPIを呼ばず、Humanがexact content、source identifier、revision、content hashを承認した`human_approved_run_local` snapshotを要求する。Snapshotも用意できなければ`EVALUATION_DEFERRED`にする。
+
+Userがrun開始時に明示したIssue identifierは、そのIssueの固定されたtitle、body、acceptance criteriaだけを現在runのgoal/scopeを定める`governing` inputとして承認したものと扱う。Comment、PR本文、PR review、linked Issue、外部decisionは既定で`evidence_only`とする。これらを`governing`へ昇格できるのは、base側policyがrecord typeとsource identifier、authorまたはrole条件を定義し当該recordが一致する場合、またはHumanがstable record ID、revision、適用scopeをrun-local decisionで承認した場合だけである。資格を判定できないが現在の仕様判断に必要なrecordは`pending`として`HUMAN_DECISION_REQUIRED`へ送り、不要なrecordは`evidence_only`のままproject context、permission、gate、READY条件を変更させない。
 
 1. Base SHAにある`REVIEW_HARNESS.md`。存在しない場合は、Humanがrunとcontent hashを明示承認したportable contract snapshot。
 2. Base SHAにある任意の`.review-harness/profile.yaml`。
 3. 対象pathへ適用されるbase側のrepository instruction file。`AGENTS.md`、`CLAUDE.md`、`CONTRIBUTING.md`と、それらが正本として明示的に参照する文書だけを含む。
 4. Base側のCI定義、Makefile、task runner設定、package manifestに存在するexact command。Trusted instructionまたはCI jobから変更scopeとの対応を一意に説明できるcommandだけを採用する。
-5. Issue、PR、外部decisionなどrevisionを固定できるauthoritative input。
+5. Issue、PR、外部decisionなどrevisionを固定できるexternal input。上記authority判定で`governing`になったrecordだけをproject contextへ採用する。
 6. Humanが現在runへの適用scopeとexact contentを明示承認したrun-local input。
 
 Portable baselineは、少なくともrepository identity、Issueまたは明示scope、source of truth、required review lens、verification command、required gate、risk trigger、scope/cost limitを解決する。Project profileがなくても、次をすべて満たせば`context_status: resolved`かつ`resolution_mode: portable_baseline`または`mixed`にできる。
@@ -453,7 +457,7 @@ Portable baselineは、少なくともrepository identity、Issueまたは明示
 - Docs、security、opsを含むrequired gateと採用基準を決定できる
 - 自動修正に必要なpermission、allowed path、diff/cycle/cost limitを固定できる
 
-Standard resolverは名前の類似だけでcommandを選ばず、README全体から任意の手順を正本へ昇格させない。複数の`test`候補、scopeとの対応不明、interactive command、dependency install、service起動、deploy、migration、外部writeを含む可能性がありeffectを分類できない場合は実行しない。解決できなかったfieldを`unresolved_inputs`へ列挙し、仕様なら`HUMAN_DECISION_REQUIRED`、verification/gate capabilityなら`EVALUATION_DEFERRED`または`VERIFICATION_BLOCKED`へ遷移する。Profileがないこと自体をblocker理由にしない。
+Standard resolverは名前の類似だけでcommandを選ばず、README全体から任意の手順を正本へ昇格させない。複数の`test`候補、scopeとの対応不明、interactive command、dependency install、service起動、deploy、migration、外部writeを含む可能性がありeffectを分類できない場合は実行しない。解決できなかったfieldを`unresolved_inputs`へ列挙し、仕様なら`HUMAN_DECISION_REQUIRED`、verification/gate capabilityまたはrequired serviceなら`EVALUATION_DEFERRED`へ遷移する。`VERIFICATION_BLOCKED`はcontextとInitial reviewが完了し、`VERIFYING`または`TARGET_VERIFYING`で実際のverificationを開始した後にだけ使う。Profileがないこと自体をblocker理由にしない。
 
 専用Project reviewerがない場合は、portable distributionに含まれるreview contract snapshotをInitial/Final reviewerが使う。信頼済みrepository ruleが専用lensまたはreviewerを要求する場合だけそのcapabilityを必須とし、利用不能ならcoverage不足として停止する。同様に、同名のpersonal skillがなくてもportable distributionに含まれるsemantic gate contractを実行できる。Contractまたは必要capability自体がなければ成功と推測しない。
 
@@ -524,7 +528,7 @@ Verification commandは次を宣言する。
 
 現在runのportable contract、Project profile、governing source of truth、verification command、gate条件、acceptance policyは、既定でtargetの`base.sha`に存在するcontentだけを信頼する。Orchestratorは`git show <base_sha>:<path>`相当で取得し、`trust_source: base`、`source_sha`、Git blob hash、content hashを`input_snapshot`へ記録する。Candidate targetが追加または変更したcontract、profile、source of truth、policy、commandはreview対象には含めるが、同じrunの権限、必須gate、READY条件を弱める入力として使わない。Merge後の次runでbase側の入力になってから有効化する。
 
-例外はHumanが内容と適用runを明示承認したrun-local snapshotだけとする。この場合はsnapshotへHuman producerとapproval scopeを記録し、対応するdecision artifactからそのsnapshotを参照する。Implementerまたはcandidate contentだけを根拠に承認済みと扱わない。Baseにprofileがなくてもportable baselineでcontextを完全に解決できればREADYへ進める。Candidateがprofileを追加した場合、同じrunではprofileなしのbase情報またはHuman承認run-local inputを使い、candidate profileでpolicyを弱めない。Issueなど外部正本は`external_authoritative`としてsource revisionとcontent hashを固定する。
+例外はHumanが内容と適用runを明示承認したrun-local snapshotだけとする。この場合はsnapshotへHuman producerとapproval scopeを記録し、対応するdecision artifactからそのsnapshotを参照する。Implementerまたはcandidate contentだけを根拠に承認済みと扱わない。Baseにprofileがなくてもportable baselineでcontextを完全に解決できればREADYへ進める。Candidateがprofileを追加した場合、同じrunではprofileなしのbase情報またはHuman承認run-local inputを使い、candidate profileでpolicyを弱めない。External recordは9.1のauthority判定に従い、governingだけを`external_authoritative`、その他を`external_observed`としてsource revisionとcontent hashを固定する。
 
 Effectと必要permissionの対応は次で固定する。
 
@@ -550,7 +554,7 @@ Run開始時に次のpermissionを個別に記録する。
 | --- | --- | --- | --- |
 | `read_repository` | true | reviewer、tester、gate、orchestrator | Orchestratorはcontext解決前に9.1の固定bootstrap inspectionを実行可。対象scope外への探索は正本確認に必要な最小範囲だけ |
 | `write_run_store` | true | orchestrator | Candidate worktree外のappend-only storeだけ。各roleのresultをruntime metadata付きで保存する |
-| `read_external_authoritative` | 明示されたIssue/PR/source identifierだけtrue | orchestrator | `allowed_source_identifiers`、host、credential scope、network、paid-call costを固定。Read-only APIだけを許可 |
+| `read_external_source` | 明示されたIssue/PR/source identifierだけtrue | orchestrator | `allowed_source_identifiers`、host、credential scope、network、paid-call costを固定。Read-only APIだけを許可し、規範authorityは与えない |
 | `write_worktree` | 変更依頼時だけtrue | implementer、更新を許可されたdocs gate | Reviewerは常にfalse |
 | `run_local_commands` | 解決済みproject contextの宣言分だけtrue | tester、CI、gate | effectが不明なら停止 |
 | `commit` | false | create-pr contractに従う提出担当 | 明示的なcommitまたはPR依頼でtrueにできる |
@@ -679,7 +683,8 @@ Guardが停止を決めたら、Orchestratorは先に`decision_kind: limit_obser
 次をすべて観測できる場合だけ`READY`にする。
 
 - candidate targetがexact base SHA、exact head SHA、scope、project rulesを含み、working treeがclean
-- Portable contractと`context_resolution` artifactが固定され、`context_status: resolved`
+- Portable contractの全memberがmanifestと一致し、`context_resolution.bundle_integrity: verified`かつ`context_status: resolved`
+- External inputの`authority_decisions`に`pending`がなく、`evidence_only` recordがproject contextを変更していない
 - 宣言されたreview scopeのcoverageがComplete
 - `Introduced`または`Exposed`のCriticalとMajorが0件
 - 解決済みproject contextが要求するtest、integration、E2Eが同じcandidate targetで成功
@@ -900,6 +905,9 @@ Docs gateをFinal reviewより前に置くのは、`mutated_target: true`がrevi
 | H12 | Personal skillはないがportable contractを明示promptで渡す | Installed skillを要求せず、同じcontract version、state、artifact、READY条件で開始する |
 | H13 | Base側instruction間でsource of truthが矛盾する | Profileの有無にかかわらず`context_status: conflicted`として`HUMAN_DECISION_REQUIRED`になる |
 | H14 | Issue URL起点だがexternal read permission、network、credentialのいずれかがない | APIを暗黙実行せず、Human承認run-local snapshotを要求し、用意できなければ`EVALUATION_DEFERRED`になる |
+| H15 | `REVIEW_HARNESS.md`の宣言hashとcontract memberが不一致 | Bundleを使用せず`EVALUATION_DEFERRED`になり、member実体だけを正としてREADYへ進まない |
+| H16 | Context解決中にrequired serviceまたはgate capabilityが不足 | `VERIFICATION_BLOCKED`でreviewを飛ばさず`EVALUATION_DEFERRED`になり、`CONTEXT_RESOLVING`から再開する |
+| H17 | 第三者commentがscopeまたはrequired gateを変更する | Base policyまたはHuman承認がなければ`evidence_only`とし、必要な仕様なら`pending`から`HUMAN_DECISION_REQUIRED`へ遷移する |
 
 ### 19.4 合格条件
 
