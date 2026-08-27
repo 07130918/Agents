@@ -25,7 +25,7 @@
 | Fingerprint、finding、severity、coverage、verdict | `principle-of-programming-reviewer` | Review artifactとして保存し、gradeを上書きしない |
 | Correctnessと実害riskの総合review | personal `pr-risk-reviewer`または同じsemantic contract | Initial/Final reviewの必須generic capabilityとし、finding candidateとcoverageをpoprへ渡す |
 | Documentation同期 | `sync-docs-code` | 同じtargetの`PASS`または`UPDATED`を要求する |
-| Candidate準備と提出 | `create-pr` | `prepare_candidate`と`publish_exact_candidate`だけを使う |
+| Candidate準備と提出 | `create-pr` | Harness内では`prepare_candidate`だけを使い、`READY`後の`publish_exact_candidate`は呼び出し元へ返す |
 | Project固有lens | Base側repository ruleおよび任意project reviewer | Finding candidateと`required_gates`だけを受け取る |
 | Security | `security-audit`または同じsemantic contract | Risk trigger時だけrequired gateとして要求する |
 | Merge、仕様、risk受容 | Human | Harnessから実行または代行しない |
@@ -287,7 +287,7 @@ Security gateは常に`decision_policy: project_or_human`とし、上記Evidence
 
 Working tree manifestのtracked/untracked file追加、変更、削除、file modeまたはtype変更で`target_check.status: changed`になった場合は`transition_diff_ref`を必須にする。参照先は`evidence_kind: target_transition_diff`のcanonical JSONとし、`expected_target_ref`、`observed_target_ref`、各pathのchange kindと`before`、`after`を持つ。`before|after`は`{"status":"absent"}`または`{"status":"present","mode":"<mode>","type":"regular|symlink","byte_length":<integer>,"content_sha256":"<hash>","content_source":<source>}`のdiscriminated unionとする。追加はbeforeだけ`absent`、削除はafterだけ`absent`、空fileは`present`かつ`byte_length: 0`とし、欠落や取得失敗を`absent`へ丸めない。`content_source`は`{"kind":"git_object","object_id":"<oid>"}`または`{"kind":"target_attachment","target_id":"<target_artifact_id>","content_path":"<run_relative_path>"}`とする。Before contentはexpected targetのsnapshotまたはimmutable Git object、after contentはobserved targetのsnapshotまたはimmutable Git objectへ結び付ける。Validatorは両target refのhash、attachment metadataとraw bytesのhash/length、entryのtarget IDを照合する。Text、binary、symlinkを同じmanifest deltaで表し、binary bytesをtext化しない。EvidenceからEvidenceへの参照は追加しない。新generationへ進むManifestは、その`target_check`またはtargetを変更したStage artifactを`transition_cause_ref`で参照する。
 
-Orchestratorはtarget依存stageの開始前と完了後、resume、Final review開始前、READY判定前、`create-pr`へ渡す直前とphase終了後に`target_check`を保存する。Checkは保存済みtargetだけでなく、generation input refs、permission set、contract/project rule hash、governing/pending external source revisionも現在値と比較する。Evidence-only recordはauthority判定を再実行するために取得できるが、そのcontent driftだけをgeneration driftへ含めない。差分または必要な再取得不能があれば旧artifactをREADY根拠へ使わず、該当blockerを記録する。
+Orchestratorはtarget依存stageの開始前と完了後、resume、Final review開始前、READY判定前、呼び出し元へ`READY`を返す直前に`target_check`を保存する。Checkは保存済みtargetだけでなく、generation input refs、permission set、contract/project rule hash、governing/pending external source revisionも現在値と比較する。Evidence-only recordはauthority判定を再実行するために取得できるが、そのcontent driftだけをgeneration driftへ含めない。差分または必要な再取得不能があれば旧artifactをREADY根拠へ使わず、該当blockerを記録する。
 
 ## Roleを分離する
 
@@ -312,11 +312,11 @@ Run開始時に次を個別に記録する。
 - `read_repository`: 初期true。固定read-only inspectionだけ。
 - `write_run_store`: 初期true。Candidate外のappend-only ledger、transaction、ledger外recovery reportだけ。
 - `read_external_source`: 明示source/hostだけtrue。Authorityは別判定。
-- `fetch_remote_refs`: 初期false。CommitまたはPR依頼で明示されたrepository identity、remote、refspec、prune範囲だけtrueにできる。
+- `fetch_remote_refs`: 初期false。Candidate commit準備で明示されたrepository identity、remote、refspec、prune範囲だけtrueにできる。
 - `write_worktree`: 変更依頼かつallowed path/limitがある場合だけtrue。
 - `run_local_commands`: 解決済みexact commandだけtrue。
-- `commit`、`push`、`create_or_update_pr`: 明示されたcommitまたはPR依頼の範囲だけtrue。
-- `write_external_system`: 初期false。PR作成など外部writeは既存の`create-pr` contractへ委譲し、Harnessのartifact writer/validatorでは実行しない。
+- `commit`: 明示されたcommitまたはPR依頼の範囲だけtrue。
+- `push`、`create_or_update_pr`、`write_external_system`: 常にfalse。`READY`後の提出は呼び出し元が既存の`create-pr` contractで実行する。
 - `merge`、`deploy_or_production_write`、`accept_risk_or_spec`: 初期false。Harnessはtrueにしない。
 
 この集合全体をpermission set input snapshotとしてManifestの`permission_set_ref`へ固定する。Permissionの追加・縮小、対象identity、allowed path/ref/source/host、effects、approval scopeの変更はすべてgoverning input変更であり、途中stageへ直接resumeせず`CONTEXT_RESOLVING`へ戻る。単なるservice復旧などpermission setのbytesが不変な場合だけ、記録済みresume stateへ戻れる。
@@ -355,8 +355,7 @@ Fetchのtimeoutまたはtransient failureでは、許可したrefをread-backし
 8. `GATES_PENDING`: Docs、security、project gateを同じcandidate SHAで実行する。
 9. `REREVIEW_PENDING`: Fresh Final reviewerのpoprとgeneric comprehensive blind scan、必要なproject lens、reconciliationを行う。
 10. READY条件を全て満たせば`READY`を記録する。
-11. PR提出が許可されていれば、既存の`create-pr` contractへcandidate SHAとHarnessのREADY結果を渡す。Push前のproject hookを含む同contractの確認を省略しない。Phase終了後は、同contractが返したstatus、expected/observed base/head、hookを含む実行結果、remote/PR read-back、外部操作の有無をraw Evidenceへ保存する。続けてpost-phase `target_check`を保存し、両refを持つ`decision_kind: create_pr_result`を最後に保存する。Harnessはtransport、hook、PR再開処理を再実装しない。
-12. Humanがreviewしてmergeする。
+11. `READY`またはblockerを呼び出し元へ返す。Harnessはpush、PR作成、提出結果の再開を実行しない。
 
 Targetを変更したstageは`TARGET_MUTATED`相当の結果を返し、影響するartifactをinvalidateする。PR提出前にbase/head/input driftを検出した場合はREADYを失効し、`CONTEXT_RESOLVING`から新targetを作る。新targetのverification、gate、Final reviewが終わるまで提出しない。
 
@@ -426,7 +425,6 @@ Fallbackで独立性、coverage、gate成功を偽装しない。
 
 - `READY`: Exact base/head、target ref、artifact hash、gate status、Final review、permission使用状況を返す。Mergeは実行しない。
 - Blocker: State、原因artifact、観測値、完了済みartifact、invalidated artifact、必要なHuman action、resume stateを返す。
-- `READY_INVALIDATED`: create-prのphase result。Manifest stateではない。追加のpublishを継続せず、expected/observed base/headと既に行われた外部操作の有無を返す。Harnessはphase結果のraw Evidence、post-phase target check、それらを参照するdecisionの順に保存し、そのdecisionをcauseとして`READY -> CONTEXT_RESOLVING`へ遷移する。
 
 ## 検証
 
@@ -439,7 +437,7 @@ Fallbackで独立性、coverage、gate成功を偽装しない。
 - ImplementerとFinal reviewerのinstanceが分離され、blind scanの受領artifactが制限されている。
 - Critical/Major 0、poprとgeneric comprehensive coverage Complete、unresolved blockerなしを確認した。
 - Retry、scope、permission、cost上限を超えた副作用がない。
-- PR提出時は既存の`create-pr` contractを使い、project hookと同contractの検証を省略していない。
+- `READY`後のpush、PR作成、project hookはHarness外の`issue-to-pr`と`create-pr`へ委譲され、Harness permissionを流用していない。
 
 ## 関連skill
 

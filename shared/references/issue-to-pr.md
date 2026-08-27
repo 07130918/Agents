@@ -109,7 +109,7 @@ Harnessへ委譲する場合は、ここでHarness delegation interfaceの入力
 
 - 通常経路では、candidate準備から提出まで`create-pr`のdefault経路へ委譲する
 - Harnessから`READY`を受け取った経路では、同じbase/head SHAを入力として`publish_exact_candidate`だけを実行する。品質gateやdocumentation同期を含むmonolithicなdefault経路を再実行しない
-- `publish_exact_candidate`が不一致を返した場合はPRを作成または更新せず、受領済み`READY`を失効させてHarness delegation interfaceのintakeから再開する
+- `publish_exact_candidate`が`READY_INVALIDATED`を返した場合は追加のpush/PR操作を止め、expected/observed targetと既に行われた外部操作の有無を報告する。受領済み`READY`のrunへ追記せず、Harness delegation interfaceのintakeから新しいrunを開始する
 - どちらの経路も`create-pr`の共通契約と完了条件を満たし、issueをcloseするkeywordをPR本文へ含める
 
 ### 10. 完了報告する

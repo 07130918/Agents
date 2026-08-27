@@ -242,7 +242,7 @@ Working tree manifestのtracked/untracked file追加、変更、削除、file mo
 
 ### 8.6 Targetとinputのconsistency checkpoint
 
-Orchestratorはtarget依存stageの開始前と完了後、READY判定前、base refをfetchした後、pushまたはPR作成後にtarget fingerprintの全componentを再取得する。
+Orchestratorはtarget依存stageの開始前と完了後、READY判定前、base refをfetchした後、呼び出し元へ`READY`を返す直前にtarget fingerprintの全componentを再取得する。
 
 - run store用repository identity inputとtarget source
 - exact base refとbase SHA
@@ -258,9 +258,7 @@ Orchestratorはtarget依存stageの開始前と完了後、READY判定前、base
 
 各generationは実行判定を決めるcurrent input集合をManifestに固定し、通常のtarget依存stageは同じ集合をenvelopeの`input_refs`へ持つ。Input変更を観測するtransition `target_check`はexpected旧集合をenvelopeに、observed新集合をpayloadに分け、次generationのManifestが確定するまで新集合を通常stageへ流用しない。Exactな対象input、順序、validator規則はshared referenceを正本とする。
 
-PR提出前は`git fetch`後のbase ref SHAとcandidate targetのbase SHAも比較する。Base、head、scope、capability revision、project rules、input refsのいずれかが変わればREADYを破棄し、`CONTEXT_RESOLVING`からreview、verification、gate、Final reviewをやり直す。PR作成後はGitHub metadataのexact base/head SHAを再確認し、不一致ならPRが存在していてもREADYと表現しない。
-
-`create-pr`終了後は、同contractが返したphase status、expected/observed base/head、hookを含む実行結果、remote/PR read-back、外部操作の有無をraw Evidenceへ保存する。続けてpost-phase target checkを保存し、両refを持つ汎用decision artifactを最後に保存する。これは結果の観測だけをHarnessが所有する境界であり、Git transport、hook実行、PR作成や再開は`create-pr`から複製しない。`READY_INVALIDATED`では追加の提出操作を止め、既に外部操作が行われた可能性を消さずに`CONTEXT_RESOLVING`へ戻る。
+Candidate準備で`git fetch`した後はbase ref SHAとcandidate targetのbase SHAも比較する。Base、head、scope、capability revision、project rules、input refsのいずれかが変わればREADYを作らず、`CONTEXT_RESOLVING`からreview、verification、gate、Final reviewをやり直す。Harnessは`READY`またはblockerを返した時点で終了し、push、PR作成、project hook、提出結果の再開を所有しない。
 
 External authoritative inputは保存済みsnapshotのhash検証だけで済ませない。`CONTEXT_RESOLVING`、resume、`REREVIEW_PENDING`開始前、READY判定直前にsource APIからIssue governing projection、全comment、採用候補の関連Issue/decisionを再取得してrecord単位にauthorityを再判定する。Issue本体または`governing|pending` recordのrevision/content hash変更と、新規recordが`governing|pending`になった場合だけ新しいgeneration inputを作り、依存artifactをinvalidateして`CONTEXT_RESOLVING`へ戻る。Evidence-only recordの追加、編集、削除は観測Evidenceを更新できるがgenerationを変えない。Stable revisionまたは再取得手段を提供しないgoverning/pending sourceは自動READYの入力にせず、Humanがexact contentを承認した`human_approved_run_local` snapshotへ凍結する。
 
@@ -319,14 +317,14 @@ Run開始時に次のpermissionを個別に記録する。
 | `write_worktree` | 変更依頼時だけtrue | implementer、更新を許可されたtester/docs/gate | Reviewerは常にfalse。Resolved commandのallowed pathとfile/diff limitを超えない |
 | `run_local_commands` | 解決済みproject contextの宣言分だけtrue | tester、CI、gate | 累積effectsが不明なら停止 |
 | `commit` | false | create-pr contractに従う提出担当 | 明示的なcommitまたはPR依頼でtrueにできる |
-| `push` | false | create-pr contractに従う提出担当 | PR依頼でtrueにできる |
-| `create_or_update_pr` | false | create-pr contractに従う提出担当 | PR依頼でtrueにできる |
-| `write_external_system` | false | なし | PR作成など外部writeは既存の`create-pr` contractへ委譲し、Harnessのartifact writer/validatorでは実行しない |
+| `push` | false | なし | Harnessではtrueにしない。`READY`後に呼び出し元の`create-pr` contractが所有する |
+| `create_or_update_pr` | false | なし | Harnessではtrueにしない。`READY`後に呼び出し元の`create-pr` contractが所有する |
+| `write_external_system` | false | なし | Harnessではtrueにしない。PR作成など外部writeは呼び出し元へ返す |
 | `merge` | false | Human | Harnessはtrueへ変更できない |
 | `deploy_or_production_write` | false | Humanが別workflowで実行 | Harnessのscope外 |
 | `accept_risk_or_spec` | false | Human | agentへ委譲しない |
 
-IssueからPRまで明示された依頼は、現在scopeのcommit、許可済みrepository/remote/refに限定したfetch、push、PR作成だけを許可する。HarnessはPR transportやhookの独自実装を持たず、READY後の提出を既存の`create-pr` contractへ委譲する。`create-pr`が要求するproject hookと提出前検証を省略せず、別remote、tag、merge、deploy、Issueへのcomment、別SaaS operation、risk受容へ権限を広げない。Verificationまたはgate commandがexternal writeを必要とする場合はv1 Harnessで実行せず`EVALUATION_DEFERRED`にする。
+IssueからPRまで明示された依頼でも、Harnessが使うのは現在scopeのcommitとcandidate準備に必要な限定fetchまでとする。Push、PR作成、project hookは`READY`後に呼び出し元が既存の`create-pr` contractで実行し、Harness permissionを流用しない。Verificationまたはgate commandがexternal writeを必要とする場合はv1 Harnessで実行せず`EVALUATION_DEFERRED`にする。
 
 `fetch_remote_refs`は`read_repository`または`run_local_commands`へ含めない。実行前にrepository identity、remote名とURL、base source/destination refspec、`prune`の有無、credential scope、timeoutをrun manifestへ固定する。Fetchは`--no-tags`かつ自動maintenance無効で実行し、許可するlocal writeはGit object database、fetch中のlock/temporary metadata、`FETCH_HEAD`、宣言したremote-tracking ref namespaceだけとする。Working tree、index、local branch、tag、Git configへの変更は禁止する。Permissionがfalseまたはallowlist外なら`HUMAN_DECISION_REQUIRED`、network、credential、Git capabilityが利用不能なら`EVALUATION_DEFERRED`にする。
 
@@ -339,7 +337,7 @@ Fetchがtimeoutまたはtransient failureになった場合は、許可済みref
 - Implementer用の専用worktreeは、並行runがある、run開始時から共有checkoutにscope外のdirty fileがある、別branchの変更混入riskがある場合に必須とする。単独runかつscope外変更のない専用checkoutでは必須にしない。
 - Reviewerはread-onlyでcommit objectとdiffを取得できれば専用worktreeを必要としない。toolがworking directoryを必要とする場合はdetached read-only checkoutを使う。
 - Commitの分割、message、stage確認は`create-pr` contractの`prepare_candidate` phaseへ従う。Harnessはcandidate commitをFinal review前に必要とするが、commit policyを独自定義しない。
-- PushとPR更新はFinal review前に必須ではない。Local candidate commitへsame-target gateとFinal reviewを行い、READY後に`publish_exact_candidate`でpush/PR作成を実行できる。
+- PushとPR更新はHarnessの実行scope外である。Local candidate commitへsame-target gateとFinal reviewを行い、READY後に呼び出し元の`issue-to-pr`が`publish_exact_candidate`を実行する。
 - Final review後にcommit内容が変わった場合はREADYを破棄し、新しいtargetからverification、required gate、Final reviewをやり直す。
 
 ## 12. 状態機械
@@ -401,7 +399,6 @@ stateDiagram-v2
     REREVIEW_PENDING --> EVALUATION_DEFERRED: coverage不足
     REREVIEW_PENDING --> HUMAN_DECISION_REQUIRED: materialな仕様矛盾
     REREVIEW_PENDING --> BUDGET_EXHAUSTED: run-wide budget guard
-    READY --> CONTEXT_RESOLVING: PR提出前のtargetまたはinput不一致
     EVALUATION_DEFERRED --> CONTEXT_RESOLVING: 不足input、capability、targetを補完
     HUMAN_DECISION_REQUIRED --> CONTEXT_RESOLVING: decisionを新input/permission snapshotへ固定
     SCOPE_CHANGE_REQUIRED --> CONTEXT_RESOLVING: Humanが同一Issueへのscope変更を承認
@@ -414,7 +411,7 @@ stateDiagram-v2
 
 | State | 自動継続 | Resume可能 | 意味 |
 | --- | --- | --- | --- |
-| `READY` | しない | PR提出前にtarget/input driftを検出した場合 | merge可能性の必要条件を満たした。mergeやPR公開を実行する意味ではなく、drift時は失効する |
+| `READY` | しない | なし(提出時のdriftは新run) | merge可能性の必要条件を満たした。mergeやPR公開を実行する意味ではない |
 | `EVALUATION_DEFERRED` | しない | 不足artifact解消後 | target、coverage、gate、project context、capabilityの不足 |
 | `VERIFICATION_BLOCKED` | しない | 環境回復後 | test/E2Eを実行できない |
 | `SCOPE_CHANGE_REQUIRED` | しない | Humanのscope判断後 | 元Issueへ混ぜられない変更が必要 |
@@ -437,7 +434,7 @@ Run-wide budget guardは全自動継続stateでstage開始前と完了後に評�
 - Immediate resource limit: deadline到達、観測済みtoken超過、または次のpaid external call予約がbudgetを超える場合は、その時点で停止する。
 - Attempt limit: remediation cycle、same-request attempt、transient retryは、次の試行開始前に`counter >= max`なら追加試行を拒否する。`counter < max`なら先にcounterを増やしてその試行を開始し、対応するverificationまたはre-reviewまで完了させる。試行完了時にcounterがmaxと等しいだけでは停止せず、結果が未解消でさらに試行が必要になった時点で`BUDGET_EXHAUSTED`にする。
 
-Guardが停止を決めたら、Orchestratorは先に`decision_kind: limit_observation`のStage artifactへlimit、`hard_exceeded|next_reservation_rejected|next_attempt_rejected`の`limit_event`、観測値、counter snapshot、直前manifestのrevisionとhashを確定する。次のrun manifest revisionがそのartifactを`transition_cause_ref`として`BUDGET_EXHAUSTED`へ遷移する。Manifest自身または別Manifestを`artifact_refs`へ含めず、Manifest間の接続には直前revisionだけを指す`previous_manifest_ref`を使う。`READY`は自動継続せず、PR提出前のcheckpointでtargetまたはinput不一致を検出した場合は失効して`CONTEXT_RESOLVING`へ戻る。
+Guardが停止を決めたら、Orchestratorは先に`decision_kind: limit_observation`のStage artifactへlimit、`hard_exceeded|next_reservation_rejected|next_attempt_rejected`の`limit_event`、観測値、counter snapshot、直前manifestのrevisionとhashを確定する。次のrun manifest revisionがそのartifactを`transition_cause_ref`として`BUDGET_EXHAUSTED`へ遷移する。Manifest自身または別Manifestを`artifact_refs`へ含めず、Manifest間の接続には直前revisionだけを指す`previous_manifest_ref`を使う。`READY`はterminalであり、提出時にtargetまたはinput不一致が判明した場合は呼び出し元が新しいHarness runを開始する。
 
 ## 13. READY条件と自動loop停止条件
 
@@ -601,11 +598,11 @@ Fallbackは独立性やcoverageを偽装するために使わない。同じagen
 
 `issue-to-pr`と`create-pr`の正本は次のdelegation境界を公開する。Personal Harnessはinstalled skill名だけでなく、入力、禁止されたtarget mutation、出力artifactが一致することを要件にする。
 
-- `issue-to-pr`: Issue intake、scope、branch、permissionを固定した後、review/fix/verify subflowをHarnessへ委譲する。Harnessから`READY`またはblockerを受け取り、PR提出またはHuman handoffへ戻る。
+- `issue-to-pr`: Issue intake、scope、branch、permissionを固定した後、review/fix/verify subflowをHarnessへ委譲する。Harnessからterminalな`READY`またはblockerを受け取り、PR提出またはHuman handoffへ戻る。READY後の提出ownerは`issue-to-pr`であり、同じHarness runへ提出結果を戻さない。
 - `prepare_candidate`: `create-pr`の品質確認、documentation同期、stage確認、commit分割とmessage規約をstate machineへ個別stepとして公開し、steps 5-7全体を担う。入力には`fetch_remote_refs`とallowlistを含める。Default経路でbase未指定なら、許可済みremoteのdefault、`develop`、`main`をread-only解決してbase refとfetch前SHAを固定してからexact base refをfetchする。既に確定したsame-target artifactを二重実行せず、各stepの結果またはtarget mutationをHarnessへ返し、最後にcleanなexact candidate SHAを返す。
 - `publish_exact_candidate`: READY済みcandidate SHAとbase SHA、repository/remote identity、`fetch_remote_refs`とallowlistを入力にし、base fetch後の一致確認、exact head SHAのnon-force push、PR作成または更新だけを行う。File編集、targetを変更し得る品質gate、stage、追加commitは禁止する。Projectのpre-push hookを既定どおり実行し、`--no-verify`を使わない。
 
-両referenceはIssue #38でこのphase interfaceを実行可能なsemantic contractとして定義した。Harnessを使わない通常経路は後方互換のdefault経路を継続する。Harness経路もGit transport、hook、PR再開処理を再実装せず、`READY`後に同じ`create-pr` contractへexact candidateを渡す。提出直前のtarget driftではcreate-prがphase result `READY_INVALIDATED`を返し、Harnessは`READY -> CONTEXT_RESOLVING`へ戻して新しいtargetのverification、gate、Final reviewを完了する。
+両referenceはIssue #38でこのphase interfaceを実行可能なsemantic contractとして定義した。Harnessを使わない通常経路は後方互換のdefault経路を継続する。HarnessはGit transport、hook、PR再開処理を扱わずterminalな`READY`で終了し、`issue-to-pr`が同じ`create-pr` contractへexact candidateを渡す。提出時のtarget driftではcreate-prが`READY_INVALIDATED`を返し、呼び出し元は旧runへ追記せず、新しいHarness runをintakeから開始する。
 
 Issue #39ではproject-local distributionを不採用とし、`shared/references/review-remediation-harness.md`とpersonal Codex skillを導入した。Issue #40ではHarness専用project profileも不採用とし、Project repositoryへHarness entrypoint、contract snapshot、専用metadataを追加しない単一経路へ改訂する。Personal contractと既存workflowが衝突する場合は、その場で都合のよい規則を選ばず`EVALUATION_DEFERRED`とする。
 
@@ -620,8 +617,9 @@ Issue #39ではproject-local distributionを不採用とし、`shared/references
 7. 同phaseが`create-pr` contractに従うlocal candidate commitを作り、exact SHAを返す。Commit権限がなければHumanへhandoffする。
 8. Candidate SHAに対してrequired verification、docs/security gateを実行する。
 9. 修正を担当していないFinal reviewerと必要なProject reviewerが、candidate SHAでrequired project lensを含むblind scanを実行する。新しいrequired gateがあれば同じtargetで完了し、project resultとcoverageを固定してからreconciliationを行う。
-10. READY後、Orchestratorがcandidate targetのbase/headとinputの不変性を再確認し、既存の`create-pr` contractへ提出を委譲する。Project hookと同contractの提出前検証を省略しない。Phase結果をraw Evidence、post-phase target check、両refを持つdecisionの順に保存し、targetが変わった場合はREADYを失効して`CONTEXT_RESOLVING`へ戻る。
-11. Humanがreviewし、mergeする。
+10. HarnessがterminalなREADYまたはblockerを`issue-to-pr`へ返す。
+11. READYなら`issue-to-pr`が既存の`create-pr` contractで提出する。Project hookと同contractの提出前検証を省略しない。`READY_INVALIDATED`なら旧runを変更せず、新しいHarness runをintakeから開始する。
+12. Humanがreviewし、mergeする。
 
 Docs gateをFinal reviewより前に置くのは、`mutated_target: true`がreview対象を変えるためである。Targetを変更し得るgateをFinal review後に実行すると独立reviewが古いSHAへ結び付く。Candidate SHAでdocs gateが許容statusかつ`mutated_target: false`になった後にFinal reviewを行うことで、codeとdocumentationの最終snapshotを同じ対象として確認する。
 
@@ -659,9 +657,9 @@ Docs gateをFinal reviewより前に置くのは、`mutated_target: true`がrevi
 | H5 | Subagentを利用できないCLI | 独立性を偽装せずhandoffまたは`INDEPENDENCE_BLOCKED`になる |
 | H6 | Candidateがrepository instructionまたはacceptance policyを弱める | 同じrunではbase snapshotを使い、candidate版を実行policyへ昇格させない |
 | H7 | Artifactが自己参照または未確定artifactを前方参照する | Artifact graph違反として`EVALUATION_DEFERRED`になりREADYへ進まない |
-| H8 | PR提出前にtargetが変わる | READYを失効して`CONTEXT_RESOLVING`へ戻り、旧Final reviewを流用しない |
+| H8 | READY返却直前にtargetが変わる | READYを作らず`CONTEXT_RESOLVING`へ戻り、旧Final reviewを流用しない |
 | H9 | Final review前にIssue本文またはgoverning/pending commentが更新される | 該当inputのrevision差分を検出し、旧input依存artifactをinvalidateして`CONTEXT_RESOLVING`へ戻る。Evidence-only commentの変更ではgenerationを変えない |
-| H10 | Projectのpre-push hookが失敗する | `create-pr`の失敗として停止し、`--no-verify`で迂回しない |
+| H10 | Detached HEADでstaged-only reviewを行う | Branch名を補作せず`index@<full_head_sha>`でtargetを固定する |
 | H11 | Security gate中にdeadlineまたはpaid-call budgetへ達する | Run-wide budget guardが優先し、limitとcounter revisionを記録して`BUDGET_EXHAUSTED`になる |
 | H12 | Project-local Harness fileが存在しない | Personal Harnessを正本として通常起動し、projectへcontractを生成しない |
 | H13 | Base側instruction間でsource of truthが矛盾する | `context_status: conflicted`として`HUMAN_DECISION_REQUIRED`になる |
