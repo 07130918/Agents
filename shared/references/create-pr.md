@@ -123,6 +123,7 @@
 - Repository、許可されたremoteとそのrepository identity、作業branch、PRのbase/head ref
 - Full `base_sha`とfull `head_sha`
 - Harness経路では同じbase/headに結び付く`READY` statusと根拠artifactへの参照、通常経路では`DEFAULT_SUBMISSION_READY`と提出前条件の結果
+- Harness経路では、外部write前に確定したexact `title`、`body`、`draft`、重複なしソート済み`assignees`と`labels`を持つ`desired_submission`、そのRFC 8785 JCS bytesのSHA-256、対象repository/remote/base/headと当該metadata生成policyに限定した`write_external_system` permission
 - `fetch_remote_refs` permissionと、remoteの設定済みsource/destination refspec、prune範囲、credential scope、timeoutを持つallowlist
 - Push、PR作成またはmetadata更新のpermission
 
@@ -135,14 +136,14 @@
 
 ### 手順
 
-1. Harness経路の`READY`または通常経路の`DEFAULT_SUBMISSION_READY`が入力のbase/head SHAと同じtargetに結び付き、fetch、push、PR操作が許可されていることを確認する。
+1. Harness経路の`READY`または通常経路の`DEFAULT_SUBMISSION_READY`が入力のbase/head SHAと同じtargetに結び付き、fetch、push、PR操作が許可されていることを確認する。Harness経路では`desired_submission`のJCS hash、metadata policyへの適合、operation限定の`write_external_system` permissionも照合する。
 2. 入力remoteのrepository identityと設定済みfetch refspecがpermission対象と一致することを確認し、`git -c maintenance.auto=false fetch --no-tags --prune <remote>`後、local `HEAD`、作業branch先端、`<remote>/<base>`、working tree、indexをread-onlyで照合する。Harness callerは`fetch_remote_refs` permissionでremote、設定済みsource/destination refspec、prune範囲を許可していなければ実行しない。
 3. Local `HEAD`または作業branch先端が`head_sha`と異なる、working treeまたはindexがdirty、`<remote>/<base>`が`base_sha`と異なる場合はpushしない。
 4. Remote headを`absent`、`exact`、`ancestor`、`diverged_or_ahead`に分類する。`ancestor`はremote headが入力`head_sha`のancestorである場合だけとし、`diverged_or_ahead`ではforce pushせず停止する。
 5. Remote headが`absent`または`ancestor`の場合だけ、sourceをexact `head_sha`に固定して入力remoteの同名branchへnon-force pushする。`exact`ならpushを省略する。いずれもremote headをread-backし、`head_sha`との一致を確認する。
-6. 入力remoteのrepository identityで既存のopen PRをbase/head refから検索する。存在しなければ同じrepository identityへPRを作成し、存在すればtitle、本文、assignee、labelなどtargetを変えないmetadataだけを更新できる。Closedまたはmerged PRしかない場合は自動で再利用しない。
-7. `.github/pull_request_template.md`があれば構造を維持する。なければ標準templateを使い、最新commitだけでなく全commitの差分からPR titleと本文を作る。
-8. 入力remoteのrepository identityを明示してGitHubからPR URL、state、draft、assignee、label、base ref、head ref、base SHA、head SHAをread-backし、入力と一致することを確認する。
+6. 入力remoteのrepository identityで既存のopen PRをbase/head refから検索する。存在しなければ同じrepository identityへPRを作成し、存在すればtitle、本文、assignee、labelなどtargetを変えないmetadataだけを更新できる。Harness経路はintentの`desired_submission`をそのまま使い、phase内で再生成しない。Closedまたはmerged PRしかない場合は自動で再利用しない。
+7. 通常経路では`.github/pull_request_template.md`があれば構造を維持する。なければ標準templateを使い、最新commitだけでなく全commitの差分からPR titleと本文を作る。Harness経路ではこの条件を満たすdesired submissionがintentで確定済みであることを検証し、phase内で作り直さない。
+8. 入力remoteのrepository identityを明示してGitHubからPR URL、state、title、body、draft、assignee、label、base ref、head ref、base SHA、head SHAをread-backし、入力と一致することを確認する。Harness経路ではremote headがexactであり、一意なopen PRのすべてのdesired fieldが一致する場合だけ完了とする。
 
 ### 不一致時の出力と再開
 

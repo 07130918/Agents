@@ -316,6 +316,8 @@ Orchestratorはtarget依存stageの開始前と完了後、READY判定前、base
 
 `target_check`は保存済みtargetと再取得値を比較する。全componentを観測でき差分がなければ`unchanged`、全componentを観測でき差分があれば`changed`、1件でも再取得または比較できなければ`unresolved`とする。`unresolved`ではcomponent、理由、観測証拠refを記録し、`changed`へ丸めず旧artifactを再利用しない。Target依存stageが`local_write|repository_write`を実行した場合も必ずcheckする。Tracked content、対象に含むuntracked content、file modeが変わった場合は、そのstageの成功結果をREADYへ使わない。Pre-commit `VERIFYING`で許可された変更なら新しいworking-tree targetを固定して`VERIFYING`を再実行し、`PRECOMMIT_DOCS_PENDING`を飛ばさない。Candidate commit後の`TARGET_VERIFYING`または`GATES_PENDING`で許可された変更なら`CANDIDATE_COMMIT_PENDING`へ戻して新commitを固定する。想定外の変更または`unresolved`は`EVALUATION_DEFERRED`にする。
 
+各generationは実行判定を決めるcurrent input集合をManifestに固定し、通常のtarget依存stageは同じ集合をenvelopeの`input_refs`へ持つ。Input変更を観測するtransition `target_check`はexpected旧集合をenvelopeに、observed新集合をpayloadに分け、次generationのManifestが確定するまで新集合を通常stageへ流用しない。Exactな対象input、順序、validator規則はshared referenceを正本とする。
+
 PR提出前は`git fetch`後のbase ref SHAとcandidate targetのbase SHAも比較する。Base、head、scope、capability revision、project rules、input refsのいずれかが変わればREADYを破棄し、`CONTEXT_RESOLVING`からreview、verification、gate、Final reviewをやり直す。PR作成後はGitHub metadataのexact base/head SHAを再確認し、不一致ならPRが存在していてもREADYと表現しない。
 
 External authoritative inputは保存済みsnapshotのhash検証だけで済ませない。`CONTEXT_RESOLVING`、resume、`REREVIEW_PENDING`開始前、READY判定直前にsource APIからrevisionとcontentを再取得する。Issueでは本文、全comment、採用した関連Issueまたはdecisionを再取得し、追加、編集、削除を検出する。Revisionまたはaggregate content hashが変われば新しい`input_snapshot`を作り、依存artifactをinvalidateして`CONTEXT_RESOLVING`へ戻る。Stable revisionまたは再取得手段を提供しないsourceは自動READYの入力にせず、Humanがexact contentを承認した`human_approved_run_local` snapshotへ凍結する。
@@ -377,12 +379,12 @@ Run開始時に次のpermissionを個別に記録する。
 | `commit` | false | create-pr contractに従う提出担当 | 明示的なcommitまたはPR依頼でtrueにできる |
 | `push` | false | create-pr contractに従う提出担当 | PR依頼でtrueにできる |
 | `create_or_update_pr` | false | create-pr contractに従う提出担当 | PR依頼でtrueにできる |
-| `write_external_system` | false | Humanが個別承認したactor | Issue comment、SaaS更新、paid APIを含む |
+| `write_external_system` | false | create-pr phase担当 | 明示的なPR依頼のrepository/remote/base/headとcreate-pr metadata policyに限定。その他のexternal writeは許可しない |
 | `merge` | false | Human | Harnessはtrueへ変更できない |
 | `deploy_or_production_write` | false | Humanが別workflowで実行 | Harnessのscope外 |
 | `accept_risk_or_spec` | false | Human | agentへ委譲しない |
 
-IssueからPRまで明示された依頼は、現在scopeのcommit、現在repositoryの解決済みremote/refspecに限定した`fetch_remote_refs`、push、PR作成を許可するが、別remote、tag、merge、deploy、Issueへのcomment、risk受容は許可しない。
+IssueからPRまで明示された依頼は、現在scopeのcommit、現在repositoryの解決済みremote/refspecに限定した`fetch_remote_refs`、push、PR作成と、create-pr metadata policyの範囲だけの`write_external_system`を許可する。Exact requestとmetadata policyはHuman input/permission snapshotへ固定し、desired submissionは外部write前のintentでexactに固定する。別remote、tag、merge、deploy、Issueへのcomment、別SaaS operation、risk受容は許可しない。Verificationまたはgate commandがexternal writeを必要とする場合はv1 Harnessで実行せず`EVALUATION_DEFERRED`にする。
 
 `fetch_remote_refs`は`read_repository`または`run_local_commands`へ含めない。実行前にnormalized repository identity、remote名とURL、source/destination refspec、`prune`の有無、credential scope、timeoutをrun manifestへ固定する。Fetchは`--no-tags`かつ自動maintenance無効で実行する。許可するlocal writeはGit object database、fetch中のlock/temporary metadata、`FETCH_HEAD`、宣言したremote-tracking ref namespaceだけとし、working tree、index、local branch、tag、Git configへの変更は禁止する。`prepare_candidate`ではbase refの最新化、`publish_exact_candidate`ではcreate-pr contractが要求するfetch/pruneだけに使う。Permissionがfalseまたはallowlist外なら`HUMAN_DECISION_REQUIRED`、network、credential、Git capabilityが利用不能なら`EVALUATION_DEFERRED`にする。
 
@@ -421,7 +423,7 @@ stateDiagram-v2
     VERIFYING --> PRECOMMIT_DOCS_PENDING: pre-commit verification成功
     VERIFYING --> VERIFYING: 許可済みlocal write、新working-tree target固定
     VERIFYING --> CHANGES_REQUESTED: testが修正可能な失敗を検出
-    VERIFYING --> HUMAN_DECISION_REQUIRED: external writeの許可または結果確認が必要
+    VERIFYING --> EVALUATION_DEFERRED: v1非対応のexternal writeが必要
     VERIFYING --> VERIFICATION_BLOCKED: 環境、権限、serviceで実行不能
     VERIFYING --> BUDGET_EXHAUSTED: run-wide budget guard
     PRECOMMIT_DOCS_PENDING --> CANDIDATE_COMMIT_PENDING: PASSまたはsame-target UPDATED
@@ -438,7 +440,7 @@ stateDiagram-v2
     TARGET_VERIFYING --> CANDIDATE_COMMIT_PENDING: 許可済みlocal writeでtarget変更
     TARGET_VERIFYING --> CONTEXT_RESOLVING: base、scope、rule、input変更
     TARGET_VERIFYING --> CHANGES_REQUESTED: testが修正可能な失敗を検出
-    TARGET_VERIFYING --> HUMAN_DECISION_REQUIRED: external writeの許可または結果確認が必要
+    TARGET_VERIFYING --> EVALUATION_DEFERRED: v1非対応のexternal writeが必要
     TARGET_VERIFYING --> VERIFICATION_BLOCKED: 環境、権限、serviceで実行不能
     TARGET_VERIFYING --> BUDGET_EXHAUSTED: run-wide budget guard
     GATES_PENDING --> CANDIDATE_COMMIT_PENDING: 許可済みgateがtargetを更新
@@ -596,7 +598,7 @@ Counterはappend-onlyなrun manifest revisionで更新する。各state遷移も
 - Commit、push、PR作成には対象branch、SHA、既存PRを照合してから実行する。
 - 同じSHAが既にpush済みなら再pushを成功条件にしない。
 - 同じhead branchのopen PRが存在すれば新規PRを重複作成しない。
-- 一般のexternal writeはoperation ID、対象、Human decision、idempotency keyまたはread-back結果をartifactへ記録する。確定できない操作を自動再実行しない。
+- External writeはREADY後の`publish_exact_candidate`だけを扱う。Exact desired PR metadata、operation/attempt ID、push/PR/read-backの各statusをartifactへ記録し、確定できない操作を自動再実行しない。
 - Resume時にtargetが変わっていた場合は、以前のverification、gate、Final reviewを成功扱いしない。
 
 ## 16. 正常系とblocker系
@@ -682,7 +684,7 @@ Issue #39ではproject-local distributionを不採用とし、`shared/references
 7. 同phaseが`create-pr` contractに従うlocal candidate commitを作り、exact SHAを返す。Commit権限がなければHumanへhandoffする。
 8. Candidate SHAに対してrequired verification、docs/security gateを実行する。
 9. 修正を担当していないFinal reviewerと必要なProject reviewerが、candidate SHAでrequired project lensを含むblind scanを実行する。新しいrequired gateがあれば同じtargetで完了し、project resultとcoverageを固定してからreconciliationを行う。
-10. READY後、Orchestratorがpublish intentをappend-only保存し、`publish_exact_candidate`がbase refをfetchしてcandidate targetのbase/headと一致することを確認してから未実行のpushとPR作成だけを行う。Read-backした結果をobservationとして保存し、PR metadataのexact base/head SHAが変わっていればREADYを破棄する。Intent保存後にcrashした場合は同じ操作を再実行する前にremoteとPRをread-backする。
+10. READY後、Orchestratorがtitle、body、draft、assignee、labelを含むexact desired submissionのpublish intentをappend-only保存し、`publish_exact_candidate`がbase refをfetchしてcandidate targetのbase/headと一致することを確認してから未実行のpushとPR upsertだけを行う。Remote headとPRの全desired fieldをread-backした結果をobservationとして保存する。Intent保存後にcrashした場合は再実行前にread-backし、remoteだけ完了したpartial stateはexact pushをskipしてPR upsertから、PR metadataだけ未完了なら許可されたidempotent field設定だけを次attemptで行う。異なるbase/head、draft不一致、複数PR、再取得不能は推測再開しない。
 11. Humanがreviewし、mergeする。
 
 Docs gateをFinal reviewより前に置くのは、`mutated_target: true`がreview対象を変えるためである。Targetを変更し得るgateをFinal review後に実行すると独立reviewが古いSHAへ結び付く。Candidate SHAでdocs gateが許容statusかつ`mutated_target: false`になった後にFinal reviewを行うことで、codeとdocumentationの最終snapshotを同じ対象として確認する。
