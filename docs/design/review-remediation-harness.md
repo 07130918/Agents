@@ -183,6 +183,7 @@ Codexでfresh subagentを使える場合は、過去会話をforkせず、必要
 - Agentが生成するcanonical run artifactはJSONとする。曖昧な型変換を避け、将来のvalidatorとCIで同じ内容を検証できるためである。
 - Markdownはgoverning contract、PR本文、human向けreportに使えるが、run stateとresumeの正本にしない。
 - Run artifactはcandidate worktree外のharness管理storeへ保存する。論理pathは`<runtime_state_root>/review-harness/<repository_id>/<run_id>/`とし、実pathまたはstore URIをbootstrap manifestへ記録する。Stage完了後のartifactは上書きせずappend-onlyにする。
+- Canonical ledgerへのartifact publishとManifest head更新はsingle-writer、atomic、exclusive-create/CAS相当とする。Crash、fork、invalid latestを古いvalid Manifestへのrollbackで隠さない。Exact protocolとpath grammarは実行正本へ集約する。
 - Personal Harness wrapper/referenceはrun artifactではないが、実際に読み込んだpath、`declared_version`、`capability_revision`、content hashを`input_snapshot`へ固定する。
 - Storeへappendできるのは`write_run_store`を持つOrchestratorだけとする。各roleはresultを返し、Orchestratorがruntime由来のproducer metadata、hash、sequenceを付けて保存する。Implementerとcandidate processにはstoreの書込権限を与えない。
 - Issue #40では上記storeを実装しない。最小writer/validatorは#49で別に実装する。
@@ -222,7 +223,7 @@ Codexでfresh subagentを使える場合は、過去会話をforkせず、必要
 
 `input_snapshot`と`target`は`target_ref`を`null`にする。Target未解決中に保存する`run_manifest`と`decision`も、payloadに`target_status: unresolved`と`target_absence_reason`を持つ場合だけ`target_ref: null`にできる。その他のartifactは必ず1つのtargetを参照する。異なる`target_ref.sha256`のverification、gate、blind reviewを同じREADY判定の成功根拠へ混ぜない。Previous reviewとremediationはtarget generation chainでcandidateへ到達できる場合だけreconciliation用のhistorical refとして許可し、その成功statusをcurrent targetへ流用しない。
 
-`target_ref`、`input_refs`、payload内の`*_ref`はすべて次の共通型を使い、`*_refs`はこの共通型の配列とする。例外は後述する`run_manifest.artifact_refs`のlifecycle wrapperだけである。Hashは保存済みfileのbytesに対するSHA-256とし、参照時に再計算する。
+`target_ref`、`input_refs`、payload内の`*_ref`はすべて次の共通型を使い、`*_refs`はこの共通型の配列とする。例外は後述する`run_manifest.artifact_refs`のlifecycle wrapperだけである。Hashは保存済みfileのbytesに対するSHA-256とし、参照時に再計算する。Run-store pathは正本のgrammarとcontainment規則に従い、absolute path、traversal、symlink経由、別run参照をwriter/validatorの両方で拒否する。
 
 ```json
 {
@@ -251,6 +252,8 @@ Codexでfresh subagentを使える場合は、過去会話をforkせず、必要
 Issue本文と受入条件、全comment、仕様として参照する関連Issueまたはdecision、personal Harness contract、base側instructionとproject rule、run-local input、acceptance policy、Humanが提供した追加仕様は`input_snapshot`として保存し、run manifestと依存stageの`input_refs`へ加える。Issue bundleはtitle、body、updated revisionに加え、各commentのstable ID、revision、author、author role、bodyと、関連sourceのidentifier/revisionを保持する。External recordごとに`authority_status: governing|evidence_only|pending`と`authority_basis`を記録し、どのcommentまたは関連sourceを要件として採用したかを`context_resolution.authority_decisions`へ残す。未採用の情報を暗黙に仕様へ昇格させない。
 
 `input_snapshot.payload`は`input_kind`、`trust_source`、`source_identifier`、`source_sha`、`source_revision`、`content_sha256`、秘密情報を除いたexact `content`を持つ。`trust_source`は`personal_contract`、`base`、`human_approved_run_local`、`external_authoritative`、`external_observed`のいずれかとする。`personal_contract`はwrapper/referenceのlocal path、`declared_version`、`capability_revision`、content hashを持ち、`source_sha`は`null`と不在理由を記録できる。Sourceがversionを明示する場合は`capability_revision: version:<declared_version>`、明示しない場合は`declared_version: null`と`capability_revision: sha256:<content_sha256>`を使い、versionを補作しない。この規則は関連するrequired skill/referenceにも適用する。`external_authoritative`は`authority_status: governing`のrecordだけ、`external_observed`は`evidence_only|pending`のrecordだけに使う。Git管理されたinstructionとpolicyでは`source_sha`とGit blob hashも記録する。同じtarget SHAでもinput hashが変われば、変更されたinputに依存するreview、verification、gate、Final reviewを無効化し、`CONTEXT_RESOLVING`から再開する。参照先artifactのhash不一致は破損として`EVALUATION_DEFERRED`にする。
+
+Permissionはinlineな可変stateにせず、集合全体を`input_kind: permission_set`のimmutable snapshotとしてManifestとtarget checkから参照する。Humanがpermission、対象identity、allowed path/ref/source、effect、approval scopeを変更した場合は新しいgoverning inputとtarget generationを作り、常に`CONTEXT_RESOLVING`から再評価する。
 
 Artifact graphは次の非循環layerに固定する。
 
@@ -617,15 +620,10 @@ stateDiagram-v2
     REREVIEW_PENDING --> BUDGET_EXHAUSTED: run-wide budget guard
     READY --> CONTEXT_RESOLVING: publish前後のtargetまたはinput不一致
     EVALUATION_DEFERRED --> CONTEXT_RESOLVING: 不足input、capability、targetを補完
-    HUMAN_DECISION_REQUIRED --> CONTEXT_RESOLVING: target、仕様、Issue scope、project contextを更新
-    HUMAN_DECISION_REQUIRED --> GATES_PENDING: gateの採用基準を確定
-    HUMAN_DECISION_REQUIRED --> PRECOMMIT_DOCS_PENDING: pre-commit docs判断を確定
-    HUMAN_DECISION_REQUIRED --> CANDIDATE_COMMIT_PENDING: commit permissionを付与
-    HUMAN_DECISION_REQUIRED --> VERIFYING: pre-commit commandの外部操作を確定
-    HUMAN_DECISION_REQUIRED --> TARGET_VERIFYING: candidate commandの外部操作を確定
+    HUMAN_DECISION_REQUIRED --> CONTEXT_RESOLVING: decisionを新input/permission snapshotへ固定
     SCOPE_CHANGE_REQUIRED --> CONTEXT_RESOLVING: Humanが同一Issueへのscope変更を承認
-    VERIFICATION_BLOCKED --> VERIFYING: 環境または権限が回復
-    VERIFICATION_BLOCKED --> TARGET_VERIFYING: candidate targetの環境または権限が回復
+    VERIFICATION_BLOCKED --> VERIFYING: 同じpermission setの環境またはserviceが回復
+    VERIFICATION_BLOCKED --> TARGET_VERIFYING: 同じpermission setでcandidate環境またはserviceが回復
     INDEPENDENCE_BLOCKED --> REREVIEW_PENDING: fresh reviewerを確保
 ```
 
@@ -741,7 +739,7 @@ Counterはappend-onlyなrun manifest revisionで更新する。各state遷移も
 
 ### 15.2 Resume手順
 
-1. 最大revisionのvalidなrun manifestを読み、`previous_manifest_ref`を直前revisionへ順に辿って欠落、飛越し、cycleがないことを確認し、各Manifestのhash、`state`、`previous_state`、`transition_id`、counter、Issue/personal contract/project context snapshot、すべてのartifact refのhashを検証する。`artifact_refs`へManifestが含まれていないことも確認する。
+1. Canonical namespaceの全Manifestとheadを読み、最大の観測済みrevisionがheadと一致する唯一の連続chainであることを確認する。同一revisionの複数file、fork、orphan、欠落、飛越し、cycle、partial/invalid latest、head不一致があれば古いvalid revisionへfallbackせず停止する。各Manifestのhash、`state`、`previous_state`、`transition_id`、counter、permission set、Issue/personal contract/project context snapshot、すべてのartifact refのhashを検証する。`artifact_refs`へManifestが含まれていないことも確認する。
 2. External authoritative inputをsourceから再取得し、revisionとcontent hashを照合する。変更されていれば新snapshotを作って`CONTEXT_RESOLVING`へ戻す。
 3. Repository identity、current branch、candidate SHA、working treeを再取得する。
 4. Manifestのcurrent target generationと現在状態が一致するか確認する。不一致なら暗黙に上書きせず新しいgenerationのtargetを固定する。
