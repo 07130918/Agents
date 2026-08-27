@@ -433,7 +433,9 @@ Project contextはportable contractが実行に必要とするproject固有入�
 
 Orchestratorは次の順にbase側の候補を収集し、採用、除外、矛盾を`decision_kind: context_resolution`へ記録する。後順位の情報が前順位を黙って上書きする優先順位ではない。複数の信頼済みsourceがmaterialに矛盾すれば`context_status: conflicted`とし、Human判断まで停止する。
 
-Context解決前のbootstrapでは`read_repository`だけを使い、filesystem readとportable contractが固定したread-only Git inspectionに限定する。許可するGit操作はrepository identity、ref、tree、blob、diff、status、file mode、content hashを取得する`git rev-parse`、`git symbolic-ref`、`git remote get-url`、`git status`、`git diff`、`git show`、`git ls-tree`、`git cat-file`、`git hash-object`相当である。実装はoptional lockとindex refreshを無効化し、external diff、textconv、`hash-object -w`などwriteまたは外部processを起動し得るoptionを使わない。Read-onlyを証明できなければbootstrap allowlistへ入れない。Repository content、index、ref、remote、外部systemを変更するcommand、project script、package manager、task runnerはbootstrapで実行しない。Runtimeが同じ情報を専用read toolで取得できる場合はshell commandを必要としない。
+Context解決前のrepository inspectionは`read_repository`だけを使い、filesystem readとportable contractが固定したread-only Git inspectionに限定する。許可するGit操作はrepository identity、ref、tree、blob、diff、status、file mode、content hashを取得する`git rev-parse`、`git symbolic-ref`、`git remote get-url`、`git status`、`git diff`、`git show`、`git ls-tree`、`git cat-file`、`git hash-object`相当である。実装はoptional lockとindex refreshを無効化し、external diff、textconv、`hash-object -w`などwriteまたは外部processを起動し得るoptionを使わない。Read-onlyを証明できなければbootstrap allowlistへ入れない。Repository content、index、ref、remote、外部systemを変更するcommand、project script、package manager、task runnerはbootstrapで実行しない。Runtimeが同じ情報を専用read toolで取得できる場合はshell commandを必要としない。
+
+Bootstrap orchestrationはこれに加えて、artifact保存用の`write_run_store`と、Issue/PRなど明示されたauthoritative inputだけを読む`read_external_authoritative`を使える。External readはrun開始時に`allowed_source_identifiers`、API/host、credential scope、network availability、paid-call costを固定し、allowlist外の探索、書込API、credential拡張へ使わない。Permissionがfalse、source revisionを再取得できない、credentialがない、または次のcallがpaid budgetを超える場合はAPIを呼ばず、Humanがexact content、source identifier、revision、content hashを承認した`human_approved_run_local` snapshotを要求する。Snapshotも用意できなければ`EVALUATION_DEFERRED`にする。
 
 1. Base SHAにある`REVIEW_HARNESS.md`。存在しない場合は、Humanがrunとcontent hashを明示承認したportable contract snapshot。
 2. Base SHAにある任意の`.review-harness/profile.yaml`。
@@ -548,6 +550,7 @@ Run開始時に次のpermissionを個別に記録する。
 | --- | --- | --- | --- |
 | `read_repository` | true | reviewer、tester、gate、orchestrator | Orchestratorはcontext解決前に9.1の固定bootstrap inspectionを実行可。対象scope外への探索は正本確認に必要な最小範囲だけ |
 | `write_run_store` | true | orchestrator | Candidate worktree外のappend-only storeだけ。各roleのresultをruntime metadata付きで保存する |
+| `read_external_authoritative` | 明示されたIssue/PR/source identifierだけtrue | orchestrator | `allowed_source_identifiers`、host、credential scope、network、paid-call costを固定。Read-only APIだけを許可 |
 | `write_worktree` | 変更依頼時だけtrue | implementer、更新を許可されたdocs gate | Reviewerは常にfalse |
 | `run_local_commands` | 解決済みproject contextの宣言分だけtrue | tester、CI、gate | effectが不明なら停止 |
 | `commit` | false | create-pr contractに従う提出担当 | 明示的なcommitまたはPR依頼でtrueにできる |
@@ -815,6 +818,7 @@ Base側に複数のtest commandがあり、変更scopeとの対応を一意に�
 | Worktree外のappend-only run store | RuntimeまたはHumanが管理するcandidate非書込の永続storeへhandoffする | Hash、sequence、書込主体を保証できなければ不可 |
 | Personal/global Harness skill | Repositoryの`REVIEW_HARNESS.md`またはHuman承認run-local snapshotを明示promptで実行する | 他条件を満たせば可 |
 | Base側portable contract | Humanがexact contract versionとcontent hashをrun-local inputとして承認する | Snapshotを固定できれば可 |
+| External authoritative sourceのread permission、network、credential | Humanがsource identifier、revision、exact content、content hashをrun-local snapshotとして承認する | Snapshotを固定し、以後のdriftをHumanが再承認できれば可 |
 | Project profile | 9.1のportable resolverでbase側instruction、CI、manifest、Issueからproject contextを解決する | 必須fieldをすべて解決できれば可 |
 | Project reviewer | Portable review contractのgeneric lensを実行する | 信頼済みruleが専用lensを要求せずcoverageがCompleteなら可 |
 | Required skill名 | Portable distributionの同じsemantic contractを直接実行する | Contractと実行capabilityがあれば可 |
@@ -895,6 +899,7 @@ Docs gateをFinal reviewより前に置くのは、`mutated_target: true`がrevi
 | H11 | Security gate中にdeadlineまたはpaid-call budgetへ達する | Run-wide budget guardが優先し、limitとcounter revisionを記録して`BUDGET_EXHAUSTED`になる |
 | H12 | Personal skillはないがportable contractを明示promptで渡す | Installed skillを要求せず、同じcontract version、state、artifact、READY条件で開始する |
 | H13 | Base側instruction間でsource of truthが矛盾する | Profileの有無にかかわらず`context_status: conflicted`として`HUMAN_DECISION_REQUIRED`になる |
+| H14 | Issue URL起点だがexternal read permission、network、credentialのいずれかがない | APIを暗黙実行せず、Human承認run-local snapshotを要求し、用意できなければ`EVALUATION_DEFERRED`になる |
 
 ### 19.4 合格条件
 
