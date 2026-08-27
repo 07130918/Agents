@@ -15,7 +15,7 @@
 
 ## 共通契約
 
-- PR作成依頼は、現在scopeの変更をcommit、pushしてPRを作る権限に加え、現在repositoryの解決済みfetch transport locatorだけを対象とする`fetch_remote_refs` permissionを含む。Default経路ではremote default、`develop`、`main`のread-only名前解決、選択したbaseのexact fetch、publish時の設定済みfetch refspec範囲のpruneだけを許可し、別repository、別remote、tagは含めない。またcanonical GitHub identity解決、same-repository open PR検索、post-write read-backだけを対象に、host、API locator、credential scope、network、timeout、paid-call budgetを固定した`read_external_source` permissionを含む。Merge権限は含まない。
+- PR作成依頼は、現在scopeの変更をcommit、pushしてPRを作る権限に加え、現在repositoryの解決済みfetch transport locatorだけを対象とする`fetch_remote_refs` permissionを含む。Default経路ではremote default、`develop`、`main`のread-only名前解決、選択したbaseのexact fetch、publish時の設定済みbase refspec範囲のprune、fixed push locatorのexact head refをancestor判定用にsource-only fetchすることだけを許可し、別repository、別remote、tagは含めない。またcanonical GitHub identity解決、fixed push locatorのexact head refに対するpre-write lookup、same-repository open PR検索、post-write read-backだけを対象に、host、API/transport locator、credential scope、network、timeout、paid-call budgetを固定した`read_external_source` permissionを含む。Merge権限は含まない。
 - PRは宣言済みscopeだけを含め、無関係な整形、依存更新、別課題を混ぜない。
 - 1 commitを単独revertしたとき、その変更目的だけが戻る単位に分ける。
 - 各commitは単独checkout時にもbuild、型check、関連testが通る状態を保つ。後続commitがなければ動かない変更は同じcommitにまとめる。
@@ -52,7 +52,7 @@ URLだけでtransport境界が固定されたとは扱わない。実行に使�
 
 ### Fetch permissionと共通failure
 
-`prepare_candidate`と`publish_exact_candidate`はfetch前に`fetch_remote_refs`とallowlistを検証する。通常のPR依頼では共通契約の範囲だけをpermissionへ固定し、Harness callerはrun manifestのより狭いpermissionをそのまま渡す。Fetchはremote名を再解決せず、exact `fetch_transport_locator`へ`git -c maintenance.auto=false fetch --no-tags`相当を実行し、Git object database、fetch中のlock/temporary metadata、`FETCH_HEAD`、許可済みremote-tracking ref以外を変更しない。
+`prepare_candidate`と`publish_exact_candidate`はfetch前に`fetch_remote_refs`とallowlistを検証する。通常のPR依頼では共通契約の範囲だけをpermissionへ固定し、Harness callerはrun manifestのより狭いpermissionをそのまま渡す。Base fetchはremote名を再解決せずexact `fetch_transport_locator`を使い、publishのhead ancestor判定用source-only fetchはexact `push_transport_locator`を使う。いずれも`git -c maintenance.auto=false fetch --no-tags`相当とし、Git object database、fetch中のlock/temporary metadata、`FETCH_HEAD`、許可済みremote-tracking ref以外を変更しない。
 
 - Permissionがfalse、fetch transport locator、remote、refspec、prune範囲がallowlist外: `HUMAN_DECISION_REQUIRED`。
 - Network、credential、Git capabilityが利用不能: `EVALUATION_DEFERRED`。
@@ -138,8 +138,8 @@ Fixed `fetch_transport_locator`と`push_transport_locator`はAPI照会用locator
 - Full `base_sha`とfull `head_sha`
 - Harness経路では同じbase/headに結び付く`READY` statusと根拠artifactへの参照、通常経路では`DEFAULT_SUBMISSION_READY`と提出前条件の結果
 - Harness経路では、外部write前に確定したexact `title`、`body`、`draft`、重複なしソート済み`assignees`と`labels`を持つ`desired_submission`、そのRFC 8785 JCS bytesのSHA-256、対象transport locator、same-repository identity、branch、SHAと当該metadata生成policyに限定した`write_external_system` permission
-- Canonical identity解決、同一repositoryのopen PR検索、post-write read-backだけを許可する`read_external_source` permissionと、GitHub host、API locator、credential scope、network、timeout、paid-call budgetのallowlist
-- `fetch_remote_refs` permissionと、remoteの設定済みsource/destination refspec、prune範囲、credential scope、timeoutを持つallowlist
+- Canonical identity解決、fixed push locatorのexact head refに対するpre-write lookup、同一repositoryのopen PR検索、post-write read-backだけを許可する`read_external_source` permissionと、GitHub host、API/transport locator、credential scope、network、timeout、paid-call budgetのallowlist
+- `fetch_remote_refs` permissionと、baseの設定済みsource/destination refspec、ancestor判定に必要な場合だけexact head refを`FETCH_HEAD`へ取得するsource-only refspec、prune範囲、credential scope、timeoutを持つallowlist
 - Push、PR作成またはmetadata更新のpermission
 
 ### 禁止事項
@@ -151,10 +151,10 @@ Fixed `fetch_transport_locator`と`push_transport_locator`はAPI照会用locator
 
 ### 手順
 
-1. Harness経路の`READY`または通常経路の`DEFAULT_SUBMISSION_READY`が入力のbase/head SHAと同じtargetに結び付き、identity解決とPR read-backのexternal read、fetch、push、PR操作が許可されていることを確認する。Harness経路では`desired_submission`のJCS hash、metadata policyへの適合、operation限定の`write_external_system` permissionも照合する。
+1. Harness経路の`READY`または通常経路の`DEFAULT_SUBMISSION_READY`が入力のbase/head SHAと同じtargetに結び付き、identity解決、pre-write remote-head lookup、PR検索、post-write read-backのexternal read、fetch、push、PR操作が許可されていることを確認する。Harness経路では`desired_submission`のJCS hash、metadata policyへの適合、operation限定の`write_external_system` permissionも照合する。
 2. Fixed fetch/push transport locatorとexpected base/headのcanonical repository identityがすべて一致し、`transport_execution_context`が不変で、設定済みbase source/destination refspecがpermission対象であることを確認する。`git -c maintenance.auto=false fetch --no-tags --prune <fetch_transport_locator> refs/heads/<base>:refs/remotes/<remote>/<base>`後、local `HEAD`、作業branch先端、更新済み`<remote>/<base>`、working tree、indexをread-onlyで照合する。Harness callerは`fetch_remote_refs` permissionでlocator、同じexact refspec、prune範囲を許可していなければ実行しない。
 3. Local `HEAD`または作業branch先端が`head_sha`と異なる、working treeまたはindexがdirty、`<remote>/<base>`が`base_sha`と異なる場合はpushしない。
-4. Remote headを`absent`、`exact`、`ancestor`、`diverged_or_ahead`に分類する。`ancestor`はremote headが入力`head_sha`のancestorである場合だけとし、`diverged_or_ahead`ではforce pushせず停止する。
+4. Fixed push locatorの`refs/heads/<head-ref>`だけをpre-write lookupし、remote headを`absent`、`exact`、`ancestor`、`diverged_or_ahead`に分類する。返されたOIDがlocal object databaseになくancestor判定が必要な場合だけ、同じlocatorとexact head source refをsource-only fetchして`FETCH_HEAD`のOIDをlookup結果と照合する。Lookup/fetch中に値が変わった場合は再分類し、確定不能なら停止する。`ancestor`は観測したremote headが入力`head_sha`のancestorである場合だけとし、`diverged_or_ahead`ではforce pushせず停止する。
 5. Remote headが`absent`または`ancestor`の場合だけ、`git push --no-verify <push_transport_locator> <head_sha>:refs/heads/<head-ref>`相当のnon-force pushを実行する。Remote名やlocal作業branch名をcommandのsource/destinationにしない。`exact`ならpushを省略する。いずれもfixed push locatorのexact head refをread-backし、`head_sha`との一致を確認する。
 6. Expected base repository identityで既存のopen PRをbase/head repository identity、base/head ref、head SHAから検索する。存在しなければexpected base/head repository identityの組へPRを作成し、すべて一致するPRが1件だけ存在すればtitle、本文、assignee、labelなどtargetを変えないmetadataだけを更新できる。Branch名とSHAが同じでもhead repository identityが異なるfork PRを更新対象にしない。Harness経路はintentの`desired_submission`をそのまま使い、phase内で再生成しない。Closedまたはmerged PRしかない場合は自動で再利用しない。
 7. 通常経路では`.github/pull_request_template.md`があれば構造を維持する。なければ標準templateを使い、最新commitだけでなく全commitの差分からPR titleと本文を作る。Harness経路ではこの条件を満たすdesired submissionがintentで確定済みであることを検証し、phase内で作り直さない。
@@ -164,22 +164,21 @@ Fixed `fetch_transport_locator`と`push_transport_locator`はAPI照会用locator
 
 Local target、固定済みsame-repository identity、branch、SHA、inputの不一致またはpublish中のdriftは`READY_INVALIDATED`として、期待値、観測値、外部操作の有無を返す。追加変更、gate再実行、commit、force pushは行わない。呼び出し側はIssue/project contextへ戻り、新しいtargetで影響するverification、gate、Final reviewを完了して新しい`READY`を作る。Base/head identityが開始時から異なるfork PRはdriftではなくV1 capability不足として`EVALUATION_DEFERRED`にする。
 
-Publish observationの`step_results`は次の意味へ固定する。`push: not_needed_exact`はcall前からremote headがexact、`performed`はexact refspecのpush後read-backがexact、`not_performed`はpush未開始、`ready_invalidated`はpush前のdrift、`unknown`は実行有無または結果不明を表す。`pull_request: created|updated`は当該write後のPR read-back成功、`not_performed`はwrite未開始、`partial`はPR作成済みまたは一部metadata write済みだがdesired state未達、`unknown`は実行有無または結果不明を表す。`read_back: exact`はremoteとPRの全required fieldがdesired stateと一致、`mismatch`は全required fieldを取得できたが不一致、`unknown`は1 fieldでも取得不能を表す。`external_effect_observed`は`performed|created|updated|partial`が1つでもあればtrue、なければfalseにする。ただし`unknown`は未観測effectの可能性を否定しない。
+Publish observationは操作の由来と現在stateを分離する。`effect_provenance.push|pull_request`は`performed|not_performed|unknown`とし、durableなcall結果がある場合だけ`performed`、call前停止を証明できる場合だけ`not_performed`、crash後のread-backだけでは`unknown`にする。`external_effect_observed`はprovenanceが1つでも`performed`ならtrue、それ以外はfalseだが、`unknown`は未観測effectの可能性を否定しない。`step_results`の`push: not_needed_exact|performed|not_performed|ready_invalidated|unknown`と`pull_request: created|updated|not_performed|partial|unknown`は観測できた実行結果を表し、provenance不明なら`unknown`のままにする。`read_back: exact`はremoteとPRの全required fieldがdesired stateと一致、`mismatch`は全required fieldを取得できたが不一致、`unknown`は1 fieldでも取得不能を表す。Phase resultと次stepは実行由来ではなくconclusiveなcurrent remote/PR stateを優先して決め、provenanceを成功証拠へ書き換えない。
 
 前段guardを含む次のphase result表を上から優先評価し、最初に一致したrowだけを採用する。Mutable metadataはtitle、body、assignees、labelsだけを指す。
 
 | 条件 | `external_effect_observed` | 許可する`push / pull_request / read_back` | Phase result | 次の安全なstep |
 | --- | --- | --- | --- | --- |
-| External write開始後に実行有無、結果、またはrequired read-backが1つでも不明 | step statusから導出 | Field意味と矛盾しない値で、少なくとも1つが`unknown` | `RESULT_UNKNOWN` | 自動retryせずHuman handoff |
-| External write前にtarget/input drift | false | `ready_invalidated / not_performed / {mismatch,unknown}` | `READY_INVALIDATED` | READYを失効し、新targetで再評価 |
-| External effect後に全stepを確定でき、target/input drift | true | `{performed,not_needed_exact} / {created,updated,partial,not_performed} / mismatch`かつ少なくとも1 stepがeffect済み | `READY_INVALIDATED` | 追加writeせずREADYを失効し、新targetで再評価 |
-| Remote `exact`、一意のopen PRがexpected identity/ref/SHA、draft、全metadataにexact | step statusから導出 | `{performed,not_needed_exact} / {created,updated,not_performed} / exact` | `SUCCEEDED` | なし |
-| Remote `absent`または`ancestor`、PR `absent`、write未開始 | false | `not_performed / not_performed / mismatch` | `NOT_PERFORMED` | Exact refspecをnon-force push後、PRを作成 |
-| Remote `exact`、PR `absent` | step statusから導出 | `{performed,not_needed_exact} / not_performed / mismatch` | `PARTIALLY_PERFORMED` | Pushをskipし、PRを作成 |
-| Remote `exact`、一意のopen PRがexpected identity/ref/SHAとdraftにexact、mutable metadataだけ不一致 | step statusから導出 | `{performed,not_needed_exact} / {created,partial,not_performed} / mismatch` | `PARTIALLY_PERFORMED` | Pushをskipし、同じPRのmutable metadataだけをidempotentに設定 |
+| Required remote/PR stateを1 fieldでもread-back不能、またはcurrent stateから次stepを一意に選べない | step statusから導出 | Field意味と矛盾しない値で`read_back: unknown` | `RESULT_UNKNOWN` | 自動retryせずHuman handoff |
+| Target/input driftを検出し、required remote/PR stateは取得済み | trueまたはfalse | Field意味と矛盾する`pending`以外の値 / `{exact,mismatch}` | `READY_INVALIDATED` | 追加writeせずREADYを失効し、新targetで再評価 |
+| Remote `exact`、一意のopen PRがexpected identity/ref/SHA、draft、全metadataにexact | trueまたはfalse | `{performed,not_needed_exact,not_performed,unknown} / {created,updated,not_performed,partial,unknown} / exact` | `SUCCEEDED` | なし |
+| Remote `absent`または`ancestor`、PR `absent` | trueまたはfalse | `{not_performed,unknown} / {not_performed,unknown} / mismatch` | `NOT_PERFORMED` | Exact refspecをnon-force push後、PRを作成 |
+| Remote `exact`、PR `absent` | trueまたはfalse | `{performed,not_needed_exact,not_performed,unknown} / {not_performed,unknown} / mismatch` | `PARTIALLY_PERFORMED` | Pushをskipし、PRを作成 |
+| Remote `exact`、一意のopen PRがexpected identity/ref/SHAとdraftにexact、mutable metadataだけ不一致 | trueまたはfalse | `{performed,not_needed_exact,not_performed,unknown} / {created,updated,partial,not_performed,unknown} / mismatch` | `PARTIALLY_PERFORMED` | Pushをskipし、同じPRのmutable metadataだけをidempotentに設定 |
 | Draft不一致、複数PR、diverged remote、または上記rowに一意に一致しない既知状態 | step statusから導出 | 上記のfield意味と矛盾しない値 | `RESULT_UNKNOWN` | 自動retryせずHuman handoff |
 
-`NOT_PERFORMED`と`PARTIALLY_PERFORMED`はstep別結果とfull read-backを返す。Harness callerはREADYを失効させずobservation checkpointを保存し、budget内で表の次stepだけを開始できる。
+`NOT_PERFORMED`はdesired remote/PR stateが現在未達であることを表し、call未実行の証明を意味しない。`NOT_PERFORMED`と`PARTIALLY_PERFORMED`はeffect provenance、step別結果、full read-backを返す。Harness callerはREADYを失効させずobservation checkpointを保存し、budget内で表の次stepだけを開始できる。
 
 Fetchのpermission、利用不能、timeoutはPhase共通failureへ従う。PushまたはPR操作のtimeoutで外部結果が不明な場合は同じ操作を推測retryせず、remoteとPRをread-backして確定できなければHuman handoffで停止する。
 
