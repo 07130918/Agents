@@ -97,8 +97,7 @@ URLだけでtransport境界が固定されたとは扱わない。実行に使�
     "kind": "platform_null",
     "path": "<absolute_realpath>",
     "identity": "<stable_device_or_directory_identity>",
-    "empty_before": true,
-    "empty_after": true
+    "empty_before": true
   },
   "credential_scope": null,
   "allowed_destinations": ["<credential_free_destination>"],
@@ -110,7 +109,28 @@ URLだけでtransport境界が固定されたとは扱わない。実行に使�
 
 Config entryの`value_state`は`plain|secret`、environment entryは`unset|plain|secret`である。Config entryは実際に存在する値だけをsequence付きで含め、environment entryは`inspection.environment_names`の全要素を1件ずつ含める。`plain`は`value`だけをexact stringにし、`nonsecret_projection`と`redaction_reason`をnullにする。`unset`は3 fieldをすべてnullにする。`secret`は`value: null`とし、credentialを除いたdestinationやprovider表現が作れる場合だけ`nonsecret_projection`へ保存し、空でない`redaction_reason`を必須にする。`origin`はconfig fileのabsolute realpathまたはliteral `command`とする。Secret raw valueとそのhashはcontext内外へ保存しない。Helperの`helper_kind`は`transport|proxy|credential|askpass|ssh|tls`とし、利用するhelperだけを配列へ含め、realpathとexecutable hashを必須にする。Helperを利用しない場合は空配列にする。`lookup_scope`とtop-level `credential_scope`は非秘密のexact stringまたはnullである。Helper commandまたはargumentにsecretが埋め込まれている、helperを実行しなければidentity/effectを確定できない、またはunknown inputが残る場合はcontextを確定しない。
 
-`hooks_override.kind`は`platform_null|runtime_empty_directory`である。前者は検証済みnull deviceのrealpathとstable device identity、後者はruntime所有かつcandidate/run store外のdirectory realpathとfilesystem identityを固定する。前者はGitがhookを解決不能であること、後者はhook entryが0件であることを実行前後に検証して`empty_before|empty_after`へ保存し、falseなら失敗とする。Object key順はJCSへ委ね、上記以外のarray順を独自に変えない。Permission snapshot hash、Git executable、inspection集合、entry、helper、hook、destination、effectのいずれかが実行直前または直後に変われば同じoperationとして続行しない。
+`hooks_override.kind`は`platform_null|runtime_empty_directory`である。前者は検証済みnull deviceのrealpathとstable device identity、後者はruntime所有かつcandidate/run store外のdirectory realpathとfilesystem identityを固定する。前者はGitがhookを解決不能であること、後者はhook entryが0件であることを外部call前に検証して`empty_before: true`へ固定し、falseならcontextを確定しない。Object key順はJCSへ委ね、上記以外のarray順を独自に変えない。Permission snapshot hash、Git executable、inspection集合、entry、helper、hook、destination、effectのいずれかが実行直前に変われば同じoperationとして続行しない。
+
+Git network call後のhook状態は、実行前にhash固定するcontextへ予測値として入れない。`ls_remote|fetch|push`の各callが戻った直後に次のexact `transport_hook_postcondition`を作り、Harness経路では`evidence_kind: git_transport_hook_postcondition`、default経路ではphase-local outputとして保存する。
+
+```json
+{
+  "schema_version": "1.0",
+  "transport_execution_context_sha256": "<lowercase_hex_64>",
+  "call_id": "sha256-<lowercase_hex_64>",
+  "call_sequence": 0,
+  "call_kind": "fetch",
+  "hooks_override_identity": "<same_identity_as_context>",
+  "status": "verified_disabled",
+  "observed_entries": [],
+  "reason": null,
+  "observed_at": "<RFC3339_timestamp>"
+}
+```
+
+`call_sequence`はphase内で実際に開始したGit network callへ0から隙間なく割り当てる。`call_id`はphase名、context hash、call sequence、call kind、credentialを含まないexact locator、source/destination refspecを持つJCS valueのSHA-256とする。`status`は`verified_disabled|changed|unresolved`である。`platform_null`でcall後も同じnull device identityとGitのhook解決不能を確認した場合、または`runtime_empty_directory`で同じdirectory identityと空を確認した場合だけ`verified_disabled`と空配列、`reason: null`を許す。Entry追加またはidentity変更は`changed`とUTF-8 byte順の`observed_entries`および理由、再取得不能は`unresolved`、`observed_entries: null`、理由を必須にする。
+
+Phase outputは開始した全callのpostconditionをcall sequence順で返す。Harness observationは各valueをEvidenceにして`hook_postcondition_refs`へ同順で接続し、default経路は同じvalueをinline保存する。Call開始後にcrashしてpostconditionがない場合は、resume時の現在状態から過去のpostconditionを補作しない。Missing、`changed`、`unresolved`ではphaseを成功にせず、publish observationは`RESULT_UNKNOWN`として自動retryを止める。すべてのpostcondition確定後にcontextを再取得し、実行前hashと一致する場合だけphaseを成功にできる。
 
 ## 公開phase interface
 
@@ -123,7 +143,7 @@ Config entryの`value_state`は`plain|secret`、environment entryは`unset|plain
 
 ### Phase共通のartifact規則
 
-- 入力と出力にはrepository、branch、base ref、full `base_sha`、full `head_sha`またはworking tree fingerprint、宣言済みscope、permission、適用したcontract revisionを含める。Git transportを使うphaseは`inspect_git_transport_context`と、その対象repository、remote、config scope/key pattern、environment名、Git/helper executable metadata、effectを固定したallowlistおよびpermission snapshot hashを含める。Fetchを行うphaseはさらに`fetch_remote_refs`と、remote名、exact `fetch_transport_locator`、`transport_execution_context`のexact JCS valueとhash、source/destination refspec、prune範囲、credential scope、timeoutを持つallowlistも含める。Harness経路だけEvidence refを追加で必須にし、default経路は同じvalue/hashをself-containedなphase-local recordとして返す。
+- 入力と出力にはrepository、branch、base ref、full `base_sha`、full `head_sha`またはworking tree fingerprint、宣言済みscope、permission、適用したcontract revisionを含める。Git transportを使うphaseは`inspect_git_transport_context`と、その対象repository、remote、config scope/key pattern、environment名、Git/helper executable metadata、effectを固定したallowlistおよびpermission snapshot hashを含める。Fetchを行うphaseはさらに`fetch_remote_refs`と、remote名、exact `fetch_transport_locator`、`transport_execution_context`のexact JCS valueとhash、source/destination refspec、prune範囲、credential scope、timeoutを持つallowlistも含める。Phase outputは開始したGit network callの`transport_hook_postcondition`をcall sequence順で持つ。Harness経路だけcontextとpostconditionのEvidence refを必須にし、default経路は同じvalue/hashをself-containedなphase-local recordとして返す。
 - 完了済みartifactを再利用できるのは、同じtarget fingerprint、scope、contract revisionに結び付き、required statusを満たす場合だけとする。単なる完了申告や別SHAの結果を理由にstepを省略しない。
 - File、index、commit、base、scope、project ruleを変更したstepは`TARGET_MUTATED`として旧target、新target、無効化対象、再開stepを呼び出し側へ返す。Default経路もこの結果を受け取るcallerとしてcontextを更新してから再開する。
 - Blockerは`BLOCKED`として停止理由、完了済みartifact、再開step、不足inputを返す。Phase内でpermissionや仕様を補完しない。
@@ -253,7 +273,7 @@ Publish observationは操作の由来と現在stateを分離する。`effect_pro
 | 条件 | `external_effect_observed` | 許可する`push / pull_request / read_back` | Phase result | 次の安全なstep |
 | --- | --- | --- | --- | --- |
 | Required remote/PR stateを1 fieldでもread-back不能、またはcurrent stateから次stepを一意に選べない | step statusから導出 | Field意味と矛盾しない値で`read_back: unknown` | `RESULT_UNKNOWN` | 自動retryせずHuman handoff |
-| Target/input driftを検出し、required remote/PR stateは取得済み | trueまたはfalse | Field意味と矛盾する`pending`以外の値 / `{exact,mismatch}` | `READY_INVALIDATED` | 追加writeせずREADYを失効し、新targetで再評価 |
+| Target/input driftを検出し、required remote/PR stateは取得済み | trueまたはfalse | Field意味と矛盾しない`pending`以外の値 / `{exact,mismatch}` | `READY_INVALIDATED` | 追加writeせずREADYを失効し、新targetで再評価 |
 | Remote `exact`、一意のopen PRがexpected identity/ref/SHA、draft、全metadataにexact | trueまたはfalse | `{performed,not_needed_exact,not_performed,unknown} / {created,updated,not_performed,partial,unknown} / exact` | `SUCCEEDED` | なし |
 | Remote `absent`または`ancestor`、PR `absent` | trueまたはfalse | `{not_performed,unknown} / {not_performed,unknown} / mismatch` | `NOT_PERFORMED` | Exact refspecをnon-force push後、PRを作成 |
 | Remote `exact`、PR `absent` | trueまたはfalse | `{performed,not_needed_exact,not_performed,unknown} / {not_performed,unknown} / mismatch` | `PARTIALLY_PERFORMED` | Pushをskipし、PRを作成 |
