@@ -32,6 +32,8 @@ Fetch permissionとGitHub publish identityを同じ概念にしない。`fetch_t
 
 Fetchとpushはremote名でなく固定済みeffective URLをcommand引数に使う。Fetchは`git -c maintenance.auto=false fetch --no-tags <fetch_transport_locator> <source>:<destination>`相当、pushは`git push --no-verify <push_transport_locator> <head_sha>:refs/heads/<head-ref>`相当とする。これにより実行時のremote config再解決とpre-push hookを介在させない。Raw configured URL、全push URL、rewrite rule、effective locator、`core.hooksPath`と対象pre-push hookの存在をEvidenceへ保存し、publish以外のGit hookは起動しない。Embedded credentialを検出した場合は外部操作前に停止し、秘密部分を除いた診断と元値のhashだけをEvidenceへ保存してraw値を永続化しない。Prepare-only runはfetch transport locatorだけで動作し、GitHub API identityを要求しない。
 
+URLだけでtransport境界が固定されたとは扱わない。実行に使うGit versionについて、destination、transport executable、proxy、credential取得、TLS/SSH trust、config注入へ影響し得るrepository/system/global configとenvironmentを列挙し、`transport_execution_context`へsource、秘密値を除くexact valueまたはhash、利用するhelper/executableと引数、その観測可能なeffectを固定する。対象には少なくとも`core.sshCommand`、`core.gitProxy`、`http.*`、`credential.*`、`GIT_SSH*`、`GIT_PROXY_COMMAND`、`GIT_ASKPASS`、`SSH_ASKPASS`、proxy/TLS環境変数、`GIT_CONFIG_*`を含める。Credentialのsecret自体は保存またはcontext hashへ含めず、provider identity、lookup scope、helper executableだけを固定する。ContextのJCS valueを`evidence_kind: git_transport_execution_context`として保存し、そのcontent hashとEvidence refをphase input/outputへ結び付ける。各設定は影響しないよう明示的に除去するか、そのexact helper、destination、credential scope、filesystem/network effectをpermissionへ含める。Unknown helper、実行fileまたはconfig/envの再取得不能、未許可destination/effect、context hashの実行直前driftがあればnetwork call前に停止する。Locator解決、identity照合、fetch、push、read-backは同じcontextを使い、実行後もcontext hashを照合する。
+
 ## 公開phase interface
 
 `create-pr`は次の2 phaseを公開する。これはinstalled skill内部のcommand名ではなく、personal HarnessまたはHumanが同じ入力、禁止事項、出力を使えるsemantic interfaceである。
@@ -43,7 +45,7 @@ Fetchとpushはremote名でなく固定済みeffective URLをcommand引数に使
 
 ### Phase共通のartifact規則
 
-- 入力と出力にはrepository、branch、base ref、full `base_sha`、full `head_sha`またはworking tree fingerprint、宣言済みscope、permission、適用したcontract revisionを含める。Fetchを行うphaseは`fetch_remote_refs`と、remote名、exact `fetch_transport_locator`、source/destination refspec、prune範囲、credential scope、timeoutを持つallowlistも含める。
+- 入力と出力にはrepository、branch、base ref、full `base_sha`、full `head_sha`またはworking tree fingerprint、宣言済みscope、permission、適用したcontract revisionを含める。Fetchを行うphaseは`fetch_remote_refs`と、remote名、exact `fetch_transport_locator`、`transport_execution_context` hashとEvidence ref、source/destination refspec、prune範囲、credential scope、timeoutを持つallowlistも含める。
 - 完了済みartifactを再利用できるのは、同じtarget fingerprint、scope、contract revisionに結び付き、required statusを満たす場合だけとする。単なる完了申告や別SHAの結果を理由にstepを省略しない。
 - File、index、commit、base、scope、project ruleを変更したstepは`TARGET_MUTATED`として旧target、新target、無効化対象、再開stepを呼び出し側へ返す。Default経路もこの結果を受け取るcallerとしてcontextを更新してから再開する。
 - Blockerは`BLOCKED`として停止理由、完了済みartifact、再開step、不足inputを返す。Phase内でpermissionや仕様を補完しない。
@@ -132,7 +134,7 @@ Fixed `fetch_transport_locator`と`push_transport_locator`はAPI照会用locator
 
 ### 入力
 
-- Repository、許可されたremote、exact `fetch_transport_locator`と`push_transport_locator`、両locatorから解決した同じcanonical repository identity、同じobjectを持つPRのexpected base/head repository identity、作業branch、PRのbase/head ref
+- Repository、許可されたremote、exact `fetch_transport_locator`と`push_transport_locator`、`transport_execution_context` hashとEvidence ref、両locatorから解決した同じcanonical repository identity、同じobjectを持つPRのexpected base/head repository identity、作業branch、PRのbase/head ref
 - Full `base_sha`とfull `head_sha`
 - Harness経路では同じbase/headに結び付く`READY` statusと根拠artifactへの参照、通常経路では`DEFAULT_SUBMISSION_READY`と提出前条件の結果
 - Harness経路では、外部write前に確定したexact `title`、`body`、`draft`、重複なしソート済み`assignees`と`labels`を持つ`desired_submission`、そのRFC 8785 JCS bytesのSHA-256、対象transport locator、same-repository identity、branch、SHAと当該metadata生成policyに限定した`write_external_system` permission
@@ -150,7 +152,7 @@ Fixed `fetch_transport_locator`と`push_transport_locator`はAPI照会用locator
 ### 手順
 
 1. Harness経路の`READY`または通常経路の`DEFAULT_SUBMISSION_READY`が入力のbase/head SHAと同じtargetに結び付き、identity解決とPR read-backのexternal read、fetch、push、PR操作が許可されていることを確認する。Harness経路では`desired_submission`のJCS hash、metadata policyへの適合、operation限定の`write_external_system` permissionも照合する。
-2. Fixed fetch/push transport locatorとexpected base/headのcanonical repository identityがすべて一致し、設定済みfetch refspecがpermission対象であることを確認する。`git -c maintenance.auto=false fetch --no-tags --prune <fetch_transport_locator>`後、local `HEAD`、作業branch先端、`<remote>/<base>`、working tree、indexをread-onlyで照合する。Harness callerは`fetch_remote_refs` permissionでlocator、設定済みsource/destination refspec、prune範囲を許可していなければ実行しない。
+2. Fixed fetch/push transport locatorとexpected base/headのcanonical repository identityがすべて一致し、`transport_execution_context`が不変で、設定済みbase source/destination refspecがpermission対象であることを確認する。`git -c maintenance.auto=false fetch --no-tags --prune <fetch_transport_locator> refs/heads/<base>:refs/remotes/<remote>/<base>`後、local `HEAD`、作業branch先端、更新済み`<remote>/<base>`、working tree、indexをread-onlyで照合する。Harness callerは`fetch_remote_refs` permissionでlocator、同じexact refspec、prune範囲を許可していなければ実行しない。
 3. Local `HEAD`または作業branch先端が`head_sha`と異なる、working treeまたはindexがdirty、`<remote>/<base>`が`base_sha`と異なる場合はpushしない。
 4. Remote headを`absent`、`exact`、`ancestor`、`diverged_or_ahead`に分類する。`ancestor`はremote headが入力`head_sha`のancestorである場合だけとし、`diverged_or_ahead`ではforce pushせず停止する。
 5. Remote headが`absent`または`ancestor`の場合だけ、`git push --no-verify <push_transport_locator> <head_sha>:refs/heads/<head-ref>`相当のnon-force pushを実行する。Remote名やlocal作業branch名をcommandのsource/destinationにしない。`exact`ならpushを省略する。いずれもfixed push locatorのexact head refをread-backし、`head_sha`との一致を確認する。
