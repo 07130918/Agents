@@ -91,6 +91,7 @@ Personal Harnessを利用できない環境はv1の運用対象外である。Cl
 | --- | --- | --- |
 | Issue精読、scope宣言、branch、全体進行 | `shared/references/issue-to-pr.md` | Issue intake後のreview/fix/verify subflowを委譲され、READYまたはblockerを返す |
 | target fingerprint、coverage、finding、severity、origin、verdict、grade、再review比較 | `shared/references/principle-of-programming-reviewer.md` | fingerprint artifactを参照し、別targetの結果を混ぜない |
+| Correctnessと実害riskの総合review | personal `pr-risk-reviewer`または同じsemantic contract | Initial/Final reviewでgeneric finding candidateと観点別coverageを返し、poprのschemaへ統合する |
 | project固有のlensとfinding candidate | 各projectのreviewer契約 | candidateと`required_gates`を受け取る |
 | documentation同期 | `shared/references/sync-docs-code.md` | 同じtargetのstatusが`PASS`または`UPDATED`かを確認する |
 | security監査 | `shared/references/security-audit.md` | risk trigger時に同じtargetの結果を要求する |
@@ -118,10 +119,10 @@ Harnessはpersonal/global skillとして利用し、上表のcontractはAgents�
 | Role | 入力 | 所有する責務 | 出力 | 禁止事項 |
 | --- | --- | --- | --- | --- |
 | Orchestrator | Issue、run manifest、personal Harness contract、project context、各stage artifact | state遷移、target照合、budget、permission、retry、resume、actor分離 | 更新済みrun manifest、次stage | findingの捏造、専門gateの代行、gradeの上書き |
-| Initial reviewer | target ref、project context、要件と規約 | 初回の独立review、coverage、project candidateの収集 | popr互換result、required gates | code修正、外部副作用、scope拡大 |
+| Initial reviewer | target ref、project context、要件と規約 | Popr、generic comprehensive review、coverage、project candidateの収集 | popr互換result、generic risk result、required gates | code修正、外部副作用、scope拡大 |
 | Implementer | change request、remediation plan、許可されたscope | 最小修正と必要なtest追加 | 変更、requestごとの対応記録 | finding資格やseverityの自己変更、許可外pathの変更 |
 | Tester | candidate snapshot、project contextのverification command | command実行、結果とobservable failureの記録 | verification artifact、verification failure | 失敗を推測でPASSにする、仕様判断 |
-| Final reviewer | candidate target、要件、規約、project context | blind scan、candidate targetのrequired lens、previous findingの照合、最終coverageとpopr互換判定 | blind review、project result、reconciliation、popr互換result | code修正、実装者の説明をblind scan前に読む |
+| Final reviewer | candidate target、要件、規約、project context | Poprとgeneric comprehensive blind scan、candidate targetのrequired lens、previous findingの照合、最終coverageとpopr互換判定 | blind review、generic risk result、project result、reconciliation、popr互換result | code修正、実装者の説明をblind scan前に読む |
 | Docs gate | candidate target、変更契約、関連文書 | `sync-docs-code` semantic contractの実行 | PASS、UPDATED、BLOCKEDと根拠 | 別targetの結果流用、無関係な文書監査 |
 | Security gate | candidate target、risk trigger、attack surface | `security-audit` semantic contractの実行 | audit resultとblocker | project reviewer内への監査手順複製 |
 | Project reviewer | target ref、任意project profile、project正本 | 利用可能な場合のproject固有lensとcandidate finding、required gates | candidateと未確認領域 | 最終grade、最終verdict、外部gate実行 |
@@ -136,7 +137,7 @@ Final reviewerとcandidate targetを検査するProject reviewerの`producer.ins
 
 Final reviewerは同じfresh context内で次の順に実行する。
 
-1. Blind scan: candidate target、Issue、受入条件、base側のproject規約、解決済みproject contextだけを受け取る。previous finding、remediation plan、implementer explanationは渡さない。Candidate diffからrequired lensをfreshに選び、Initial reviewで選択されたlensだけに限定せずcandidate targetへ再実行する。利用可能ならFinal reviewerとは別のfresh Project reviewerがproject resultとcoverageを返し、利用不能ならFinal reviewerがpersonal Harness contractのgeneric lensを実行する。Orchestratorは結果を独立した`blind_review` artifactとしてappend-onlyに確定する。
+1. Blind scan: candidate target、Issue、受入条件、base側のproject規約、解決済みproject contextだけを受け取る。previous finding、remediation plan、implementer explanationは渡さない。Final reviewerはpoprに加えてpersonal `pr-risk-reviewer`または同じsemantic contractでgeneric comprehensive reviewを行う。Candidate diffからrequired lensをfreshに選び、Initial reviewで選択されたlensだけに限定せずcandidate targetへ再実行する。利用可能ならFinal reviewerとは別のfresh Project reviewerがproject resultとcoverageを返し、利用不能かつ専用lensがrequiredでなければproject coverageを`not_required`とする。Orchestratorは結果を独立した`blind_review` artifactとしてappend-onlyに確定する。
 2. Gate reconciliation: Candidate project resultが新しい`required_gates`を返した場合は、blind artifactを確定したまま同じtargetでgateを実行する。Gateがtargetを変更したらblind artifactを無効化して第1 passからやり直す。
 3. Finding reconciliation: Blind scanとsame-target gateを確定した後にprevious resultとすべてのremediation artifactを渡し、各findingを`Fixed`、`Remaining`、`Regressed`、`Not applicable`へ分類する。今回findingは`New`または`Residual`にする。
 
@@ -291,12 +292,12 @@ Initial reviewでは明示されたworking treeを含められる。READY候補�
 | `target_check` | `expected_target_ref`、`status`、`observed_components`、`changed_components` | poprのtarget fingerprint契約 |
 | `input_snapshot` | `input_kind`、`trust_source`、`source_identifier`、`source_sha`、`source_revision`、`content_sha256`、`content`。External recordは`authority_status`と`authority_basis`も必須 | Issue、personal contract、base側instruction/profile/policy、Human承認run-local input、外部source |
 | `evidence` | `evidence_kind`、`media_type`、`content_sha256`、`content_path`またはinline `content`、`redactions` | 実行command、tool、gateのraw output |
-| `review` | `popr_result`、`project_results`、`blocking_finding_ids`、`required_gates`、`coverage_status` | poprとproject reviewer契約 |
+| `review` | `popr_result`、`generic_risk_result`、`generic_coverage_status`、`project_results`、`project_coverage_status`、`blocking_finding_ids`、`required_gates`、`coverage_status` | popr、generic comprehensive reviewer、project reviewer契約 |
 | `change_request` | `requests`。各要素は`review_finding`、`verification_failure`、`gate_failure`のtagged union | Review result、verification/gate artifact、Issue scope |
 | `remediation` | request IDごとの`decision`、`minimal_change`、`planned_paths`、`test_plan`、`scope_effect` | Change requestとIssue scope |
 | `verification` | `commands`、各commandの`exit_code`、`started_at`、`finished_at`、`environment_snapshot_ref`、`output_refs`、`status`、`unverified_reason`、`mutated_target` | Project contextとCI |
 | `gate` | `gate_name`、`declared_version`、`capability_revision`、`content_sha256`、`execution_status`、`decision_status`、`decision_policy`、`acceptance_policy_ref`、`evidence_ref`、`mutated_target` | 各gateの正本 |
-| `blind_review` | `blind_result`、`blind_received_artifacts`、`project_results`、`project_coverage_status`、`required_gates`、`independence_check` | poprとproject reviewerのblind scan契約 |
+| `blind_review` | `blind_result`、`generic_risk_result`、`generic_coverage_status`、`blind_received_artifacts`、`project_results`、`project_coverage_status`、`required_gates`、`independence_check` | popr、generic comprehensive reviewer、project reviewerのblind scan契約 |
 | `final_review` | `blind_review_ref`、`reconciliation`、`popr_result`、`previous_review_ref`、`remediation_status`、`remediation_refs`、`independence_check` | poprの再review契約 |
 | `decision` | `decision_kind`。Context解決では`resolution_mode`、`contract_status`、`contract_ref`、`considered_sources`、`selected_sources`、`authority_decisions`、`resolved_commands`、`resolved_gates`、`unresolved_inputs`、Human判断では`decision`、`satisfied_conditions`、`blockers`、`human_action`、budget観測では`limit_id`、`limit_event`、`limit_value`、`observed_value`、`counter_snapshot`、`prior_manifest_revision`、`prior_manifest_sha256` | 本文書のcontext解決、停止条件、budget guard |
 | `run_manifest` | `state`、`previous_state`、`transition_id`、`transition_cause_ref`、`revision`、`previous_manifest_ref`、`permissions`、`limits`、`counters`、`input_source`、`issue_ref`、`scope_input_ref`、`contract_status`、`contract_ref`、`context_status`、`resolution_mode`、`project_context_refs`、`context_resolution_ref`、`profile_status`、`profile_ref`、`current_target_generation`、`artifact_refs`、`last_completed_stage` | 本文書のstate/retry/resume契約 |
@@ -461,7 +462,9 @@ Repository baselineは、少なくともrepository identity、Issueまたは明�
 
 Standard resolverは名前の類似だけでcommandを選ばず、README全体から任意の手順を正本へ昇格させない。複数の`test`候補、scopeとの対応不明、interactive command、dependency install、service起動、deploy、migration、外部writeを含む可能性がありeffectを分類できない場合は実行しない。解決できなかったfieldを`unresolved_inputs`へ列挙し、仕様なら`HUMAN_DECISION_REQUIRED`、verification/gate capabilityまたはrequired serviceなら`EVALUATION_DEFERRED`へ遷移する。`VERIFICATION_BLOCKED`はcontextとInitial reviewが完了し、`VERIFYING`または`TARGET_VERIFYING`で実際のverificationを開始した後にだけ使う。Profileがないこと自体をblocker理由にしない。
 
-専用Project reviewerがない場合は、personal/globalのneutral review contractをInitial/Final reviewerが使う。信頼済みrepository ruleが専用lensまたはreviewerを要求する場合だけそのcapabilityを必須とし、利用不能ならcoverage不足として停止する。Required contractまたは実行capabilityがなければ成功と推測しない。
+すべてのrunで、Initial/Final reviewerはpoprに加えてpersonal `pr-risk-reviewer`または同じsemantic contractのgeneric comprehensive reviewを実行する。最低限、correctnessと要件適合、認証・認可と情報漏えい、data integrityとmigration、並行性、後方互換性、error handlingと外部失敗、実害のあるperformance riskを変更scopeに応じて確認し、観点別のreviewed、not_applicable、unreviewedとfinding candidateの根拠を返す。Generic reviewer独自のgradeやmerge判断は採用せず、poprが共通schemaとseverityへ統合する。Security gateやproject固有lensの代替にはしない。Capability revisionを固定できない、実行不能、またはrequired観点にunreviewedが残る場合はcoverage不足として停止する。
+
+専用Project reviewerがない場合もgeneric comprehensive reviewは省略しない。信頼済みrepository ruleが専用lensまたはreviewerを要求しなければ`project_results: []`、`project_coverage_status: not_required`にできるが、`generic_coverage_status: Complete`を要求する。信頼済みruleが専用lensまたはreviewerを要求する場合はそのcapabilityも必須とし、利用不能なら停止する。
 
 ### 9.2 Project profile
 
@@ -685,14 +688,14 @@ Guardが停止を決めたら、Orchestratorは先に`decision_kind: limit_obser
 次をすべて観測できる場合だけ`READY`にする。
 
 - candidate targetがexact base SHA、exact head SHA、scope、project rulesを含み、working treeがclean
-- Personal Harness wrapper/referenceとrequired capabilityのpath、capability revision、content hashが固定され、`contract_status: resolved`かつ`context_status: resolved`
+- Personal Harness wrapper/reference、generic comprehensive reviewer、required capabilityのpath、capability revision、content hashが固定され、`contract_status: resolved`かつ`context_status: resolved`
 - External inputの`authority_decisions`に`pending`がなく、`evidence_only` recordがproject contextを変更していない
-- 宣言されたreview scopeのcoverageがComplete
+- 宣言されたreview scopeについてpoprとgeneric comprehensive reviewのcoverageがComplete
 - `Introduced`または`Exposed`のCriticalとMajorが0件
 - 解決済みproject contextが要求するtest、integration、E2Eが同じcandidate targetで成功
 - すべての`required_gates`が同じtargetで成功
 - Docs gateが同じcandidate targetで`PASS`または`UPDATED`かつ`mutated_target: false`。`mutated_target: true`ならstatusにかかわらず新target作成後の再実行を必要とする
-- 解決済みrequired lensが同じcandidate targetで再実行され、generic lensを含むcoverageに未確認領域がない。専用project lensが不要なrunは`project_coverage_status: not_required`を記録する
+- 解決済みrequired lensが同じcandidate targetで再実行され、`generic_coverage_status: Complete`である。専用project lensが不要なrunは`project_coverage_status: not_required`を記録する
 - materialな仕様矛盾がない
 - unresolved blockerがない
 - Final reviewerの独立性checkが成功
@@ -761,7 +764,7 @@ Counterはappend-onlyなrun manifest revisionで更新する。各state遷移も
 
 ### 15.2 Resume手順
 
-1. 最大revisionのvalidなrun manifestを読み、`previous_manifest_ref`を直前revisionへ順に辿って欠落、飛越し、cycleがないことを確認し、各Manifestのhash、`state`、`previous_state`、`transition_id`、counter、Issue/personal contract/project context snapshot、すべてのartifact refのhashを検証する。
+1. 最大revisionのvalidなrun manifestを読み、`previous_manifest_ref`を直前revisionへ順に辿って欠落、飛越し、cycleがないことを確認し、各Manifestのhash、`state`、`previous_state`、`transition_id`、counter、Issue/personal contract/project context snapshot、すべてのartifact refのhashを検証する。`artifact_refs`へManifestが含まれていないことも確認する。
 2. External authoritative inputをsourceから再取得し、revisionとcontent hashを照合する。変更されていれば新snapshotを作って`CONTEXT_RESOLVING`へ戻す。
 3. Repository identity、current branch、candidate SHA、working treeを再取得する。
 4. Manifestのcurrent target generationと現在状態が一致するか確認する。不一致なら暗黙に上書きせず新しいgenerationのtargetを固定する。
@@ -826,7 +829,7 @@ Base側に複数のtest commandがあり、変更scopeとの対応を一意に�
 | Personal/global Harness skill | v1の実行前提。Agentsからlocal環境へ同期してから再開する | 利用不能なままでは不可 |
 | External authoritative sourceのread permission、network、credential | Humanがsource identifier、revision、exact content、content hashをrun-local snapshotとして承認する | Snapshotを固定し、以後のdriftをHumanが再承認できれば可 |
 | Project profile | 9.1のrepository baseline resolverでbase側instruction、CI、manifest、Issueからproject contextを解決する | 必須fieldをすべて解決できれば可 |
-| Project reviewer | Personal/global review contractのgeneric lensを実行する | 信頼済みruleが専用lensを要求せずcoverageがCompleteなら可 |
+| Project reviewer | Personal `pr-risk-reviewer`または同じsemantic contractでgeneric comprehensive reviewを実行し、project coverageは`not_required`とする | 信頼済みruleが専用lensを要求せずgeneric coverageがCompleteなら可 |
 | Required skill名 | Personal/globalの同じsemantic contractを直接実行する | Contractと実行capabilityがあれば可 |
 | Required gate capability | 利用可能な別実装が同じsemantic contractを満たすかHumanが用意する | 用意できなければ不可 |
 | Worktree | 単独clean checkoutで順次実行する | 並行runまたはdirty共有checkoutでは不可 |

@@ -23,6 +23,7 @@
 | --- | --- | --- |
 | Issue intake、scope、branch | `issue-to-pr` | Intake固定後のsubflowを受け取り、`READY`またはblockerを返す |
 | Fingerprint、finding、severity、coverage、verdict | `principle-of-programming-reviewer` | Review artifactとして保存し、gradeを上書きしない |
+| Correctnessと実害riskの総合review | personal `pr-risk-reviewer`または同じsemantic contract | Initial/Final reviewの必須generic capabilityとし、finding candidateとcoverageをpoprへ渡す |
 | Documentation同期 | `sync-docs-code` | 同じtargetの`PASS`または`UPDATED`を要求する |
 | Candidate準備と提出 | `create-pr` | `prepare_candidate`と`publish_exact_candidate`だけを使う |
 | Project固有lens | 任意project profileまたはproject reviewer | Finding candidateと`required_gates`だけを受け取る |
@@ -81,7 +82,9 @@ Profile不在は`profile_status: absent`として記録するが、それだけ�
 
 `resolution_mode`は`profile|repository_baseline|human_approved_run_local|mixed`のいずれかとする。Profile不在でbase側情報だけから解決した場合は`repository_baseline`を使う。
 
-専用project reviewerがなく、信頼済みbase ruleも専用reviewerまたはproject固有lensを要求しない場合は、Initial reviewerとFinal reviewerがneutral review contractのgeneric lensを実行する。Initial `review`は`project_results: []`とgeneric lensを含む`coverage_status: Complete`、`blind_review`は`project_results: []`、`project_coverage_status: not_required`とgeneric lensを含むblind coverageを記録する。信頼済みbase ruleが専用reviewerまたはproject固有lensを要求する場合は、そのcapabilityとcoverageをrequiredにし、利用不能なら`EVALUATION_DEFERRED`にする。専用reviewer不在を、required lens自体の省略理由にしない。
+すべてのrunで、Initial reviewerとFinal reviewerはpoprに加えてgeneric comprehensive review capabilityを実行する。Personal `pr-risk-reviewer`または同じsemantic contractを使い、少なくともcorrectnessと要件適合、認証・認可と情報漏えい、data integrityとmigration、並行性、後方互換性、error handlingと外部失敗、実害のあるperformance riskを変更scopeに応じて確認する。各観点のreviewed、not_applicable、unreviewedと根拠、finding candidateの失敗scenario、影響、証拠、confidence、最小修正を返す。Poprがcandidateを共通schema、severity、origin、verdictへ統合し、generic reviewer独自のgradeまたはmerge判断をHarnessの最終判定へ使わない。Risk triggerがあるsecurity監査やproject固有lensの代替にも使わない。Capability revisionを固定できない、実行不能、またはrequired観点にunreviewedが残る場合は`EVALUATION_DEFERRED`にする。
+
+専用project reviewerがなく、信頼済みbase ruleも専用reviewerまたはproject固有lensを要求しない場合、Initial `review`は`project_results: []`、`project_coverage_status: not_required`、`generic_coverage_status: Complete`を、`blind_review`も同じ3 fieldとfreshなgeneric resultを記録する。信頼済みbase ruleが専用reviewerまたはproject固有lensを要求する場合は、そのcapabilityとcoverageもrequiredにし、利用不能なら`EVALUATION_DEFERRED`にする。専用reviewer不在をgeneric comprehensive reviewまたはrequired lensの省略理由にしない。
 
 ### External record authority
 
@@ -125,7 +128,7 @@ Canonical run artifactはJSONとし、candidate worktree外のrun storeへappend
 }
 ```
 
-`input_snapshot`と`target`だけは`target_ref: null`にできる。Target未解決中のdecisionとrun manifestも、理由をpayloadへ記録した場合だけnullを許す。その他は1つのtargetを参照する。
+`input_snapshot`と`target`だけは`target_ref: null`にできる。Target未解決中のdecisionとrun manifestも、payloadに`target_status: unresolved`と`target_absence_reason`を記録した場合だけnullを許す。その他は1つのtargetを参照する。
 
 Artifact参照は次の非循環layerに限定する。
 
@@ -150,12 +153,12 @@ Stage artifactの必須payloadは次の通りとする。
 | --- | --- |
 | `target_check` | `expected_target_ref`、`status: unchanged|changed`、`observed_components`、`changed_components`、`checked_at` |
 | `evidence` | `evidence_kind`、`media_type`、`content_sha256`、`content_path`またはinline `content`、`redactions` |
-| `review` | `popr_result`、`project_results`、`blocking_finding_ids`、`required_gates`、`coverage_status` |
+| `review` | `popr_result`、`generic_risk_result`、`generic_coverage_status`、`project_results`、`project_coverage_status`、`blocking_finding_ids`、`required_gates`、`coverage_status` |
 | `change_request` | `requests`。各要素は`review_finding|verification_failure|gate_failure`を識別する |
 | `remediation` | request IDごとの`decision`、`minimal_change`、`planned_paths`、`test_plan`、`scope_effect` |
 | `verification` | `commands`、各commandのexit codeと開始・終了時刻、`environment_snapshot_ref`、`output_refs`、`status`、`unverified_reason`、`mutated_target` |
 | `gate` | `gate_name`、`declared_version`、`capability_revision`、`content_sha256`、`execution_status`、`decision_status`、`decision_policy`、`acceptance_policy_ref`、`evidence_ref`、`mutated_target` |
-| `blind_review` | `blind_result`、`blind_received_artifacts`、`project_results`、`project_coverage_status`、`required_gates`、`independence_check` |
+| `blind_review` | `blind_result`、`generic_risk_result`、`generic_coverage_status`、`blind_received_artifacts`、`project_results`、`project_coverage_status`、`required_gates`、`independence_check` |
 | `final_review` | `blind_review_ref`、`reconciliation`、`popr_result`、`previous_review_ref`、`remediation_status`、`remediation_refs`、`independence_check` |
 | `decision` | `decision_kind`と、その判断を再現する観測値、根拠ref、blocker、Human action。Context解決では下記の専用field |
 
@@ -172,10 +175,10 @@ Orchestratorはtarget依存stageの開始前と完了後、外部writeの前後�
 | Role | 所有する責務 | 禁止事項 |
 | --- | --- | --- |
 | Orchestrator | State、artifact、target、budget、permission、resumeの照合 | Finding、grade、専門gate結果の捏造 |
-| Initial reviewer | 初回review、coverage、required gate候補 | Code修正、外部write |
+| Initial reviewer | Poprとgeneric comprehensive review、coverage、required gate候補 | Code修正、外部write |
 | Implementer | 確定済みrequestのscope内最小修正 | Finding資格やseverityの変更 |
 | Tester | Exact command実行と結果記録 | 失敗の推測PASS、仕様判断 |
-| Final reviewer | Candidate SHAのblind scan、reconciliation、最終coverage | Code修正、blind scan前のremediation説明受領 |
+| Final reviewer | Candidate SHAのpoprとgeneric comprehensive blind scan、reconciliation、最終coverage | Code修正、blind scan前のremediation説明受領 |
 | Docs/Security gate | 各semantic contractの実行 | 別target結果の流用 |
 | Human | 仕様、scope、risk、外部権限、merge | なし |
 
@@ -207,14 +210,14 @@ External writeはidempotency keyがあるかread-backで未実行を証明でき
 次の正常系を順に実行する。各遷移はprevious state、state、stable transition ID、cause artifact、counter snapshotを持つ新しいrun manifest revisionとして保存する。
 
 1. `CONTEXT_RESOLVING`: Harness contract、input、target、project context、permission、limitを固定する。
-2. `REVIEW_PENDING`: Fresh Initial reviewerがneutral reviewとrequired gate候補を返す。
+2. `REVIEW_PENDING`: Fresh Initial reviewerがpopr、generic comprehensive review、任意project lensとrequired gate候補を返す。
 3. CriticalまたはMajorがあれば`CHANGES_REQUESTED`を作り、scope/permission内だけ`FIXING`する。なければ`VERIFYING`へ進む。
 4. `VERIFYING`: Working tree targetでrequired verificationを実行する。
 5. `PRECOMMIT_DOCS_PENDING`: `sync-docs-code`を実行する。Mutationがあれば新targetでverificationからやり直す。
 6. `CANDIDATE_COMMIT_PENDING`: `prepare_candidate`を使いcleanなcandidate SHAを固定する。
 7. `TARGET_VERIFYING`: Exact candidate SHAでrequired verificationを再実行する。
 8. `GATES_PENDING`: Docs、security、project gateを同じcandidate SHAで実行する。
-9. `REREVIEW_PENDING`: Fresh Final reviewerのblind scan、project lens、reconciliationを行う。
+9. `REREVIEW_PENDING`: Fresh Final reviewerのpoprとgeneric comprehensive blind scan、必要なproject lens、reconciliationを行う。
 10. READY条件を全て満たせば`READY`を記録する。
 11. PR提出が許可されていれば`publish_exact_candidate`だけを実行する。Defaultのmonolithic `create-pr`を再実行しない。
 12. Humanがreviewしてmergeする。
@@ -236,8 +239,8 @@ Targetを変更したstageは`TARGET_MUTATED`相当の結果を返し、影響�
 
 - Harness contract hashとproject contextがresolved。
 - Exact base/head SHAとclean working treeを持つcandidate targetが固定済み。
-- Review coverageがCompleteで、Introduced/ExposedのCriticalとMajorが0件。
-- Required verification、docs/security/project gateと、解決済みrequired lensが同じcandidate targetで成功。専用project lensが不要なrunは`project_coverage_status: not_required`かつgeneric lensを含むcoverageがCompleteである。
+- Poprとgeneric comprehensive reviewのcoverageがCompleteで、Introduced/ExposedのCriticalとMajorが0件。
+- Required verification、docs/security/project gateと、解決済みrequired lensが同じcandidate targetで成功。専用project lensが不要なrunも`project_coverage_status: not_required`、`generic_coverage_status: Complete`でなければならない。
 - Docs gateが`PASS`または`UPDATED`かつ`mutated_target: false`。
 - External authorityに`pending`がなく、materialな仕様矛盾とunresolved blockerがない。
 - Final reviewerの独立性checkが成功。
@@ -269,7 +272,8 @@ Resumeでは次を順に行う。
 ## Fallback
 
 - Project-local Harness skill/entrypointなし: 正常系。Personal/global Harnessを使い、project側に複製しない。
-- Project profileなし: Base instruction、CI/manifest、Issue、Human承認inputから必須fieldを決定的に解決する。解決できればREADYへ進める。
+- Project profileなし: Base instruction、CI/manifest、Issue、Human承認inputから必須fieldを決定的に解決し、personal generic comprehensive reviewerを実行する。解決とcoverageがCompleteならREADYへ進める。
+- Project reviewerなし: Personal `pr-risk-reviewer`または同じsemantic contractでgeneric comprehensive reviewを行う。信頼済みruleが専用lensを要求せず、generic coverageがCompleteならproject coverageは`not_required`にできる。
 - Codex subagentなし: 過去会話を渡さない新しいtask/sessionまたはHuman reviewerへhandoff bundleを渡す。
 - Claude Code subagentなし: 別session、別CLI、Human reviewerのいずれかを使う。
 - Fresh sessionなし: `INDEPENDENCE_BLOCKED`。
@@ -287,11 +291,11 @@ Fallbackで独立性、coverage、gate成功を偽装しない。
 
 ## 検証
 
-- Harness wrapper/referenceとrequired capabilityのpath、capability revision、content hashを固定した。
+- Harness wrapper/reference、generic comprehensive reviewer、required capabilityのpath、capability revision、content hashを固定した。
 - 全artifactが同じrunと正しいtarget generationへ接続され、参照graphが非循環である。
 - Required verificationとgateがcandidate SHAへ結び付く。
 - ImplementerとFinal reviewerのinstanceが分離され、blind scanの受領artifactが制限されている。
-- Critical/Major 0、coverage Complete、unresolved blockerなしを確認した。
+- Critical/Major 0、poprとgeneric comprehensive coverage Complete、unresolved blockerなしを確認した。
 - Retry、scope、permission、cost上限を超えた副作用がない。
 - Publish時は`create-pr`のexact phase境界を使い、target mutationを行っていない。
 
