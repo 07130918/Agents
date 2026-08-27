@@ -14,7 +14,7 @@
 
 | Capability | Member path | Upstream source | content_sha256 |
 | --- | --- | --- | --- |
-| Harness orchestration | `.review-harness/contracts/review-remediation-harness.md` | `shared/references/review-remediation-harness.md` | `4cc76f3b09a8e349c0af50e7897f4667584c06a4aae85f5597a135bff2975635` |
+| Harness orchestration | `.review-harness/contracts/review-remediation-harness.md` | `shared/references/review-remediation-harness.md` | `80f9996bcb99d56b61d3c4a47fffa97790dda441028708fbdc45952c42ea5401` |
 | Neutral review | `.review-harness/contracts/principle-of-programming-reviewer.md` | `shared/references/principle-of-programming-reviewer.md` | `1c0ea74319856f2150b226bb166ee18ef0bbce1e7f6544a50ef83290544d6f81` |
 | Documentation gate | `.review-harness/contracts/sync-docs-code.md` | `shared/references/sync-docs-code.md` | `f65e9b2fd7b1db9173e987222ebb61d4a698d92b2f2bbe099eb203e71aae9d8e` |
 | Issue intake | `.review-harness/contracts/issue-to-pr.md` | `shared/references/issue-to-pr.md` | `dfd86c3b1bfcc90c69c37c781d30610cc6a4d3e75f36e68f33bc8f4d40920ddf` |

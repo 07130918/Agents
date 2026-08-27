@@ -154,9 +154,13 @@ Stage artifactの必須payloadは次の通りとする。
 | `gate` | `gate_name`、`contract_version`、`execution_status`、`decision_status`、`decision_policy`、`acceptance_policy_ref`、`evidence_ref`、`mutated_target` |
 | `blind_review` | `blind_result`、`blind_received_artifacts`、`project_results`、`project_coverage_status`、`required_gates`、`independence_check` |
 | `final_review` | `blind_review_ref`、`reconciliation`、`popr_result`、`previous_review_ref`、`remediation_status`、`remediation_refs`、`independence_check` |
-| `decision` | `decision_kind`と、その判断を再現する観測値、根拠ref、blocker、Human action |
+| `decision` | `decision_kind`と、その判断を再現する観測値、根拠ref、blocker、Human action。Context解決では下記の専用field |
 
-`run_manifest.payload`は`revision`、`previous_manifest_ref`、`state`、`previous_state`、`transition_id`、`transition_cause_ref`、`current_target_generation`、`current_target_ref`、`input_refs`、`artifact_refs`と各refの`current|historical|invalidated`、`permissions`、`limits`、`counters`、`context_status`、`resolution_mode`、`profile_status`、`last_completed_stage`、`resume_state`、`blocker`を持つ。最初のrevisionだけ`previous_manifest_ref: null`を許し、以後は直前manifestのpathとhashを参照する。Issue起点では`issue_ref`、明示scope起点では`scope_input_ref`も必須とする。各state遷移、target generation変更、stage完了、blocker、外部副作用の前後で新revisionをappend-only保存する。
+Context解決の`decision.payload`は`decision_kind: context_resolution`、`resolution_mode`、`bundle_integrity`、`considered_sources`、`selected_sources`、`authority_decisions`、`resolved_commands`、`resolved_gates`、`unresolved_inputs`を持つ。各selected source、command、gateは対応するinput/evidence refとcontent hashを含める。候補を無視して空の`unresolved_inputs`を返さない。
+
+`run_manifest.payload`は`revision`、`previous_manifest_ref`、`state`、`previous_state`、`transition_id`、`transition_cause_ref`、`current_target_generation`、`current_target_ref`、`input_refs`、`artifact_refs`と各refの`current|historical|invalidated`、`permissions`、`limits`、`counters`、`input_source`、`context_status`、`resolution_mode`、`project_context_refs`、`context_resolution_ref`、`profile_status`、`profile_ref`、`last_completed_stage`、`resume_state`、`blocker`を持つ。最初のrevisionだけ`previous_manifest_ref: null`を許し、以後は直前manifestのpathとhashを参照する。
+
+`input_source: issue`では`issue_ref`を必須にして`scope_input_ref: null`、`explicit_scope`では`scope_input_ref`を必須にして`issue_ref: null`とする。`context_status: resolved`にはbundle integrity成功、external authority確定、必須fieldの完全解決、空でない`project_context_refs`、`context_resolution_ref`を要求する。`profile_status: resolved`では`profile_ref`、`absent`では`profile_ref: null`と`profile_absence_reason`、`invalid`では`profile_ref: null`と`profile_error_ref`を要求し、`invalid`のcontextを`resolved`にしない。各state遷移、target generation変更、stage完了、blocker、外部副作用の前後で新revisionをappend-only保存する。
 
 Orchestratorはtarget依存stageの開始前と完了後、外部writeの前後、resume、Final review開始前、READY判定前に`target_check`を保存する。Publish前はfetch後のbase refも、PR作成後はremoteのexact base/headも照合する。Checkは保存済みtargetだけでなく、input refs、contract/profile/project rule hash、external source revisionも現在値と比較する。差分または再取得不能があれば旧artifactをREADY根拠へ使わず、該当blockerを記録する。
 
@@ -242,7 +246,7 @@ Blockerからは記録されたresume stateへだけ戻る。`EVALUATION_DEFERRE
 
 Resumeでは次を順に行う。
 
-1. 最大revisionのmanifestを読み、content hash、`previous_manifest_ref`のchain、transition、counter、全artifact refのhashを検証する。
+1. 最大revisionのmanifestを読み、content hash、`previous_manifest_ref`のchain、transition、counter、全artifact refに加えて`project_context_refs`、`context_resolution_ref`、条件付き`profile_ref`のhashを検証する。
 2. Repository identity、base ref/SHA、branch、head SHA、working tree status/mode/manifestをread-onlyで再取得する。
 3. External authoritative inputをsourceから再取得し、revisionとcontent hashを照合する。権限または安定したrevisionがなく再検証できなければ成功扱いしない。
 4. 新しい`target_check`を現在のtarget、input、contract/profile/project rule、external revisionへ接続して保存する。
