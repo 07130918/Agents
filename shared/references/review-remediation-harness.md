@@ -132,9 +132,9 @@ Artifact参照は次の非循環layerに限定する。
 1. Rootの`input_snapshot`と`target`はStageまたはManifestを参照しない。`target_ref`は必ずnullにする。
 2. Evidenceの`evidence`はRootだけを参照できる。
 3. Stageの`target_check`、`review`、`change_request`、`remediation`、`verification`、`gate`、`blind_review`、`final_review`、`decision`は、Root、Evidence、自分より小さい`monotonic_sequence`のStageだけを参照できる。
-4. Manifestの`run_manifest`は確定済みRoot、Evidence、Stageと直前Manifestを参照できるが、他artifactから参照されない。
+4. Manifestの`run_manifest`は確定済みRoot、Evidence、Stageを`artifact_refs`へ列挙し、直前Manifestだけを専用の`previous_manifest_ref`で参照できる。他artifactからManifestは参照されず、Manifestを`artifact_refs`へ含めない。
 
-同一artifact、前方参照、自分を含むManifest、未確定artifactは参照しない。保存前に参照先の存在、hash、同じrun、許可されたtarget generationを確認する。違反時はartifactをREADY根拠へ使わず`EVALUATION_DEFERRED`にする。
+同一artifact、前方参照、自分を含むManifest、未確定artifactは参照しない。最初のManifestだけ`previous_manifest_ref: null`とし、以後は直前revisionへの共通refだけを許可する。Revision欠落、直前以外への飛越し、cycleを不正とする。保存前に参照先の存在、hash、同じrun、許可されたtarget generationを確認する。違反時はartifactをREADY根拠へ使わず`EVALUATION_DEFERRED`にする。
 
 Target、Issue input、scope、permission、project rule、contract hashが変わった場合は新しいgenerationを作る。旧verification、gate、reviewを成功根拠へ流用しない。Historical artifactはreconciliationの参照だけに使える。
 
@@ -161,7 +161,7 @@ Stage artifactの必須payloadは次の通りとする。
 
 Context解決の`decision.payload`は`decision_kind: context_resolution`、`resolution_mode`、`contract_status`、`contract_ref`、`considered_sources`、`selected_sources`、`authority_decisions`、`resolved_commands`、`resolved_gates`、`unresolved_inputs`を持つ。各selected source、command、gateは対応するinput/evidence refとcontent hashを含める。候補を無視して空の`unresolved_inputs`を返さない。
 
-`run_manifest.payload`は`revision`、`previous_manifest_ref`、`state`、`previous_state`、`transition_id`、`transition_cause_ref`、`current_target_generation`、`current_target_ref`、`input_refs`、`artifact_refs`と各refの`current|historical|invalidated`、`permissions`、`limits`、`counters`、`input_source`、`contract_status`、`contract_ref`、`context_status`、`resolution_mode`、`project_context_refs`、`context_resolution_ref`、`profile_status`、`profile_ref`、`last_completed_stage`、`resume_state`、`blocker`を持つ。最初のrevisionだけ`previous_manifest_ref: null`を許し、以後は直前manifestのpathとhashを参照する。
+`run_manifest.payload`は`revision`、`previous_manifest_ref`、`state`、`previous_state`、`transition_id`、`transition_cause_ref`、`current_target_generation`、`current_target_ref`、`input_refs`、`artifact_refs`と各refの`current|historical|invalidated`、`permissions`、`limits`、`counters`、`input_source`、`contract_status`、`contract_ref`、`context_status`、`resolution_mode`、`project_context_refs`、`context_resolution_ref`、`profile_status`、`profile_ref`、`last_completed_stage`、`resume_state`、`blocker`を持つ。`artifact_refs`へManifestを含めない。最初のrevisionだけ`previous_manifest_ref: null`を許し、以後は直前Manifestのpathとhashを参照する。
 
 `input_source: issue`では`issue_ref`を必須にして`scope_input_ref: null`、`explicit_scope`では`scope_input_ref`を必須にして`issue_ref: null`とする。`contract_status`は`resolved|unavailable|drifted`とし、`resolved`だけhash付き`contract_ref`を持てる。`context_status: resolved`には`contract_status: resolved`、external authority確定、必須fieldの完全解決、空でない`project_context_refs`、`context_resolution_ref`を要求する。`profile_status: resolved`では`profile_ref`、`absent`では`profile_ref: null`と`profile_absence_reason`、`invalid`では`profile_ref: null`と`profile_error_ref`を要求し、`invalid`のcontextを`resolved`にしない。各state遷移、target generation変更、stage完了、blocker、外部副作用の前後で新revisionをappend-only保存する。
 
@@ -258,7 +258,7 @@ Blockerからは記録されたresume stateへだけ戻る。`EVALUATION_DEFERRE
 
 Resumeでは次を順に行う。
 
-1. 最大revisionのmanifestを読み、content hash、`previous_manifest_ref`のchain、transition、counter、全artifact refに加えて`project_context_refs`、`context_resolution_ref`、条件付き`profile_ref`のhashを検証する。
+1. 最大revisionのManifestを読み、`previous_manifest_ref`を直前revisionへ順に辿って欠落、飛越し、cycleがないことを確認する。各Manifestのcontent hash、transition、counter、全artifact refに加えて`project_context_refs`、`context_resolution_ref`、条件付き`profile_ref`のhashを検証し、`artifact_refs`にManifestが含まれないことも確認する。
 2. Repository identity、base ref/SHA、branch、head SHA、working tree status/mode/manifestをread-onlyで再取得する。
 3. External authoritative inputをsourceから再取得し、revisionとcontent hashを照合する。権限または安定したrevisionがなく再検証できなければ成功扱いしない。
 4. 新しい`target_check`を現在のtarget、input、contract/profile/project rule、external revisionへ接続して保存する。
