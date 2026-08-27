@@ -20,6 +20,32 @@ GitHub issue を起点に、調査・実装計画・実装・品質ゲート・�
 - ユーザー確認が必要なのは、仕様が曖昧で実装すると危険な場合、認証・権限・外部操作が必要な場合、品質ゲートを通せない場合、またはユーザーが明示的に「計画だけ」「PR はまだ出さない」と依頼した場合に限る。
 - 完了報告は、必須品質gateとdocumentation同期が成功し、PR URL、検証結果、残riskを提示できる状態で行う。PRを作成できなかった場合は、blocker、完了済み作業、再開に必要な具体操作を報告する。
 
+## 実行経路
+
+このworkflowには次の2経路があり、Harnessの有無だけでIssue intake、scope、permission、PR提出policyを変えない。
+
+- 通常経路: 従来どおり手順1-8を実行し、手順9で`create-pr`のdefault経路へ委譲する。
+- Harness委譲経路: 手順1-3でintakeを固定した後、手順4-8に相当するreview/fix/verify subflowをportable Harnessまたは任意のpersonal adapterへ委譲する。`READY`なら`publish_exact_candidate`へ進み、blockerならHuman handoffで停止する。
+
+Harness委譲はinstalled skill名に依存しない。Repository内のportable contract、Human承認済みの同一snapshot、personal adapterのいずれから呼び出す場合も、次の入力と出力が一致すれば同じinterfaceとして扱う。Harnessを利用できない、または利用しない場合は通常経路を継続できる。
+
+### Harness delegation interface
+
+委譲前に次を固定する。
+
+- Issueのsource identifier、取得した本文と全comment、取得時点のrevisionまたはcontent hash
+- acceptance criteria、宣言済みscope、非目標
+- base ref、base SHA、作業branch、委譲時点のheadまたはworking tree状態
+- 許可されたfile変更、commit、push、PR更新、外部read/writeのpermission
+- Project instructionと利用可能なcontractのsource identifierまたはsnapshot
+
+Harnessは次のどちらかだけを返す。
+
+- `READY`: exact `base_sha`と`head_sha`、cleanなcandidate、同じtargetに結び付くrequired verification・gate・Final reviewの結果、未解決blockerがないことを返す。
+- blocker: 観測した状態、停止理由、完了済みartifact、無効化したartifact、再開stateと不足inputを返す。仕様判断、scope拡大、利用不能なrequired gate、独立reviewer不在を成功へ読み替えない。
+
+委譲後にIssue、project rule、base SHA、head SHA、scope、permissionのいずれかが変わった場合、受領済み`READY`を失効させる。変更内容をintakeへ反映し、影響するcontext、verification、gate、reviewを再実行して新しいtargetを固定するまでpublishしない。
+
 ## 手順
 
 ### 1. issue を精読する
@@ -34,6 +60,7 @@ GitHub issue を起点に、調査・実装計画・実装・品質ゲート・�
 - 対象ファイル・変更範囲の見込みを明示する
 - テスト方針 (単体テストの追加有無、対象ケース) を明示する
 - 「やらないこと」を明示する — issue の範囲を超える改善案は後述の派生タスク提案に回し、今回のスコープには含めない
+- File変更、commit、push、PR更新、外部read/writeのうち今回許可された操作を明示する。権限が不明な副作用は許可済みと推測しない
 - この宣言は作業開始前の共有であり、ユーザー確認待ちではない。ブロッカーがなければ同じターンで手順 3 へ進む
 
 ### 3. 作業ブランチを作成する
@@ -41,6 +68,8 @@ GitHub issue を起点に、調査・実装計画・実装・品質ゲート・�
 - base ブランチを決める: `develop` があれば `develop`、なければ `main` を優先する
 - base ブランチを pull して最新化する
 - 作業ブランチ名は `<issue番号>/<短い英語スラッグ>` 形式で作る (例: `1378/fix-login-redirect`)
+
+Harnessへ委譲する場合は、ここでHarness delegation interfaceの入力を渡し、手順4-8に相当するsubflowを任せる。Harnessが`READY`またはblockerを返すまでは、呼び出し元が同じtargetへ並行して変更を加えない。`READY`を受け取ったら手順4-8を呼び出し元で再実行せず手順9へ進み、blockerなら指定された再開条件をHumanへhandoffして停止する。
 
 ### 4. 実装する
 
@@ -52,7 +81,8 @@ GitHub issue を起点に、調査・実装計画・実装・品質ゲート・�
 ### 5. 品質ゲートを通す
 
 - プロジェクトの `CLAUDE.md` / `AGENTS.md` に記載されたコマンド (例: `make check`、`npm run lint`、`uv run pytest` 等) で lint / format / 型チェック / テストをすべて通す
-- プロジェクト固有のコマンドが見つからない場合は、リポジトリの `package.json` scripts や `Makefile` から妥当なコマンドを推測して実行する
+- 通常経路でproject固有のコマンドが見つからない場合は、リポジトリの`package.json` scriptsや`Makefile`から変更scopeに妥当なコマンドを特定する
+- Harness委譲経路ではportable contractのfail-closed resolverへ従う。複数候補から変更scopeとの対応を一意に説明できないcommandは推測実行せず、候補と不足根拠をblockerとして返す
 
 ### 6. 実装とドキュメントを同期する
 
@@ -77,8 +107,10 @@ GitHub issue を起点に、調査・実装計画・実装・品質ゲート・�
 
 ### 9. PR を提出する
 
-- Commit分割、commit message、push、PR policyとPR作成は`create-pr` skillに委譲する
-- `create-pr`の共通契約と完了条件を満たし、issueをcloseするkeywordをPR本文へ含める
+- 通常経路では、candidate準備から提出まで`create-pr`のdefault経路へ委譲する
+- Harnessから`READY`を受け取った経路では、同じbase/head SHAを入力として`publish_exact_candidate`だけを実行する。品質gateやdocumentation同期を含むmonolithicなdefault経路を再実行しない
+- `publish_exact_candidate`が不一致を返した場合はPRを作成または更新せず、受領済み`READY`を失効させてHarness delegation interfaceのintakeから再開する
+- どちらの経路も`create-pr`の共通契約と完了条件を満たし、issueをcloseするkeywordをPR本文へ含める
 
 ### 10. 完了報告する
 

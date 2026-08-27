@@ -838,15 +838,15 @@ Fallbackは独立性やcoverageを偽装するために使わない。同じagen
 
 ### 18.1 必須phase interface
 
-Harnessを実装する前に、`issue-to-pr`と`create-pr`の正本は次のdelegation境界を公開しなければならない。Personal skillがない環境ではportable distributionがこのinterfaceのsnapshotを提供し、同じphaseをagentまたはHumanが直接実行できる。Installed skill名ではなく、入力、禁止されたtarget mutation、出力artifactが一致することを要件にする。
+`issue-to-pr`と`create-pr`の正本は次のdelegation境界を公開する。Personal skillがない環境ではportable distributionまたはHuman承認済みのexact contract snapshotから同じphaseをagentまたはHumanが直接実行できる。Installed skill名ではなく、入力、禁止されたtarget mutation、出力artifactが一致することを要件にする。
 
 - `issue-to-pr`: Issue intake、scope、branch、permissionを固定した後、review/fix/verify subflowをHarnessへ委譲する。Harnessから`READY`またはblockerを受け取り、PR提出またはHuman handoffへ戻る。
 - `prepare_candidate`: `create-pr`の品質確認、documentation同期、stage確認、commit分割とmessage規約をstate machineへ個別stepとして公開し、steps 5-7全体を担う。既に確定したsame-target artifactを二重実行せず、各stepの結果またはtarget mutationをHarnessへ返し、最後にcleanなexact candidate SHAを返す。
 - `publish_exact_candidate`: READY済みcandidate SHAとbase SHAを入力にし、fetch後の一致確認、既存remote/PR確認、同じSHAのpush、PR作成または更新だけを行う。File編集、targetを変更し得る品質gate、stage、追加commitは禁止する。
 
-現行の正本はこれらを単一workflowとして記述しており、このphase interfaceはまだ存在しない。`issue-to-pr`には不明なproject commandを推測する経路もあるため、本設計のfail-closed resolverと現行workflowを組み合わせたend-to-end手動運用は認めない。Issue #38が両referenceを更新するまでは、portable baselineをcontext解決のread-only dry-run以外へ使わず、project command、修正、commit、`READY`判定、push、PR作成へ進めない。
+両referenceはIssue #38でこのphase interfaceを実行可能なsemantic contractとして定義した。Harnessを使わない通常経路は後方互換のdefault経路を継続し、Harness経路は`READY`後にmonolithicな`create-pr`を再実行せず`publish_exact_candidate`だけを使う。Target driftは`READY_INVALIDATED`としてpublishせず、Issue/project contextへ戻って新しいtargetのverification、gate、Final reviewを完了する。
 
-Issue #38完了後は、portable、自動、手動のいずれの運用も更新済みphase interfaceを使い、monolithicな`create-pr`を`READY`後に再実行してはならない。Portable contractと既存workflowが衝突する場合に、その場で都合のよい規則を選ばず`EVALUATION_DEFERRED`とする。本Issueは設計文書だけなのでreference自体は変更せず、実行可能化は#38、portable distributionは#39で行う。
+Issue #39でportable distributionを導入するまでは、personal skillがない環境へproject-local entrypointが自動配置されるわけではない。ただし、Humanが本repositoryの両referenceと本設計のexact snapshotをrun-local inputとして承認すれば、installed skillを前提にせず同じphase boundaryを手動実行できる。Portable contractと既存workflowが衝突する場合に、その場で都合のよい規則を選ばず`EVALUATION_DEFERRED`とする。
 
 ### 18.2 実行順
 
