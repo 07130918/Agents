@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -13,12 +12,38 @@ from typing import Any
 
 from factory import RUN_ID, create_location, valid_batch
 
+PROJECT = (
+    Path(__file__).resolve().parents[2]
+    / "codex"
+    / "skills"
+    / "review-remediation-harness"
+)
+
 
 def run_cli(*arguments: str) -> subprocess.CompletedProcess[bytes]:
+    """利用者と同じく、uv経由で公開コマンドを実行する。
+
+    Args:
+        arguments: 公開コマンドへ渡す引数。
+
+    Returns:
+        終了コードと標準入出力を持つ実行結果。
+    """
+
     environment = os.environ.copy()
     environment["PYTHONDONTWRITEBYTECODE"] = "1"
     return subprocess.run(
-        [sys.executable, "-m", "review_harness_artifacts", *arguments],
+        [
+            "uv",
+            "run",
+            "--quiet",
+            "--isolated",
+            "--frozen",
+            "--project",
+            str(PROJECT),
+            "review-harness-artifacts",
+            *arguments,
+        ],
         check=False,
         capture_output=True,
         env=environment,
