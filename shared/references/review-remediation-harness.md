@@ -337,7 +337,7 @@ Fetchのtimeoutまたはtransient failureでは、許可したrefをread-backし
 
 1. `CONTEXT_RESOLVING`: Harness contract、input、target、project context、permission、limitを固定する。
 2. `REVIEW_PENDING`: Fresh Initial reviewerがpopr、generic comprehensive review、任意project lensとrequired gate候補を返す。
-3. CriticalまたはMajorがあれば`CHANGES_REQUESTED`を作り、scope/permission内だけ`FIXING`する。なければ`VERIFYING`へ進む。
+3. `Introduced`または`Exposed`のCritical/Majorがあれば`CHANGES_REQUESTED`を作り、scope/permission内だけ`FIXING`する。なければ`VERIFYING`へ進む。
 4. `VERIFYING`: Working tree targetでrequired verificationを実行する。
 5. `PRECOMMIT_DOCS_PENDING`: `sync-docs-code`を実行する。Mutationがあれば新targetでverificationからやり直す。
 6. `CANDIDATE_COMMIT_PENDING`: `fetch_remote_refs`とcommit permissionを確認し、`prepare_candidate`を使いcleanなcandidate SHAを固定する。
@@ -351,11 +351,11 @@ Targetを変更したstageは`TARGET_MUTATED`相当の結果を返し、影響�
 
 各stageの失敗と差戻しは次のように一意に扱う。
 
-- `REVIEW_PENDING`: CriticalまたはMajorがあれば`change_request`を作って`CHANGES_REQUESTED`、なければ`VERIFYING`へ進む。Targetまたはcoverage不足によるpoprの`Evaluation deferred`は`EVALUATION_DEFERRED`、materialな仕様矛盾による同resultは矛盾Evidenceを保存して`HUMAN_DECISION_REQUIRED`へ進む。
+- `REVIEW_PENDING`: `Introduced`または`Exposed`のCritical/Majorがあれば`change_request`を作って`CHANGES_REQUESTED`、なければ`VERIFYING`へ進む。Targetまたはcoverage不足によるpoprの`Evaluation deferred`は`EVALUATION_DEFERRED`、materialな仕様矛盾による同resultは矛盾Evidenceを保存して`HUMAN_DECISION_REQUIRED`へ進む。
 - `VERIFYING`または`TARGET_VERIFYING`: 信頼済み期待値に結び付く修正可能な失敗は`verification_failure` requestを作って`CHANGES_REQUESTED`へ進む。期待値または仕様が不明なら`HUMAN_DECISION_REQUIRED`、環境、権限、serviceで実行不能なら`VERIFICATION_BLOCKED`へ進む。Commandが許可済みlocal writeでtargetを変更した場合、working tree検証は新targetを固定して`VERIFYING`、candidate検証は`CANDIDATE_COMMIT_PENDING`へ戻る。Base、scope、rule、inputが変わった場合は`CONTEXT_RESOLVING`へ戻る。
 - `PRECOMMIT_DOCS_PENDING`: `PASS`またはsame-targetの`UPDATED`はcandidate準備へ進む。文書を実変更した場合は新targetの`VERIFYING`、project ruleまたはinputを変更した場合は`CONTEXT_RESOLVING`へ戻る。正本矛盾は`HUMAN_DECISION_REQUIRED`、実行失敗または利用不能は`EVALUATION_DEFERRED`にする。
 - `GATES_PENDING`: Same-targetのrequired gate成功は`REREVIEW_PENDING`へ進む。信頼済み期待値に結び付く修正可能な`BLOCKED`は`gate_failure` requestを作って`CHANGES_REQUESTED`へ進む。仕様選択、risk受容、外部副作用判断は`HUMAN_DECISION_REQUIRED`、未実行、実行失敗、利用不能、別targetは`EVALUATION_DEFERRED`にする。許可済みgateがtargetを変更した場合は`CANDIDATE_COMMIT_PENDING`、base、scope、rule、inputを変更した場合は`CONTEXT_RESOLVING`へ戻る。
-- `REREVIEW_PENDING`: Candidate project resultが新しいrequired gateを返した場合はblind artifactを保持して`GATES_PENDING`へ戻る。`New`、`Remaining`、`Regressed`のCriticalまたはMajorがありbudget内ならreview findingを参照する`change_request`を作って`CHANGES_REQUESTED`へ進む。Coverage不足は`EVALUATION_DEFERRED`、仕様矛盾は`HUMAN_DECISION_REQUIRED`、独立性不足は`INDEPENDENCE_BLOCKED`にする。新gateがtargetを変更した場合はblind artifactをinvalidateし、新targetでFinal reviewを最初から行う。
+- `REREVIEW_PENDING`: Candidate project resultが新しいrequired gateを返した場合はblind artifactを保持して`GATES_PENDING`へ戻る。`New`、`Remaining`、`Regressed`のうち、`Introduced`または`Exposed`のCritical/Majorがありbudget内ならreview findingを参照する`change_request`を作って`CHANGES_REQUESTED`へ進む。Coverage不足は`EVALUATION_DEFERRED`、仕様矛盾は`HUMAN_DECISION_REQUIRED`、独立性不足は`INDEPENDENCE_BLOCKED`にする。新gateがtargetを変更した場合はblind artifactをinvalidateし、新targetでFinal reviewを最初から行う。
 
 `CHANGES_REQUESTED`へ入る前にsource review、verification、gate artifactを参照する`change_request`を確定する。Expected behaviorが不明、scopeまたはwrite permission外、次のattemptがlimit超過の場合は`FIXING`へ進まず、それぞれHumanまたは対応blockerへ遷移する。
 
@@ -426,7 +426,7 @@ Fallbackで独立性、coverage、gate成功を偽装しない。
 - Recordまたはevidenceの破損、欠落、未知の追加があれば同じrunへ追記せず停止する。
 - Required verificationとgateがcandidate SHAへ結び付く。
 - ImplementerとFinal reviewerのinstanceが分離され、blind scanの受領artifactが制限されている。
-- Critical/Major 0、poprとgeneric comprehensive coverage Complete、unresolved blockerなしを確認した。
+- `Introduced`または`Exposed`のCritical/Major 0、poprとgeneric comprehensive coverage Complete、unresolved blockerなしを確認した。
 - Retry、scope、permission、cost上限を超えた副作用がない。
 - `READY`後のpush、PR作成、project hookはHarness外の`issue-to-pr`と`create-pr`へ委譲され、Harness permissionを流用していない。
 

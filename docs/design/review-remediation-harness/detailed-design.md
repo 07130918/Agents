@@ -318,8 +318,8 @@ stateDiagram-v2
     CONTEXT_RESOLVING --> EVALUATION_DEFERRED: targetまたは必須capability不足
     CONTEXT_RESOLVING --> HUMAN_DECISION_REQUIRED: source矛盾または仕様input不足
     CONTEXT_RESOLVING --> BUDGET_EXHAUSTED: run-wide budget guard
-    REVIEW_PENDING --> CHANGES_REQUESTED: CriticalまたはMajorあり
-    REVIEW_PENDING --> VERIFYING: CriticalとMajorなし
+    REVIEW_PENDING --> CHANGES_REQUESTED: IntroducedまたはExposedのCritical/Majorあり
+    REVIEW_PENDING --> VERIFYING: Introduced/ExposedのCritical/Majorなし
     REVIEW_PENDING --> EVALUATION_DEFERRED: coverage不足
     REVIEW_PENDING --> HUMAN_DECISION_REQUIRED: materialな仕様矛盾
     REVIEW_PENDING --> BUDGET_EXHAUSTED: run-wide budget guard
@@ -358,12 +358,12 @@ stateDiagram-v2
     GATES_PENDING --> REREVIEW_PENDING: 同じtargetのrequired gate成功
     GATES_PENDING --> CHANGES_REQUESTED: 正本に結び付く修正可能なgate failure
     GATES_PENDING --> HUMAN_DECISION_REQUIRED: gateの採用基準または外部副作用判断が必要
-    GATES_PENDING --> EVALUATION_DEFERRED: gate未実行、失敗、利用不能、別target
+    GATES_PENDING --> EVALUATION_DEFERRED: gate未実行、実行失敗、利用不能、別target、修正可能に分類不能
     GATES_PENDING --> BUDGET_EXHAUSTED: run-wide budget guard
     REREVIEW_PENDING --> READY: READY条件をすべて満たす
     REREVIEW_PENDING --> GATES_PENDING: candidate project resultが新しいrequired gateを要求
     REREVIEW_PENDING --> CONTEXT_RESOLVING: targetまたはinput変更
-    REREVIEW_PENDING --> CHANGES_REQUESTED: CriticalまたはMajorあり、budget内
+    REREVIEW_PENDING --> CHANGES_REQUESTED: IntroducedまたはExposedのCritical/Majorあり、budget内
     REREVIEW_PENDING --> INDEPENDENCE_BLOCKED: fresh reviewerなし
     REREVIEW_PENDING --> EVALUATION_DEFERRED: coverage不足
     REREVIEW_PENDING --> HUMAN_DECISION_REQUIRED: materialな仕様矛盾
@@ -442,7 +442,7 @@ MinorとNitは費用対効果により任意対応または別Issue候補にで�
 - 許可されたfile数またはdiff行数の上限を超える
 - run deadlineまたは利用可能なtoken/cost budgetを超える
 - freshなFinal reviewerを確保できない
-- 必須gateが利用不能、未実行、失敗、または別targetで実行された
+- 必須gateが利用不能、未実行、実行失敗、別target、または修正可能なfailureへ分類できない
 - 未許可の外部副作用が必要
 
 ## 14. Retry、scope、cost budget
@@ -475,7 +475,7 @@ Run開始時のpermission inputまたはdecision recordは次のlimitを持つ�
 CounterとlimitはOrchestratorが`decision` recordのpayloadへ追記し、各副作用の開始前に現在値を確認する。初期toolは値の意味、増加規則、上限到達を判定しない。Remediation cycle、request別attempt、transient retry、paid callの判断はpersonal Harness contractに従い、#51で共通の記録誤りが観測されるまで専用counter engineを実装しない。
 
 - Test failure、review finding、仕様矛盾はtransient failureではない。同じstageをそのままretryせず、対応するstateへ遷移する。
-- Read-onlyまたは安全に再実行できるlocal commandのnetwork timeoutと一時的なtool errorだけを1回retryできる。External writeはidempotency keyがあるか、read-backで未実行を証明できる場合に限る。それ以外のtimeoutは直ちに`HUMAN_DECISION_REQUIRED`とする。
+- Read-onlyまたは安全に再実行できるlocal commandのnetwork timeoutと一時的なtool errorだけを1回retryできる。Harness内の`external_write`はunsupportedであり、自動retryしない。PR作成などの外部writeは`READY`後にHarness外の`create-pr` contractへ委譲する。
 - Token計測をruntimeが提供しない場合は`unsupported`と記録し、cycle、stage retry、deadlineで無制限loopを防ぐ。未計測を無制限と解釈しない。
 - Paid external APIは既定0とする。Humanが金額またはcall数を明示したdecision artifactがある場合だけ増やせる。
 - `allowed_write_paths`、`max_changed_files`、`max_diff_lines`が未設定ならread-only reviewまでは進められるが、自動修正は開始しない。
@@ -646,7 +646,7 @@ Docs gateをFinal reviewより前に置くのは、`mutated_target: true`がrevi
 - Target変更時にtarget依存artifactがinvalidateされる
 - ImplementerとFinal reviewerのactor分離を機械的に確認できる
 - Required verificationまたはgateの失敗、未実行、別targetがREADYにならない
-- CriticalまたはMajorが残るrunがREADYにならない
+- `Introduced`または`Exposed`のCritical/Majorが残るrunがREADYにならない
 - MinorまたはNitだけを理由に無制限loopしない
 - Retry、scope、time、cost、permissionの上限を超えた副作用がない
 - PR提出前のtarget driftを検出し、旧READYを流用しない
