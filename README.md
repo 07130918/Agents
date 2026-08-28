@@ -46,6 +46,8 @@ scripts/apply-to-local.sh
 
 Harnessはrepository instruction、CI、manifest、governing Issueなど、projectが既に持つ正本から必要なcontextを解決します。Harness専用project profileは作らず、必須情報を一意に解決できない場合はHuman承認のrun-local inputで補完するか、fail-closedで停止します。
 
+Harnessの構造化された作業記録は、対象project内ではなく既定で`~/.agents/state/review-harness/`へ保存します。初期toolは`append`とread-onlyな`validate`だけを提供し、JCS、通し番号、過去record参照、正確な根拠bytes、保存後の改変を検証します。State、READY、権限、予算、完全復旧は初期toolで自動判定しません。`~/.agents/state/`配下のruntime stateは、Git管理とこのリポジトリの同期対象外です。
+
 ```bash
 cp templates/AGENTS.md templates/CLAUDE.md <プロジェクトルート>/
 ```
@@ -65,6 +67,7 @@ cp templates/AGENTS.md templates/CLAUDE.md <プロジェクトルート>/
 - archived sessions
 - shell snapshots
 - Serena の project memory (`.serena/`)
+- Review-remediation Harnessのruntime state (`~/.agents/state/`)
 - `tp-management-nippo-insight` を含む `tp-*` の skill / agent / reference
 
 `tp-*` は会社に関する情報を含み得るローカル専用設定です。今後 `tp-` から始まる skill や agent が増えても、この GitHub リポジトリには含めません。

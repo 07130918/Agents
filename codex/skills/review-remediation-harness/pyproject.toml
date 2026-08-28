@@ -1,0 +1,18 @@
+[project]
+name = "review-harness-artifacts"
+version = "1.0.0"
+description = "個人向けレビュー・修正ハーネスの追記型作業記録tool"
+requires-python = ">=3.11"
+dependencies = [
+  "rfc8785==0.1.4",
+]
+
+[project.scripts]
+review-harness-artifacts = "review_harness_artifacts.cli:main"
+
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/review_harness_artifacts"]

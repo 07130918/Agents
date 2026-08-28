@@ -33,7 +33,15 @@ mkdir -p "${LOCAL_CONFIG_ROOT}/.codex/agents" "${LOCAL_CONFIG_ROOT}/.claude/skil
 disable_claude_directory "agents"
 
 rsync -a --delete --exclude 'tp-*.md' "${ROOT}/shared/references/" "${LOCAL_CONFIG_ROOT}/.agents/references/"
-rsync -a --delete --exclude 'tp-*' "${ROOT}/codex/skills/" "${LOCAL_CONFIG_ROOT}/.agents/skills/"
+rsync -a --delete \
+  --exclude 'tp-*' \
+  --exclude '__pycache__/' \
+  --exclude '*.py[cod]' \
+  --exclude '.venv/' \
+  --exclude '.pytest_cache/' \
+  --exclude '.ruff_cache/' \
+  --exclude '.mypy_cache/' \
+  "${ROOT}/codex/skills/" "${LOCAL_CONFIG_ROOT}/.agents/skills/"
 rsync -a --delete --exclude 'tp-*.toml' "${ROOT}/codex/agents/" "${LOCAL_CONFIG_ROOT}/.codex/agents/"
 rsync -a --delete --exclude 'tp-*' "${ROOT}/claude/skills/" "${LOCAL_CONFIG_ROOT}/.claude/skills/"
 rsync -a --delete --exclude 'tp-*' "${ROOT}/claude/skills.disabled/" "${LOCAL_CONFIG_ROOT}/.claude/skills.disabled/"
