@@ -46,6 +46,8 @@ scripts/apply-to-local.sh
 
 Harnessはrepository instruction、CI、manifest、governing Issueなど、projectが既に持つ正本から必要なcontextを解決します。Harness専用project profileは作らず、必須情報を一意に解決できない場合はHuman承認のrun-local inputで補完するか、fail-closedで停止します。
 
+初めて仕組みを確認する場合は、図解付きの[レビュー・修正ハーネスの全体像](docs/design/review-remediation-harness/README.md)から読み始めてください。判断理由、全状態、記録形式は同じディレクトリの詳しい設計へ分離しています。
+
 Harnessの構造化された作業記録は、対象project内ではなく既定で`~/.agents/state/review-harness/`へ保存します。初期toolは`append`、read-onlyな`validate`、保存済みtarget fingerprintを現在のlocal repositoryと比較する`check-target`を提供します。State、READY、権限、予算、完全復旧、新しいtargetの採用は自動判定しません。`~/.agents/state/`配下のruntime stateは、Git管理とこのリポジトリの同期対象外です。
 
 ```bash

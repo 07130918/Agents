@@ -1,9 +1,9 @@
 # 独立reviewerを組み込むレビュー・修正ハーネス設計
 
-- status: Issue #34のv1採用案、Issue #39のpersonal Harness配置、Issue #40のprofileless-only改訂
+- status: Issue #34のv1採用案、Issue #39のpersonal Harness配置、Issue #40のprofileless-only改訂、Issue #49/#50の最小tool実装
 - scope: orchestration contractの設計
 - issue: https://github.com/07130918/Agents/issues/34、https://github.com/07130918/Agents/issues/39、https://github.com/07130918/Agents/issues/40、https://github.com/07130918/Agents/issues/41
-- last updated: 2026-08-27
+- last updated: 2026-08-28
 
 ## 1. 目的
 
@@ -663,7 +663,7 @@ Issue #40の成果物は設計、実行contract、採否decisionだけとし、r
 - CLI非依存のpersonal/global運用契約: `shared/references/review-remediation-harness.md`
 - Codex wrapper: `codex/skills/review-remediation-harness/SKILL.md`。Personal contractへの薄い起動adapterとする
 - #49 (完了): Candidate worktree外の軽量な作業記録writer/validator。JCS、sequence、過去record参照、exact evidence、改変検出だけを所有する
-- #50 (実装中): Popr fingerprintを再定義せず、`current_branch|commit_range`のlocal targetだけを確認して#49へ結果を追記する。PR、staged-only、external input、generation管理を含めない
+- #50 (完了): Popr fingerprintを再定義せず、`current_branch|commit_range`のlocal targetだけを確認して#49へ結果を追記する。PR、staged-only、external input、generation管理を含めない
 - #51: #49と#50を使うprofileless再pilot。Pilot evidenceはproject mainへ恒久commitしない
 - Claude Code wrapper: ユーザーが明示的に有効化を承認した場合だけ`claude/skills/`へ追加
 - Claude Code subagent: 現在の無効化方針を変更する別ADRと比較評価なしには追加しない
