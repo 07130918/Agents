@@ -1,6 +1,6 @@
 [project]
 name = "review-harness-artifacts"
-version = "1.0.0"
+version = "1.1.0"
 description = "個人向けレビュー・修正ハーネスの追記型作業記録tool"
 requires-python = ">=3.11"
 dependencies = [

@@ -49,7 +49,7 @@ class ValidationResult:
         """コマンドが返す小さなJSONへ変換する。
 
         Args:
-            status: `appended`または`valid`。
+            status: `appended`、`valid`、`target_checked`のいずれか。
 
         Returns:
             状態、件数、次の操作、保存先を持つ辞書。
