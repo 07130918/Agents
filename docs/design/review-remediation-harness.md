@@ -92,7 +92,7 @@ Profileless generic pilot #42では、personal Harnessからの起動、reposito
 
 | 候補 | 判断 | 保護するもの、または不採用理由 | Follow-up |
 | --- | --- | --- | --- |
-| Append-only artifact writer/validator | 採用 | Canonical JSON、hash、共通ref、required payload、DAG、manifest chain、exact evidence | #49 |
+| Append-only artifact writer/validator | 採用 | Canonical JSON、hash、過去record参照、連続sequence、exact evidence | #49 |
 | Deterministic target checker | 採用 | Popr fingerprintとinput/contract/project ruleのdrift、generation、invalidation | #50 |
 | 最小自動化後のprofileless再pilot | 採用 | Valid artifact、resume、READYまたは根拠付きblockerの実証 | #51 |
 | Harness専用project profileとauthoring支援 | 不採用 | 既存正本との二重管理と更新忘れによるdriftを生む | なし |
@@ -100,7 +100,9 @@ Profileless generic pilot #42では、personal Harnessからの起動、reposito
 | Permission allowlistの自動拡張 | 不採用 | Adjacent testを含めてもscope判断を自動化できないためrun単位でHumanが固定する | なし |
 | Security triggerの独自rule engine | 不採用 | Base側policyまたはHumanを正本とし、project固有ruleをpersonal Harnessへ埋め込まない | なし |
 
-#49と#50はfull runnerを作らず、保存と検証のdeep interfaceだけを提供する。#51の結果で不足が観測されるまで、それ以外の自動化を追加しない。
+#49は保存した事実の改変、参照切れ、根拠漏れだけを防ぎ、#50は保存済みtargetと現在値を比較する。State、READY、permission、budget、gateの意味は初期toolへ実装せず、#51の結果で不足が観測されるまで自動化を追加しない。
+
+2026-08-28の再確認では、PR #53の初回実装が状態機械、完全復旧、security adapter、budgetまで機械化して16,000行を超えたため、pilotで観測した失敗に対して過剰と判断した。初期版は理解、変更、試験、削除が容易な小ささも完了条件とし、同PRで大幅に縮小する。
 
 ## 4. 正本と非重複
 
@@ -135,7 +137,7 @@ Harnessはpersonal/global skillとして利用し、上表のcontractはAgents�
 
 | Role | 入力 | 所有する責務 | 出力 | 禁止事項 |
 | --- | --- | --- | --- | --- |
-| Orchestrator | Issue、run manifest、personal Harness contract、project context、各stage artifact | state遷移、target照合、budget、permission、retry、resume、actor分離 | 更新済みrun manifest、次stage | findingの捏造、専門gateの代行、gradeの上書き |
+| Orchestrator | Issue、run record、personal Harness contract、project context、各stage result | state遷移、target照合、budget、permission、retry、resume、actor分離 | 追記済みrecord、次stage | findingの捏造、専門gateの代行、gradeの上書き |
 | Initial reviewer | target ref、project context、要件と規約 | Popr、generic comprehensive review、coverage、project candidateの収集 | popr互換result、generic risk result、required gates | code修正、外部副作用、scope拡大 |
 | Implementer | change request、remediation plan、許可されたscope | 最小修正と必要なtest追加 | 変更、requestごとの対応記録 | finding資格やseverityの自己変更、許可外pathの変更 |
 | Tester | candidate snapshot、project contextのverification command | command実行、結果とobservable failureの記録 | verification artifact、verification failure | 失敗を推測でPASSにする、仕様判断 |
@@ -178,75 +180,38 @@ Codexでfresh subagentを使える場合は、過去会話をforkせず、必要
 
 ## 8. Artifact契約
 
-### 8.1 形式と保存先
+### 8.1 長期の意味契約と初期toolの境界
 
-- Agentが生成するcanonical run artifactはJSONとする。曖昧な型変換を避け、将来のvalidatorとCIで同じ内容を検証できるためである。
-- Markdownはgoverning contract、PR本文、human向けreportに使えるが、run stateとresumeの正本にしない。
-- Run artifactはcandidate worktree外のharness管理storeへ保存する。既定のruntime state rootは`~/.agents/state`、論理pathは`<runtime_state_root>/review-harness/<repository_id>/<run_id>/`とし、`repository_id`はshared referenceのrepository identity inputから決定的に導出する。Testまたは明示的なrun-local隔離だけ`--state-root`で変更できる。Stage完了後のartifactは上書きせずappend-onlyにする。
-- Canonical ledgerへのcommit pointはManifest headのCAS更新とし、single-writerのimmutable transaction descriptorからだけcrash recoveryする。Head未到達のcontent-addressed objectはartifact/lifecycleへ昇格させない。Crash、fork、invalid latestを古いvalid Manifestへのrollbackで隠さない。Exact protocolとpath grammarは実行正本へ集約する。
-- Personal Harness wrapper/referenceはrun artifactではないが、実際に読み込んだpath、capability identity、`declared_version`、capability revision、content hashを`input_snapshot`へ固定する。Required capabilityのexact identityとversion有無のunionはshared referenceを正本とする。
-- Storeへappendできるのは`write_run_store`を持つOrchestratorだけとする。各roleはresultを返し、Orchestratorがruntime由来のproducer metadata、hash、sequenceを付けて保存する。Implementerとcandidate processにはstoreの書込権限を与えない。
-- Artifact tool (#49)はpersonal Codex skill配下へ配置する。`canonicalize`、`append`、read-only `validate`、書込みを伴う`recover`へ責務を分け、Full runner、state選択、agent起動、target drift取得は含めない。Tool-owned batch、descriptor、commit markerのexact schemaとPOSIX durability要件はshared referenceを正本とする。
-- Writer/validatorは保存済みfingerprintとattachmentの構造・hash bindingを検証するが、poprのtarget意味論やcurrent repositoryからの再取得を複製しない。#50のtarget checker導入前は、writer/validator単独の成功をexact targetまたはREADYの保証にしない。
-- Transition Evidenceの`git_object` sourceは#49でobject IDと内部refを検証し、HEAD treeのpath/blob bindingは#50がread-only Git inspectionで照合する。Popr fingerprintへclean tree全entryを複製しない。Run storeにraw bytesを持つ`target_attachment`は#49で完全に検証する。
+Harness全体では、target、input、review、remediation、verification、gate、decisionを追跡し、READYやblockerを同じtargetへ結び付ける。一方、#49の初期toolはその意味を判定せず、保存したrecordと根拠bytesが後から変わっていないことだけを保証する。
 
-会話内だけのstateはresumeできず、PR commentだけのstateはPR作成前に使えず外部APIにも依存するためcanonical storeにしない。PRへはREADY判定と主要artifactのhashを要約できるが、PR本文をrun stateとして読み戻さない。Run storeはGit管理、local設定同期、candidate PRの対象外とし、秘密情報、会話全文、agentの内部思考を保存しない。
+この分離により、長期の状態機械を設計として保持しながら、pilotでまだ実証していないstate transition、lifecycle、permission、budget、independence、security policyを初期実装へ先回りして固定しない。
 
-### 8.2 共通envelope
+### 8.2 形式と保存先
 
-Schema 2.0のexact envelope、共通ref、path grammar、lifecycle、DAG、nullable union、transaction protocolは`shared/references/review-remediation-harness.md`の「Artifactを保存する」を唯一の実行正本とする。本設計では次のinvariantだけを所有する。
+- 作業記録はJSON、stdout、stderr、patch、入力本文などの根拠はraw bytesで保存する。
+- Run storeはcandidate worktree外の`~/.agents/state/review-harness/<repository_id>/<run_id>/`を既定とし、Git管理とlocal設定同期の対象外にする。
+- 公開commandは`append`とread-onlyな`validate`だけにする。初期版に`canonicalize`、`recover`、state選択commandを設けない。
+- Record fileは0から連続するsequence、record ID、JCS bytesのSHA-256をfile名に持つ。Evidence objectはraw bytesのSHA-256をfile名に持つ。
+- Append要求はrecord ID、type、日時、過去record ID、payloadだけを渡す。Sequence、参照先hash、evidence hashと長さ、保存pathはtoolが導出する。
+- 同じrecord ID、sequence、保存pathを上書きしない。破損、不完全な書き込み、未知fileを検出したrunへ追記しない。
 
-- Target依存artifactは1つのexact target、governing input、permission setへ結び付け、別generationの成功をREADYへ流用しない。
-- Manifestのenvelopeとpayloadはtarget ref、target generation、input ref集合をexactに一致させ、未解決targetでは両target refとgenerationをnullにする。
-- Governing inputはauthority、revision、exact contentをimmutable snapshotへ固定し、未採用recordを暗黙に仕様へ昇格させない。
-- Artifact参照はRoot、Evidence、Stage、Manifestの非循環layerを守り、Final reviewerのblind scan確定前にprevious findingやremediationを開示しない。
-- Permission変更は新しいgoverning inputとgenerationを作り、`CONTEXT_RESOLVING`から再評価する。
-- 不在、未解決、conflictは状態付きで表し、空objectや架空refで成功扱いしない。
-- `historical|invalidated`はREADY根拠へ復帰させず、Manifest headから到達しないobjectをartifactとして扱わない。
+Exact schema、record type、必須evidence label、path grammar、実行例は`shared/references/review-remediation-harness.md`の「Artifactを保存する」を正本とする。
 
-### 8.3 Target artifact
+### 8.3 参照と根拠
 
-Targetのfieldと意味はpoprのtarget fingerprint契約、Harness metadataとtransition payloadはshared referenceを正本とする。HarnessはsnapshotをJSON化するだけでfingerprint規則を再定義せず、generation metadataをpopr fingerprintの構成要素へ混ぜない。
+初期toolのreferenceは同じrunの確定済み過去recordだけを指し、record ID、sequence、内容hashを持つ。未来、自分自身、別run、欠落record、hash不一致を拒否する。これにより非循環なrecord chainを保護するが、target generationやartifact lifecycleの意味までは判断しない。
 
-Generationはrun内で0から開始し、targetまたはgoverning inputが変わるたびに1だけ増やす。飛越しと番号の再利用を許さず、exact integerの範囲と`target_check`の検証規則はshared referenceを正本とする。
+`input_snapshot`は`content`、`remediation`は`patch`、`verification`と`gate`は`stdout`と`stderr`の根拠fileを必須にする。空出力も長さ0のbytesとして保存し、textとbinaryでhash手順を変えない。これらは#42で実際に起きた本文、patch、command出力の保存漏れだけを保護する最小集合である。
 
-Dirty working treeをtargetに含める場合、Git objectから復元できないraw bytesをtarget確定時にrun storeへimmutable attachmentとして先に保存する。Attachmentはtarget metadataのpath、mode/type、length、hashで固定し、独立Evidence nodeにはしない。保存不能または保存後のhash不一致はtarget unresolvedとして停止する。これにより後から削除・変更されたuntracked、binary、symlinkもbefore contentを復元でき、RootからEvidenceへの逆参照やEvidence間参照を増やさずtransitionを証明できる。
+### 8.4 Targetとstage payload
 
-Staged-onlyまたはindex指定targetでは、popr contractが固定したenvironment/argvで生成したcached diffのraw bytesもtarget-owned attachmentへ保存する。Raw bytesからrepository object formatのGit blob OIDを再計算し、fingerprintの`index_diff.content_oid`へbindする。Working tree attachmentも同様にraw bytesからGit blob OIDを再計算し、同じpath/mode/typeのfingerprint entryへ一対一でbindする。Index diffだけが変わるgeneration transitionもbefore/after attachmentを持つcanonical deltaを必須にし、hash値だけの差分へ縮退させない。
+Target fingerprintの構成要素と意味はpoprが所有する。初期toolは`target`または`target_check`のpayloadをJSONとして保存できるが、その意味、Git object ID、tree、index、working treeとの一致を検証しない。Current repositoryからの再取得とdrift判断は#50が所有する。
 
-Personal Harness wrapper/referenceは`input_snapshot`としてpath、capability name、`declared_version`、revision、content hashを固定し、実際に使用したskillだけをpoprの既存`skill_versions`へ記録する。Instructionとpolicyのhashは`project_rules`と`input_refs`でtarget/input consistencyへ含める。
-
-Initial reviewでは明示されたworking treeを含められる。READY候補とFinal reviewでは`working_tree.status == clean`、`working_tree.mode == excluded`、`head.sha == candidate commit`でなければならない。
-
-### 8.4 Stage payload
-
-Schema 2.0のartifact type別required payload、conditional ref、Manifest lifecycle wrapperの実行正本は`shared/references/review-remediation-harness.md`の「必須payloadとcheckpoint」とする。本設計は同じfield一覧を複製せず、各artifactが保護するinvariantだけを記録する。
-
-| Artifact群 | 保護するinvariant |
-| --- | --- |
-| Inputとtarget | Governing input、exact target、project rule、contract revisionをimmutableに固定する |
-| Evidence | Command output、diff、report、environmentをhash付きで保存し、切詰めを完全な証拠と誤認しない |
-| Target check | `unchanged`、`changed`、`unresolved`を区別し、観測不能をdriftへ丸めない |
-| Reviewとremediation | Finding、change request、最小修正、実際の変更証拠をstable IDで接続する |
-| Verificationとgate | Commandごとの完全なstdout/stderr、target mutation、decision policyをsame-targetで照合する |
-| Context decision | Source of truth、scope、lens、command、gate、risk、permission、limitの完全性と根拠を検証する |
-| Manifest | Current target/input、artifact lifecycle、state、counter、resume先、blockerを追記型revisionで復元する |
-
-`completeness: truncated`のevidenceはHuman向けpreviewに限定し、READYまたはresumeの根拠へ使わない。完全なbytesを保存する場合は別の`full|redacted` artifactにし、Stageからそのartifactを参照する。
-
-Working tree manifestのtracked/untracked file追加、変更、削除、file modeまたはtype変更は、text、binary、symlinkを同じcanonical manifest deltaで記録する。Before/afterは`absent|present`のdiscriminated unionとし、file追加・削除、空file、取得失敗を区別する。Immutable Git objectから再取得できないpresent contentは、旧/new target所有のraw attachmentへtarget ID、run directory相対path、hashで接続し、binary bytesをtext化しない。新generationのManifestは、差分を観測したtarget checkまたはtargetを変更したStageをtransition causeとして参照する。
-
-`change_request` union、stable request ID、expected behavior/raw Evidence ref、`remediation.decision` enumとseverity制約はshared referenceを唯一の実行正本とする。本設計では、観測済みfailureだけをimmutableな期待値へ接続し、仕様不明を修正requestへ変換しないinvariantだけを所有する。Remediationを再試行した場合は全attemptをappend-onlyでFinal reviewへ残し、最新のexact 1件だけをcurrentかつREADY判定対象にする。
+Review、change request、remediation、verification、gate、decisionのpayloadはpersonal Harness contractに従ってOrchestratorが作る。初期toolはpayloadをJSON objectとして保持するだけで、severity、status、READY、blocker、permission、budget、independence、security policyを再判定しない。
 
 ### 8.5 Required gate result
 
-各`required_gates`は`gate_name`、`trigger_reason`、`accepted_decision_statuses`、`target_ref`を持ち、accepted statusは成功を表す`PASS|UPDATED`だけに制限する。同名gateでもtarget refが違えば未実行として扱う。Gate artifactは実行したrequired capabilityのname、declared version、revision、hashを同じinput exact 1件へ結び、`pre target check < Evidence < post target check < gate`の順序を満たす。Exact payload、native statusとproject/Human policyの分離、security-audit adapterはshared referenceを唯一の実行正本とする。
-
-`sync-docs-code`の`decision_status`と`mutated_target`は直交する。`UPDATED`は必要なdocumentation更新がrunまたはcandidateに含まれるnative status、`mutated_target`は当該gate実行がtarget contentを実際に変更したかを表す。Docs gateは`PASS|UPDATED`を許容できるが、`mutated_target: true`なら新しいtargetを固定してverificationとrequired gateを再実行する。
-
-Context resolutionはproject reviewを`required|not_required`へgrounding ref/hash付きで確定する。`required`ならInitial/Blind reviewともproject coverageを`Complete`かつ結果非空にし、`not_required`ならcoverageを`not_required`かつ結果空にする。Final reconciliationの各current findingはHarness-owned `blocking: bool`を持ち、`blocking_finding_ids`をtrueのexact集合とする。各reviewのblocking findingはreview finding、change request、FIXING遷移、current final remediation、reconciliation Evidenceへ同じstable IDで接続し、Final reviewにcurrent blockerがあればREADYにしない。
-
-`security-audit`は監査reportとscoreを所有し、Harnessはseverity thresholdやrisk基準を新設しない。監査結果を機械的に採用できるのはbase側governing policyが完全な判定規則を持つ場合だけとし、それ以外はHuman判断へ送る。監査完了、finding 0件、scoreだけを自動PASSへ読み替えない。
+Required gateの選定、成功status、target一致、`sync-docs-code`の`PASS|UPDATED`、security-auditのHuman判断はHarnessの意味契約として残す。初期toolはgateの完全なstdout/stderrを保存し、改変と欠落を検出するだけである。Gate結果をREADYへ採用できるかはOrchestratorとHumanが判断し、toolの`validate`成功をgate成功へ読み替えない。
 
 ### 8.6 Targetとinputのconsistency checkpoint
 
@@ -264,7 +229,7 @@ Orchestratorはtarget依存stageの開始前と完了後、READY判定前、base
 
 `target_check`は保存済みtargetと再取得値を比較する。全componentを観測でき差分がなければ`unchanged`、全componentを観測でき差分があれば`changed`、1件でも再取得または比較できなければ`unresolved`とする。`unresolved`ではcomponent、理由、観測証拠refを記録し、`changed`へ丸めず旧artifactを再利用しない。Target依存stageが`local_write|repository_write`を実行した場合も必ずcheckする。Tracked content、対象に含むuntracked content、file modeが変わった場合は、そのstageの成功結果をREADYへ使わない。Pre-commit `VERIFYING`で許可された変更なら新しいworking-tree targetを固定して`VERIFYING`を再実行し、`PRECOMMIT_DOCS_PENDING`を飛ばさない。Candidate commit後の`TARGET_VERIFYING`または`GATES_PENDING`で許可された変更なら`CANDIDATE_COMMIT_PENDING`へ戻して新commitを固定する。想定外の変更または`unresolved`は`EVALUATION_DEFERRED`にする。
 
-各generationは実行判定を決めるcurrent input集合をManifestに固定し、通常のtarget依存stageは同じ集合をenvelopeの`input_refs`へ持つ。Input変更を観測するtransition `target_check`はexpected旧集合をenvelopeに、observed新集合をpayloadに分け、次generationのManifestが確定するまで新集合を通常stageへ流用しない。Exactな対象input、順序、validator規則はshared referenceを正本とする。
+各generationは実行判定を決めるcurrent input集合をtargetまたはdecision recordのpayloadへ固定する。Input変更を観測する`target_check`はexpected旧集合とobserved新集合をpayloadで区別し、新generationのtargetが確定するまで新集合を通常stageへ流用しない。初期toolはこの意味を判定せず、#50のtarget checkerとOrchestratorが照合する。
 
 Candidate準備で`git fetch`した後はbase ref SHAとcandidate targetのbase SHAも比較する。Base、head、scope、capability revision、project rules、input refsのいずれかが変わればREADYを作らず、`CONTEXT_RESOLVING`からreview、verification、gate、Final reviewをやり直す。Harnessは`READY`またはblockerを返した時点で終了し、push、PR作成、project hook、提出結果の再開を所有しない。
 
@@ -334,7 +299,7 @@ Run開始時に次のpermissionを個別に記録する。
 
 IssueからPRまで明示された依頼でも、Harnessが使うのは現在scopeのcommitとcandidate準備に必要な限定fetchまでとする。Push、PR作成、project hookは`READY`後に呼び出し元が既存の`create-pr` contractで実行し、Harness permissionを流用しない。Verificationまたはgate commandがexternal writeを必要とする場合は本contractのHarnessで実行せず`EVALUATION_DEFERRED`にする。
 
-`fetch_remote_refs`は`read_repository`または`run_local_commands`へ含めない。実行前にrepository identity、remote名とURL、base source/destination refspec、`prune`の有無、credential scope、timeoutをrun manifestへ固定する。Fetchは`--no-tags`かつ自動maintenance無効で実行し、許可するlocal writeはGit object database、fetch中のlock/temporary metadata、`FETCH_HEAD`、宣言したremote-tracking ref namespaceだけとする。Working tree、index、local branch、tag、Git configへの変更は禁止する。Permissionがfalseまたはallowlist外なら`HUMAN_DECISION_REQUIRED`、network、credential、Git capabilityが利用不能なら`EVALUATION_DEFERRED`にする。
+`fetch_remote_refs`は`read_repository`または`run_local_commands`へ含めない。実行前にrepository identity、remote名とURL、base source/destination refspec、`prune`の有無、credential scope、timeoutをpermission inputまたはdecision recordへ固定する。Fetchは`--no-tags`かつ自動maintenance無効で実行し、許可するlocal writeはGit object database、fetch中のlock/temporary metadata、`FETCH_HEAD`、宣言したremote-tracking ref namespaceだけとする。Working tree、index、local branch、tag、Git configへの変更は禁止する。Permissionがfalseまたはallowlist外なら`HUMAN_DECISION_REQUIRED`、network、credential、Git capabilityが利用不能なら`EVALUATION_DEFERRED`にする。
 
 Fetchがtimeoutまたはtransient failureになった場合は、許可済みrefをread-backし、要求objectとref更新が完了済みなら成功として再実行しない。未完了を確認でき、同じallowlistとexecution keyを使う場合だけtransient retry budget内で1回再実行できる。Fetch後のbase/ref driftは`TARGET_MUTATED`として`CONTEXT_RESOLVING`へ戻し、旧artifactを流用しない。
 
@@ -429,7 +394,7 @@ stateDiagram-v2
 
 Blocker stateからの再開は、既存runのlimitを黙って増やさない。Humanがscopeまたはpermissionを変更して同じrunを再開する場合はdecisionと新input snapshotを追加し、`CONTEXT_RESOLVING`へ戻る。`BUDGET_EXHAUSTED`だけは現在runのterminal stateとし、budget変更後の継続はprior runを参照する新しい`run_id`で開始する。`EVALUATION_DEFERRED`からは常に`CONTEXT_RESOLVING`へ戻し、target、Issue、personal Harness contract、project contextのinput hashを再固定してからreviewを再開する。
 
-Manifestの`state`、`resume_state`、`blocker`はshared referenceのdiscriminated unionを正本とする。通常進行stateと`READY`はblockerを持たず、`READY`と`BUDGET_EXHAUSTED`は同じrunへresumeしない。各blockerは分類、原因Stage、観測Evidence、必要なHuman action、許可されたresume先を一組で固定し、自由文のlogから再開先を推測しない。
+State、resume state、blockerはHarnessの意味契約として`decision` recordのpayloadへ保存する。通常進行stateと`READY`はblockerを持たず、`READY`と`BUDGET_EXHAUSTED`は同じrunへresumeしない。各blockerは分類、原因record、観測Evidence、必要なHuman action、許可されたresume先を一組で固定し、自由文のlogから再開先を推測しない。初期toolは組み合わせの正しさを判定しない。
 
 9.1の必要条件を満たして`context_status: resolved`になったrunだけが通常の`REVIEW_PENDING`以降へ進める。必須fieldを解決できないrunは`CONTEXT_RESOLVING`からreviewへ進めず、不足情報またはcapabilityに対応するblockerを返す。
 
@@ -444,7 +409,7 @@ Run-wide budget guardは全自動継続stateでstage開始前と完了後に評�
 - Immediate resource limit: deadline到達、観測済みtoken超過、または次のpaid external call予約がbudgetを超える場合は、その時点で停止する。
 - Attempt limit: remediation cycle、same-request attempt、transient retryは、次の試行開始前に`counter >= max`なら追加試行を拒否する。`counter < max`なら先にcounterを増やしてその試行を開始し、対応するverificationまたはre-reviewまで完了させる。試行完了時にcounterがmaxと等しいだけでは停止せず、結果が未解消でさらに試行が必要になった時点で`BUDGET_EXHAUSTED`にする。
 
-Guardが停止を決めたら、Orchestratorは先に`decision_kind: limit_observation`のStage artifactへlimit、`hard_exceeded|next_reservation_rejected|next_attempt_rejected`の`limit_event`、観測値、counter snapshot、直前manifestのrevisionとhashを確定する。Classification、limit、event、keyed counter、観測値のexact対応はshared referenceを正本とする。次のrun manifest revisionがそのartifactを`transition_cause_ref`として`BUDGET_EXHAUSTED`へ遷移し、直前snapshotからcounterを変更しない。Manifest自身または別Manifestを`artifact_refs`へ含めず、Manifest間の接続には直前revisionだけを指す`previous_manifest_ref`を使う。`READY`はterminalであり、提出時にtargetまたはinput不一致が判明した場合は呼び出し元が新しいHarness runを開始する。
+Guardが停止を決めたら、Orchestratorは`decision_kind: limit_observation`のrecordへlimit、`hard_exceeded|next_reservation_rejected|next_attempt_rejected`の`limit_event`、観測値、counter snapshotを保存し、`BUDGET_EXHAUSTED`へ遷移する。初期toolはこの意味を判定しない。`READY`はterminalであり、提出時にtargetまたはinput不一致が判明した場合は呼び出し元が新しいHarness runを開始する。
 
 ## 13. READY条件と自動loop停止条件
 
@@ -486,7 +451,7 @@ MinorとNitは費用対効果により任意対応または別Issue候補にで�
 
 ## 14. Retry、scope、cost budget
 
-Run manifestは次のlimitを持つ。
+Run開始時のpermission inputまたはdecision recordは次のlimitを持つ。
 
 ```json
 {
@@ -511,7 +476,7 @@ Run manifestは次のlimitを持つ。
 }
 ```
 
-Counterはappend-onlyなrun manifest revisionで更新する。各state遷移も`previous_state`、`state`、stable `transition_id`、`transition_cause_ref`を持つ新revisionとして保存し、更新済みcounterと遷移を1つの確定単位にする。Budget停止だけは先行するimmutableな`limit_observation`をcauseとし、その次のmanifest revisionでcounter snapshotとの一致を検証して遷移する。途中で停止したobservationは同じtransaction descriptorのwrite setとexpected headが一致する場合だけcommitを再開し、不一致のuncommitted objectをhistorical artifactへ昇格させない。Remediation cycleは`FIXING`へ入る直前、request別attemptは対象requestの最初のworktree変更前、transient retryは再実行前に増やす。Attempt counterの増加は許可済み試行の予約であり、その試行の検証完了前に上限到達として停止しない。Crash時に予約を未消費へ戻さず、同じexecution keyを重複実行しない。Local verification/gateのexecution keyは`stage`、target hash、input set hash、command/tool IDから作り、targetやinputが変わった実行と混ぜない。Tokenとpaid callはruntimeの観測値を保存し、paid callは予算を先に予約してから実行する。Counter更新を保存できなければ副作用を開始しない。
+CounterとlimitはOrchestratorが`decision` recordのpayloadへ追記し、各副作用の開始前に現在値を確認する。初期toolは値の意味、増加規則、上限到達を判定しない。Remediation cycle、request別attempt、transient retry、paid callの判断はpersonal Harness contractに従い、#51で共通の記録誤りが観測されるまで専用counter engineを実装しない。
 
 - Test failure、review finding、仕様矛盾はtransient failureではない。同じstageをそのままretryせず、対応するstateへ遷移する。
 - Read-onlyまたは安全に再実行できるlocal commandのnetwork timeoutと一時的なtool errorだけを1回retryできる。External writeはidempotency keyがあるか、read-backで未実行を証明できる場合に限る。それ以外のtimeoutは直ちに`HUMAN_DECISION_REQUIRED`とする。
@@ -522,26 +487,26 @@ Counterはappend-onlyなrun manifest revisionで更新する。各state遷移も
 
 ## 15. Failure、resume、idempotency
 
-### 15.1 Failure artifact
+### 15.1 Failure record
 
-失敗は自由文のlogだけで残さず、現在state、失敗分類、target ref、attempt、実行commandまたはtool、終了code、観測Evidence、必要なHuman action、再開条件をrun Manifestと原因Stageへ記録する。既存Stageが完全な値を持たない場合は`decision_kind: blocker_observation`を原因artifactにし、state、resume先、失敗分類、観測Evidence、Human action、再開条件をManifest blockerの対応fieldへbindする。Manifestだけがdecisionへの`cause_ref`を持ち、decision自身へ自己参照を複製しない。秘密情報をartifactへ保存しない。
-
-ただしcanonical ledger自体がinvalidでhead CASのexpected valueを確定できない場合は、そのledgerへblocker Manifestを追記しない。Runtime state rootのledger外へappend-only recovery reportを保存し、観測head、違反invariant、transaction descriptor hash、必要なHuman actionを返して停止する。このreportはartifact、state transition、READY根拠ではなく、同じrunを自動修復または古いrevisionへrollbackする権限を与えない。
+失敗は自由文のlogだけで残さず、`decision` recordのpayloadへ現在state、失敗分類、target ID、attempt、実行commandまたはtool、終了code、必要なHuman action、再開条件を保存する。Commandの完全なstdout/stderr、patch、入力本文は初期toolのevidenceとして保存する。初期toolはこれらの値がHarnessの状態機械に照らして正しいかを判断しない。
 
 ### 15.2 Resume手順
 
-1. Single-writer lock下でimmutable transaction descriptorを検査し、expected/proposed headと全staged/write-set hashが一意に一致するtransactionだけを完了する。不一致、競合、説明不能なuncommitted objectはledgerへ接続せず停止する。
-2. Canonical namespaceの全Manifestとheadを読み、最大の観測済みcommitted revisionがheadと一致する唯一の連続chainであることを確認する。同一revisionの複数file、fork、説明不能なorphan、欠落、飛越し、cycle、partial/invalid latest、head不一致があれば古いvalid revisionへfallbackせず停止する。各Manifestのhash、`state`、`previous_state`、`transition_id`、counter、permission set、Issue/personal contract/project context snapshot、すべてのartifact refのhashを検証する。`artifact_refs`へManifestが含まれていないことも確認する。
-3. External authoritative inputをsourceから再取得し、revisionとcontent hashを照合する。変更されていれば新snapshotを作って`CONTEXT_RESOLVING`へ戻す。
-4. Repository identity、current branch、candidate SHA、working treeを再取得する。
-5. Manifestのcurrent target generationと現在状態が一致するか確認する。不一致なら暗黙に上書きせず新しいgenerationのtargetを固定する。
-6. Current generationで再利用する完了artifactだけが同じtargetと同じinput refsを参照することを確認する。過去generationは`historical|invalidated`として保持し、破損と誤認しない。
-7. `last_completed_stage`を線形cursorにせず、manifestの`state`と確定済みtransitionから状態機械を再評価する。完了条件を満たすartifactは再生成しない。
+1. `validate`で全recordのJCS、sequence、参照、evidence bytesを再検証する。
+2. 破損、欠落、未知file、未参照objectがあれば同じrunへ追記せず停止する。初期toolはrollback、repair、自動crash recoveryを行わない。
+3. Personal Harness contract、Issue、project context、permissionを再取得し、保存済みinput recordと照合する。
+4. #50導入後はrepository identity、base/head、working tree、inputを再取得し、保存済みtargetとのdriftを確認する。
+5. Targetまたはgoverning inputが変わっていれば、以前のverification、gate、Final reviewを成功扱いしない。
+6. 保存済み`decision`とstage recordからHumanまたはOrchestratorが再開stateを決める。初期toolの`validate`成功だけで自動再開しない。
+
+#51では、この手順で少なくとも1つの代表runをREADYまたは根拠付きblockerまで再開できるか検証する。自動復旧が必要な共通failureを観測した場合だけ、別Issueで最小の復旧範囲を決める。
 
 ### 15.3 Idempotency
 
-- Stage artifactはappend-onlyとし、同じ`artifact_id`を上書きしない。
-- Commit、push、PR作成のidempotencyと提出直前のtarget照合は既存の`create-pr` contractへ委譲する。Harnessが行う最後の照合はterminalな`READY`を呼び出し元へ返す直前であり、返却後の結果を旧runへ追記しない。
+- Recordはappend-onlyとし、同じrecord IDやsequenceを上書きしない。
+- Evidenceはraw bytesのSHA-256で保存し、同じbytesだけを同じobjectとして再利用できる。
+- Commit、push、PR作成のidempotencyと提出直前のtarget照合は既存の`create-pr` contractへ委譲する。
 - Resume時にtargetが変わっていた場合は、以前のverification、gate、Final reviewを成功扱いしない。
 
 ## 16. 正常系とblocker系
@@ -681,7 +646,7 @@ Docs gateをFinal reviewより前に置くのは、`mutated_target: true`がrevi
 ### 19.4 合格条件
 
 - 全artifactが同じrunと正しいtarget refへ接続される
-- Artifact参照がRoot、Evidence、Stage、Manifestの非循環順序を守る
+- 初期toolの参照が同じrunの確定済み過去recordだけを指し、sequenceとhashが一致する
 - Target変更時にtarget依存artifactがinvalidateされる
 - ImplementerとFinal reviewerのactor分離を機械的に確認できる
 - Required verificationまたはgateの失敗、未実行、別targetがREADYにならない
@@ -701,13 +666,13 @@ Issue #40の成果物は設計、実行contract、採否decisionだけとし、r
 
 - CLI非依存のpersonal/global運用契約: `shared/references/review-remediation-harness.md`
 - Codex wrapper: `codex/skills/review-remediation-harness/SKILL.md`。Personal contractへの薄い起動adapterとする
-- #49 (実装済み): Candidate worktree外のappend-only artifact writer/validator。Full runnerやagent起動を含めない
+- #49 (実装中): Candidate worktree外の軽量な作業記録writer/validator。JCS、sequence、過去record参照、exact evidence、改変検出だけを所有し、state、READY、permission、budget、完全復旧を含めない
 - #50: Popr fingerprintを再定義しないdeterministic target checker。#49のartifact interfaceを使う
 - #51: #49と#50を使うprofileless再pilot。Pilot evidenceはproject mainへ恒久commitしない
 - Claude Code wrapper: ユーザーが明示的に有効化を承認した場合だけ`claude/skills/`へ追加
 - Claude Code subagent: 現在の無効化方針を変更する別ADRと比較評価なしには追加しない
 
-この文書は設計判断とinvariantの正本として残す。Shared referenceは実行手順を所有し、本書の理由や比較表をwrapperやprojectへ大量複製しない。Project repositoryへHarness skill、entrypoint、contract snapshot、Harness専用project metadataを配布しない。#51で追加の共通failureが観測されるまでfull runner、CI gate、常設fixture、hook、auto-learningを追加しない。
+この文書は長期の設計判断と意味上のinvariantの正本として残す。Shared referenceは現在実行可能な手順を所有し、本書の長期規則すべてが初期toolで機械検証済みだと表現しない。Project repositoryへHarness skill、entrypoint、contract snapshot、Harness専用project metadataを配布しない。#51で追加の共通failureが観測されるまでfull runner、CI gate、常設fixture、hook、auto-learning、transaction recoveryを追加しない。
 
 ## 21. 受入条件との対応
 

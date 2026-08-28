@@ -1,4 +1,4 @@
-"""作業記録の書き込み、検証、復旧を行うコマンドライン境界を提供する。"""
+"""作業記録を追記または読み取り検証する小さなコマンドを提供する。"""
 
 from __future__ import annotations
 
@@ -9,307 +9,194 @@ from pathlib import Path
 from typing import Any, NoReturn
 
 from . import CONTRACT_VERSION
-from .canonical import (
-    canonicalize,
-    encode_base64,
-    load_json,
-    object_path,
-    parse_json_bytes,
-    sha256_hex,
-)
-from .contract import artifact_common_ref, validate_artifact_shape
-from .errors import ArtifactError, ijson_safe_value
-from .recovery import build_recovery_report, new_report_id, recover_run
-from .safe_fs import StoreLocation, create_run_store, open_run_store
-from .validator import (
-    LedgerSnapshot,
-    active_transaction_ids,
-    descriptorless_transaction_ids,
-    validate_ledger,
-)
-from .writer import append_batch
+from .canonical import canonicalize, load_json
+from .contract import require_identifier
+from .errors import ArtifactError
+from .store import RunStore
 
-DEFAULT_STATE_ROOT = Path("~/.agents/state")
+DEFAULT_STATE_ROOT = "~/.agents/state"
 
 
 class StructuredArgumentParser(argparse.ArgumentParser):
+    """引数誤りも他の失敗と同じ構造化JSONへ変換する。"""
+
     def error(self, message: str) -> NoReturn:
         raise ArtifactError(
-            artifact_id=None,
+            record_id=None,
             field="argv",
             invariant="cli_arguments_must_be_valid",
             detail=message,
+            next_action="usageを確認して引数を修正してください。",
         )
 
 
 def _write_json(value: Any, *, stream: Any = sys.stdout) -> None:
-    stream.buffer.write(canonicalize(ijson_safe_value(value)) + b"\n")
+    stream.buffer.write(canonicalize(value) + b"\n")
     stream.flush()
 
 
-def _snapshot_value(snapshot: LedgerSnapshot, *, status: str) -> dict[str, Any]:
-    return {
-        "status": status,
-        "repository_id": snapshot.repository_id,
-        "run_id": snapshot.run_id,
-        "head": snapshot.head,
-        "manifest_count": len(snapshot.manifests),
-        "artifact_count": len(snapshot.artifacts),
-        "max_sequence": snapshot.max_sequence,
-        "diagnostics": snapshot.diagnostics,
-    }
+def _evidence_mapping(arguments: list[str]) -> dict[str, Path]:
+    result: dict[str, Path] = {}
+    for index, argument in enumerate(arguments):
+        if "=" not in argument:
+            raise ArtifactError(
+                record_id=None,
+                field=f"evidence[{index}]",
+                invariant="evidence_argument_must_use_label_equals_path",
+                detail=f"根拠指定に=がありません: {argument}",
+                next_action="--evidence stdout=/path/to/stdout.log の形式で指定してください。",
+            )
+        label, path_value = argument.split("=", 1)
+        require_identifier(label, field=f"evidence[{index}].label")
+        if not path_value:
+            raise ArtifactError(
+                record_id=None,
+                field=f"evidence[{index}].path",
+                invariant="evidence_path_must_not_be_empty",
+                detail="根拠fileのpathが空です。",
+                next_action="正確なbytesを保存した通常fileを指定してください。",
+            )
+        if label in result:
+            raise ArtifactError(
+                record_id=None,
+                field=f"evidence[{index}].label",
+                invariant="evidence_labels_must_be_unique",
+                detail=f"同じ根拠labelが重複しています: {label}",
+                next_action="1つのlabelにつき1つのfileだけを指定してください。",
+            )
+        result[label] = Path(path_value)
+    return result
 
 
-def _location_from_args(
-    args: argparse.Namespace,
-    *,
-    require_candidate: bool,
-    create_state_root: bool,
-) -> StoreLocation:
-    candidate = Path(args.candidate_worktree) if require_candidate else None
-    return StoreLocation.resolve(
+def _store_from_args(args: argparse.Namespace, *, create: bool) -> RunStore:
+    candidate_value = getattr(args, "candidate_worktree", None)
+    return RunStore(
         state_root=Path(args.state_root),
         repository_id=args.repository_id,
         run_id=args.run_id,
-        candidate_worktree=candidate,
-        create_state_root=create_state_root,
+        create=create,
+        candidate_worktree=(
+            Path(candidate_value) if candidate_value is not None else None
+        ),
     )
-
-
-def _canonicalize_command(args: argparse.Namespace) -> int:
-    """入力JSONを一意な形式へ変換し、保存情報を標準出力へ返す。
-
-    Args:
-        args: `canonicalize`コマンドの解析済み引数。
-
-    Returns:
-        成功時の終了コード0。
-    """
-
-    try:
-        raw = Path(args.input).read_bytes()
-    except OSError as error:
-        raise ArtifactError(
-            artifact_id=None,
-            field=str(args.input),
-            invariant="input_file_must_be_readable",
-            detail=str(error),
-        ) from error
-    value = parse_json_bytes(raw, field=str(args.input))
-    content = canonicalize(value)
-    content_hash = sha256_hex(content)
-    destination = object_path(content_hash)
-    artifact_id: str | None = None
-    if isinstance(value, dict) and "artifact_type" in value:
-        artifact = validate_artifact_shape(value)
-        common_ref = artifact_common_ref(artifact)
-        destination = common_ref["artifact_path"]
-        artifact_id = artifact["artifact_id"]
-    _write_json(
-        {
-            "status": "canonicalized",
-            "artifact_id": artifact_id,
-            "sha256": content_hash,
-            "byte_length": len(content),
-            "destination_path": destination,
-            "canonical_base64": encode_base64(content),
-        }
-    )
-    return 0
 
 
 def _append_command(args: argparse.Namespace) -> int:
-    """検証済みの一括データを、指定した実行記録へ安全に追記する。
+    """作業記録要求と根拠fileを個人環境へ追記する。
 
     Args:
-        args: `append`コマンドの解析済み引数。
+        args: 解析済みコマンド引数。
 
     Returns:
-        成功時の終了コード0。
+        成功時の終了code 0。
     """
 
-    location = _location_from_args(
-        args,
-        require_candidate=True,
-        create_state_root=True,
+    request = load_json(Path(args.record))
+    result = _store_from_args(args, create=True).append(
+        request,
+        _evidence_mapping(args.evidence),
     )
-    batch = load_json(Path(args.batch))
-    with create_run_store(location) as store:
-        snapshot = append_batch(
-            store,
-            repository_id=location.repository_id,
-            run_id=location.run_id,
-            batch_value=batch,
-        )
-    _write_json(_snapshot_value(snapshot, status="appended"))
+    _write_json(result.as_dict(status="appended"))
     return 0
 
 
 def _validate_command(args: argparse.Namespace) -> int:
-    """実行履歴を変更せず検証し、機械的に判別可能な結果を返す。
-
-    処理内容が未確定の残留データや、複数の未完了書き込みも分類するが、
-    復旧処理や報告ファイルの保存は行わない。
+    """保存済みrunを変更せず最後まで検証する。
 
     Args:
-        args: `validate`コマンドの解析済み引数。
+        args: 解析済みコマンド引数。
 
     Returns:
-        正常なら0、不正なら2。
+        正常時の終了code 0。
     """
 
-    location = _location_from_args(
-        args,
-        require_candidate=False,
-        create_state_root=False,
-    )
-    with open_run_store(location) as store:
-        try:
-            snapshot = validate_ledger(
-                store,
-                repository_id=location.repository_id,
-                run_id=location.run_id,
-            )
-        except ArtifactError as error:
-            active: list[str] = []
-            descriptorless: list[str] = []
-            try:
-                active = active_transaction_ids(store)
-                descriptorless = descriptorless_transaction_ids(store)
-            except ArtifactError:
-                pass
-            transaction_id: str | None = None
-            if descriptorless:
-                violation_kind = "transaction_unrecoverable"
-                if len(descriptorless) == 1:
-                    transaction_id = descriptorless[0]
-            elif len(active) > 1:
-                violation_kind = "active_transaction_ambiguous"
-            else:
-                violation_kind = "ledger_corruption"
-                if len(active) == 1:
-                    transaction_id = active[0]
-            report = build_recovery_report(
-                location=location,
-                store=store,
-                error=error,
-                report_id=args.report_id or new_report_id(),
-                transaction_id=transaction_id,
-                violation_kind=violation_kind,
-            )
-            _write_json({"status": "invalid", "report": report})
-            return 2
-    _write_json(_snapshot_value(snapshot, status="valid"))
+    result = _store_from_args(args, create=False).validate()
+    _write_json(result.as_dict(status="valid"))
     return 0
 
 
-def _recover_command(args: argparse.Namespace) -> int:
-    """一意に安全と判断できる書き込みだけを完了し、復旧結果を返す。
-
-    Args:
-        args: `recover`コマンドの解析済み引数。
-
-    Returns:
-        正常または復旧済みなら0、ユーザー対応が必要なら3。
-    """
-
-    location = _location_from_args(
-        args,
-        require_candidate=True,
-        create_state_root=False,
-    )
-    with open_run_store(location) as store:
-        result = recover_run(
-            location=location,
-            store=store,
-            report_id=args.report_id,
-        )
-    if result.snapshot is not None:
-        _write_json(_snapshot_value(result.snapshot, status=result.status))
-        return 0
-    _write_json(
-        {
-            "status": result.status,
-            "report": result.report,
-            "report_path": result.report_path,
-            "report_saved": result.report_saved,
-            "report_save_error": result.report_save_error,
-        }
-    )
-    return 3
-
-
 def build_parser() -> argparse.ArgumentParser:
-    """作業記録コマンドの引数解析器を構築する。
+    """appendとvalidateだけを持つ引数解析器を作る。
 
     Returns:
-        4つの公開コマンドと共通の実行引数を持つ解析器。
+        公開コマンドの引数解析器。
     """
 
     parser = StructuredArgumentParser(prog="review-harness-artifacts")
     parser.add_argument("--version", action="version", version=CONTRACT_VERSION)
     commands = parser.add_subparsers(dest="command", required=True)
 
-    canonicalize_parser = commands.add_parser(
-        "canonicalize",
-        help="Strictly parse JSON and return its canonical bytes metadata",
-    )
-    canonicalize_parser.add_argument("--input", required=True)
-    canonicalize_parser.set_defaults(handler=_canonicalize_command)
-
-    def add_run_arguments(command_parser: argparse.ArgumentParser) -> None:
-        command_parser.add_argument("--state-root", default=str(DEFAULT_STATE_ROOT))
-        command_parser.add_argument("--repository-id", required=True)
-        command_parser.add_argument("--run-id", required=True)
+    def add_run_arguments(command: argparse.ArgumentParser) -> None:
+        command.add_argument("--state-root", default=DEFAULT_STATE_ROOT)
+        command.add_argument("--repository-id", required=True)
+        command.add_argument("--run-id", required=True)
 
     append_parser = commands.add_parser(
-        "append", help="Append one versioned transaction batch"
+        "append",
+        help="作業記録1件と根拠fileを上書きせず追記します。",
     )
     add_run_arguments(append_parser)
     append_parser.add_argument("--candidate-worktree", required=True)
-    append_parser.add_argument("--batch", required=True)
+    append_parser.add_argument("--record", required=True)
+    append_parser.add_argument(
+        "--evidence",
+        action="append",
+        default=[],
+        metavar="LABEL=PATH",
+        help="根拠labelと通常fileを指定します。複数回指定できます。",
+    )
     append_parser.set_defaults(handler=_append_command)
 
     validate_parser = commands.add_parser(
-        "validate", help="Read-only validation of one run"
+        "validate",
+        help="保存済みrunを変更せず再検証します。",
     )
     add_run_arguments(validate_parser)
-    validate_parser.add_argument("--report-id")
     validate_parser.set_defaults(handler=_validate_command)
-
-    recover_parser = commands.add_parser(
-        "recover", help="Complete one uniquely safe transaction"
-    )
-    add_run_arguments(recover_parser)
-    recover_parser.add_argument("--candidate-worktree", required=True)
-    recover_parser.add_argument("--report-id")
-    recover_parser.set_defaults(handler=_recover_command)
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """コマンド引数を実行し、すべての失敗を構造化JSONへ変換する。
+    """公開コマンドを実行し、成功と失敗を常にJSONで返す。
 
     Args:
-        argv: プロセス引数。`None`なら`sys.argv`を使用する。
+        argv: process引数。`None`なら`sys.argv`を使用する。
 
     Returns:
-        実行したコマンドの終了コード。
+        成功時0、入力または保存済みrunが不正な場合2。
     """
 
     try:
         args = build_parser().parse_args(argv)
-        handler = args.handler
-        return int(handler(args))
+        return int(args.handler(args))
     except ArtifactError as error:
-        _write_json({"status": "error", "error": error.as_dict()}, stream=sys.stderr)
+        _write_json(
+            {
+                "status": "error",
+                "summary": error.detail,
+                "next_actions": [error.next_action],
+                "artifacts": [],
+                "error": error.as_dict(),
+            },
+            stream=sys.stderr,
+        )
         return 2
-    except Exception as unexpected:  # noqa: BLE001 - CLI must fail closed with structured JSON.
-        error = ArtifactError(
-            artifact_id=None,
+    except Exception as error:  # noqa: BLE001 - CLI境界ではJSON以外のtracebackを出さない。
+        structured = ArtifactError(
+            record_id=None,
             field="command",
             invariant="unexpected_command_failure",
-            detail=f"{type(unexpected).__name__}: {unexpected}",
+            detail=f"{type(error).__name__}: {error}",
+            next_action="同じrunへ追記せず、入力と保存先を確認してください。",
         )
-        _write_json({"status": "error", "error": error.as_dict()}, stream=sys.stderr)
+        _write_json(
+            {
+                "status": "error",
+                "summary": structured.detail,
+                "next_actions": [structured.next_action],
+                "artifacts": [],
+                "error": structured.as_dict(),
+            },
+            stream=sys.stderr,
+        )
         return 2

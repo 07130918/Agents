@@ -1,7 +1,7 @@
 [project]
 name = "review-harness-artifacts"
-version = "2.0.0"
-description = "Append-only artifact writer and validator for the personal review-remediation Harness"
+version = "1.0.0"
+description = "個人向けレビュー・修正ハーネスの追記型作業記録tool"
 requires-python = ">=3.11"
 dependencies = [
   "rfc8785==0.1.4",
