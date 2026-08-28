@@ -1,4 +1,4 @@
-"""Structured failures returned by the artifact CLI."""
+"""作業記録コマンドが返す、機械的に判別可能なエラーを定義する。"""
 
 from __future__ import annotations
 
@@ -7,7 +7,14 @@ from typing import Any
 
 
 def ijson_safe_text(value: str) -> str:
-    """Represent surrogateescaped filesystem bytes without emitting surrogates."""
+    """サロゲート文字を出力せず、ファイル名由来のデータを安全に表現する。
+
+    Args:
+        value: サロゲートエスケープを含む可能性がある文字列。
+
+    Returns:
+        I-JSONとして直列化できる診断用文字列。
+    """
 
     parts: list[str] = []
     filesystem_bytes = bytearray()
@@ -32,6 +39,15 @@ def ijson_safe_text(value: str) -> str:
 
 
 def ijson_safe_value(value: Any) -> Any:
+    """入れ子のJSON値に含まれる文字列をI-JSONで安全な形へ変換する。
+
+    Args:
+        value: 変換対象のJSON互換値。
+
+    Returns:
+        リストと辞書を再帰変換したI-JSONで安全な値。
+    """
+
     if isinstance(value, str):
         return ijson_safe_text(value)
     if isinstance(value, list):
@@ -48,7 +64,7 @@ def ijson_safe_value(value: Any) -> Any:
 
 @dataclass(slots=True)
 class ArtifactError(Exception):
-    """A contract, path, recovery, or I/O invariant violation."""
+    """契約、パス、復旧、入出力で守るべき条件への違反を表す。"""
 
     artifact_id: str | None
     field: str
@@ -81,7 +97,17 @@ def fail(
     invariant: str,
     detail: str,
 ) -> None:
-    """Raise a structured contract failure."""
+    """機械的に判別可能な契約違反を送出する。
+
+    Args:
+        artifact_id: 違反に関係する作業記録ID。
+        field: 違反した項目またはパス。
+        invariant: 機械判定に使う固定の条件名。
+        detail: ユーザー向けの具体的な違反内容。
+
+    Raises:
+        ArtifactError: 常に送出する。
+    """
 
     raise ArtifactError(
         artifact_id=artifact_id,

@@ -1,4 +1,4 @@
-"""Read-only validation for one canonical Harness run ledger."""
+"""ハーネスの一意に直列化された実行履歴を、変更せず検証する。"""
 
 from __future__ import annotations
 
@@ -74,6 +74,17 @@ def initial_head_bytes() -> bytes:
 
 
 def validate_head(value: Any) -> dict[str, Any]:
+    """最新の実行状態を指す`HEAD.json`の内容を検証する。
+
+    Args:
+        value: JSONから読み込んだ`HEAD.json`の値。
+
+    Returns:
+        検証済みの最新状態参照。
+
+    Raises:
+        ArtifactError: 改訂番号、保存先、またはハッシュが不正な場合。
+    """
     head = require_dict(value, artifact_id=None, field="HEAD.json")
     require_exact_fields(
         head,
@@ -126,6 +137,14 @@ class _LedgerReader:
 
 
 def active_transaction_ids(store: SafeDirectory) -> list[str]:
+    """完了印がなく、復旧を要する書き込み処理IDを返す。
+
+    Args:
+        store: 検査する実行記録の保存先。
+
+    Returns:
+        復旧を要する書き込み処理IDの一覧。
+    """
     active: list[str] = []
     for transaction_id in store.list_names("transactions"):
         validate_identifier(transaction_id, field="transactions.transaction_id")
@@ -137,6 +156,14 @@ def active_transaction_ids(store: SafeDirectory) -> list[str]:
 
 
 def descriptorless_transaction_ids(store: SafeDirectory) -> list[str]:
+    """処理内容の記録が欠けている一時書き込みIDを返す。
+
+    Args:
+        store: 検査する実行記録の保存先。
+
+    Returns:
+        処理内容の記録が欠けている書き込みIDの一覧。
+    """
     transaction_ids: list[str] = []
     for transaction_id in store.list_names("transactions"):
         validate_identifier(transaction_id, field="transactions.transaction_id")
@@ -152,7 +179,19 @@ def _validate_transaction_records(
     repository_id: str,
     run_id: str,
 ) -> dict[int, tuple[dict[str, Any], bool, str]]:
-    """Validate immutable descriptors and commit markers without changing the store."""
+    """書き込み処理の内容記録と完了印を、保存先を変更せず検証する。
+
+    Args:
+        store: 検査する実行記録の保存先。
+        repository_id: 保存先のリポジトリ識別子。
+        run_id: 保存先の実行ID。
+
+    Returns:
+        改訂番号を内容記録、完了状態、処理IDへ対応付けた辞書。
+
+    Raises:
+        ArtifactError: 内容記録、完了印、または保存先との対応が不正な場合。
+    """
 
     from .writer import validate_descriptor, validate_descriptor_files, validate_marker
 
@@ -305,6 +344,19 @@ def _load_manifest_chain(
     run_id: str,
     head: dict[str, Any],
 ) -> tuple[list[dict[str, Any]], dict[int, bytes]]:
+    """最新状態から初回までの実行状態記録を読み込み、連鎖を検証する。
+
+    Args:
+        reader: 保存済みデータと書き込み前データを読むための読取器。
+        run_id: 検証対象の実行ID。
+        head: 検証済みの最新状態参照。
+
+    Returns:
+        改訂順の実行状態記録と、改訂番号ごとの元データ。
+
+    Raises:
+        ArtifactError: 改訂の欠落、参照切れ、循環、またはハッシュ不一致がある場合。
+    """
     names = reader.manifest_names()
     for name in names:
         if MANIFEST_FILE_PATTERN.fullmatch(name) is None:
@@ -412,6 +464,19 @@ def _load_artifacts(
     dict[str, bytes],
     dict[str, dict[str, Any]],
 ]:
+    """実行状態記録から到達できる作業記録を読み込み、参照を照合する。
+
+    Args:
+        reader: 保存済みデータと書き込み前データを読むための読取器。
+        manifests: 改訂順の実行状態記録。
+        run_id: 検証対象の実行ID。
+
+    Returns:
+        作業記録、元データ、共通参照をIDで引ける辞書の組。
+
+    Raises:
+        ArtifactError: 参照先の欠落、ハッシュ不一致、または記録形式違反がある場合。
+    """
     artifacts: dict[str, dict[str, Any]] = {}
     artifact_bytes: dict[str, bytes] = {}
     artifact_refs: dict[str, dict[str, Any]] = {}
@@ -493,6 +558,15 @@ def _validate_manifest_limits_and_counters(
     manifests: list[dict[str, Any]],
     artifacts: dict[str, dict[str, Any]],
 ) -> None:
+    """各改訂の上限値と使用量が単調かつ根拠付きであることを検証する。
+
+    Args:
+        manifests: 改訂順の実行状態記録。
+        artifacts: IDで引ける作業記録。
+
+    Raises:
+        ArtifactError: 上限変更、使用量、再試行、費用の記録が契約に反する場合。
+    """
     if not manifests:
         return
     initial_payload = manifests[0]["payload"]
@@ -906,6 +980,15 @@ def _validate_sequences(
 def _validate_graph(
     manifests: list[dict[str, Any]], artifacts: dict[str, dict[str, Any]]
 ) -> None:
+    """作業記録の参照グラフが過去向きで循環せず、すべて到達可能か確認する。
+
+    Args:
+        manifests: 改訂順の実行状態記録。
+        artifacts: IDで引ける作業記録。
+
+    Raises:
+        ArtifactError: 未来参照、循環、未到達記録、または参照ハッシュ不一致がある場合。
+    """
     all_by_id = {value["artifact_id"]: value for value in manifests}
     all_by_id.update(artifacts)
     manifest_ids = {manifest["artifact_id"] for manifest in manifests}
@@ -1289,6 +1372,15 @@ def _validate_transition_diff_binding(
 def _validate_target_check_transition_kinds(
     target_check: dict[str, Any], artifacts: dict[str, dict[str, Any]]
 ) -> None:
+    """対象確認で宣言した変更種別が、保存した前後差分と一致するか検証する。
+
+    Args:
+        target_check: 対象確認の作業記録。
+        artifacts: IDで引ける作業記録。
+
+    Raises:
+        ArtifactError: 宣言した変更種別や差分参照が実際の変更と一致しない場合。
+    """
     artifact_id = target_check["artifact_id"]
     payload = target_check["payload"]
     kinds = set(payload["transition_kinds"])
@@ -1399,6 +1491,15 @@ def _validate_target_check_transition_kinds(
 def _validate_security_audit_adapter(
     gate: dict[str, Any], evidence: dict[str, Any]
 ) -> None:
+    """セキュリティ監査結果が外部確認の判定根拠として十分か検証する。
+
+    Args:
+        gate: セキュリティ確認の作業記録。
+        evidence: 監査結果を保存した根拠記録。
+
+    Raises:
+        ArtifactError: 監査内容が欠落、不完全、改変、または判定と矛盾する場合。
+    """
     artifact_id = gate["artifact_id"]
     evidence_payload = evidence["payload"]
     if evidence_payload["completeness"] != "full":
@@ -1806,6 +1907,14 @@ def _validate_gate_relationship(
 
 
 def _validate_final_reviewer_independence(artifacts: dict[str, dict[str, Any]]) -> None:
+    """最終レビュー担当が修正担当や以前のレビュー担当から独立しているか確認する。
+
+    Args:
+        artifacts: IDで引ける作業記録。
+
+    Raises:
+        ArtifactError: 担当または会話の識別子が重複し、独立性を証明できない場合。
+    """
     ordered = sorted(artifacts.values(), key=lambda item: item["monotonic_sequence"])
     by_id = {artifact["artifact_id"]: artifact for artifact in ordered}
     compared_roles = {"initial_reviewer", "project_reviewer", "implementer"}
@@ -1921,6 +2030,15 @@ def _validate_final_reviewer_independence(artifacts: dict[str, dict[str, Any]]) 
 def _validate_remediation_lineage(
     manifests: list[dict[str, Any]], artifacts: dict[str, dict[str, Any]]
 ) -> None:
+    """修正依頼、修正結果、再レビューのつながりを検証する。
+
+    Args:
+        manifests: 改訂順の実行状態記録。
+        artifacts: IDで引ける作業記録。
+
+    Raises:
+        ArtifactError: 修正対象、依頼ID、対象世代、または状態遷移の対応が不正な場合。
+    """
     change_requests = [
         artifact
         for artifact in artifacts.values()
@@ -2135,6 +2253,18 @@ def _validate_ready_blocking_findings(
     artifacts: dict[str, dict[str, Any]],
     latest_lifecycle: dict[str, tuple[str, dict[str, Any] | None]],
 ) -> None:
+    """完了可能状態に重大な未解決指摘が残っていないことを確認する。
+
+    Args:
+        final_review: 完了判定に使う最終レビュー記録。
+        reviews: 初回レビューと再レビューの記録一覧。
+        manifests: 改訂順の実行状態記録。
+        artifacts: IDで引ける作業記録。
+        latest_lifecycle: 最新改訂における各記録の有効状態。
+
+    Raises:
+        ArtifactError: 重大な指摘、未完了の修正依頼、または不正な消込結果が残る場合。
+    """
     final_payload = final_review["payload"]
     if final_payload["blocking_finding_ids"]:
         fail(
@@ -2294,6 +2424,15 @@ def _validate_context_grounding_bindings(
 def _validate_typed_refs_and_state_evidence(
     manifests: list[dict[str, Any]], artifacts: dict[str, dict[str, Any]]
 ) -> None:
+    """参照先の種別と、各状態を裏付ける根拠記録を横断検証する。
+
+    Args:
+        manifests: 改訂順の実行状態記録。
+        artifacts: IDで引ける作業記録。
+
+    Raises:
+        ArtifactError: 参照先種別、対象世代、外部確認、再開根拠が契約に反する場合。
+    """
     for artifact in artifacts.values():
         artifact_id = artifact["artifact_id"]
         payload = artifact["payload"]
@@ -2860,6 +2999,15 @@ def _validate_typed_refs_and_state_evidence(
 def _validate_lifecycle(
     manifests: list[dict[str, Any]], artifacts: dict[str, dict[str, Any]]
 ) -> None:
+    """作業記録の有効、履歴、無効化の変化が状態遷移と一致するか確認する。
+
+    Args:
+        manifests: 改訂順の実行状態記録。
+        artifacts: IDで引ける作業記録。
+
+    Raises:
+        ArtifactError: 根拠のない無効化、状態の巻き戻し、または対象変更との矛盾がある場合。
+    """
     previous: dict[str, tuple[str, dict[str, Any] | None]] = {}
     previous_input_ids: set[str] = set()
     previous_target_id: str | None = None
@@ -3019,6 +3167,15 @@ def _validate_repository_identity(
 def _validate_targets_and_inputs(
     manifests: list[dict[str, Any]], artifacts: dict[str, dict[str, Any]]
 ) -> None:
+    """各世代のレビュー対象と、その判断に使った入力の整合性を検証する。
+
+    Args:
+        manifests: 改訂順の実行状態記録。
+        artifacts: IDで引ける作業記録。
+
+    Raises:
+        ArtifactError: 対象世代、入力更新、規約解決、または完了判定の根拠が不正な場合。
+    """
     generation_inputs: dict[str, list[dict[str, Any]]] = {}
     generation_payloads: dict[str, dict[str, Any]] = {}
     generation_targets: dict[int, str] = {}
@@ -3769,6 +3926,15 @@ def _validate_targets_and_inputs(
 def _validate_content_bindings(
     reader: _LedgerReader, artifacts: dict[str, dict[str, Any]]
 ) -> None:
+    """保存した本文と、ハッシュ、パス、GitオブジェクトIDの対応を検証する。
+
+    Args:
+        reader: 保存済み本文を読むための読取器。
+        artifacts: IDで引ける作業記録。
+
+    Raises:
+        ArtifactError: 本文、ハッシュ、保存先、またはGit上の識別子が一致しない場合。
+    """
     for artifact in artifacts.values():
         artifact_id = artifact["artifact_id"]
         if (
@@ -3891,7 +4057,22 @@ def validate_ledger(
     head_override: bytes | None = None,
     reject_active_transactions: bool = True,
 ) -> LedgerSnapshot:
-    """Validate a run without mutating it; overlay supports append preflight."""
+    """1回分の作業記録全体を変更せず検証する。
+
+    Args:
+        store: 検証対象の実行記録保存先。
+        repository_id: 保存先のリポジトリ識別子。
+        run_id: 検証対象の実行ID。
+        overlay: 保存前に仮置きして整合性を確認するデータ。
+        head_override: 保存前の検証で使う最新状態参照の元データ。
+        reject_active_transactions: 未完了の書き込み処理があれば失敗させるかどうか。
+
+    Returns:
+        検証済みの実行状態、作業記録、最大連番をまとめた読み取り結果。
+
+    Raises:
+        ArtifactError: 保存構造、参照、状態遷移、対象、または根拠が契約に反する場合。
+    """
 
     validate_repository_id(repository_id)
     validate_identifier(run_id, field="run_id")

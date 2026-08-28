@@ -1,4 +1,4 @@
-"""READY and newly closed Harness-owned contract regressions."""
+"""完了可能状態の条件と、ハーネスが担う契約の回帰を検証する。"""
 
 from __future__ import annotations
 
@@ -119,6 +119,33 @@ def _ready_support_batch(
     verification_argv: list[str] | None = None,
     duplicate_verification_command: bool = False,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
+    """完了可能状態を支えるレビュー、試験、外部確認のテストデータを作る。
+
+    Args:
+        snapshot: 追記前の検証済み実行状態。
+        verification_status: 試験結果へ設定する状態。
+        gate_name: 外部確認の名前。
+        independence_status: 最終レビューの独立性確認状態。
+        stale_ready_check: 完了直前の対象確認を古い世代にするかどうか。
+        stale_gate_evidence: 外部確認の根拠を古い世代にするかどうか。
+        project_coverage_status: プロジェクト固有観点の確認状態。
+        project_results: プロジェクト固有観点の確認結果。
+        blind_project_coverage_status: 先入観を避けたレビューでの固有観点確認状態。
+        blind_project_results: 先入観を避けたレビューでの固有観点確認結果。
+        review_blocking_finding: 初回レビューへ重大な指摘を残すかどうか。
+        final_current_blocker: 最終レビューへ未解決の重大指摘を残すかどうか。
+        omit_final_blocker_summary: 最終レビューから重大指摘の要約を省くかどうか。
+        gate_content_sha256: 外部確認機能の内容ハッシュ差し替え値。
+        gate_declared_version: 外部確認機能の宣言版差し替え値。
+        gate_capability_revision: 外部確認機能の改訂値差し替え値。
+        gate_decision_status: 外部確認結果へ設定する判定。
+        verification_command_id: 実行した試験コマンドの識別子。
+        verification_argv: 実行した試験コマンドの引数列。
+        duplicate_verification_command: 同じ試験結果を重複させるかどうか。
+
+    Returns:
+        追記用データと完了可能状態の実行状態記録の組。
+    """
     prior_manifest = snapshot.manifests[-1]
     manifest_payload = prior_manifest["payload"]
     input_refs = copy.deepcopy(manifest_payload["input_refs"])

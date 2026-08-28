@@ -1,4 +1,4 @@
-"""Command-line boundary for the artifact writer, validator, and recovery path."""
+"""作業記録の書き込み、検証、復旧を行うコマンドライン境界を提供する。"""
 
 from __future__ import annotations
 
@@ -77,6 +77,15 @@ def _location_from_args(
 
 
 def _canonicalize_command(args: argparse.Namespace) -> int:
+    """入力JSONを一意な形式へ変換し、保存情報を標準出力へ返す。
+
+    Args:
+        args: `canonicalize`コマンドの解析済み引数。
+
+    Returns:
+        成功時の終了コード0。
+    """
+
     try:
         raw = Path(args.input).read_bytes()
     except OSError as error:
@@ -110,6 +119,15 @@ def _canonicalize_command(args: argparse.Namespace) -> int:
 
 
 def _append_command(args: argparse.Namespace) -> int:
+    """検証済みの一括データを、指定した実行記録へ安全に追記する。
+
+    Args:
+        args: `append`コマンドの解析済み引数。
+
+    Returns:
+        成功時の終了コード0。
+    """
+
     location = _location_from_args(
         args,
         require_candidate=True,
@@ -128,6 +146,18 @@ def _append_command(args: argparse.Namespace) -> int:
 
 
 def _validate_command(args: argparse.Namespace) -> int:
+    """実行履歴を変更せず検証し、機械的に判別可能な結果を返す。
+
+    処理内容が未確定の残留データや、複数の未完了書き込みも分類するが、
+    復旧処理や報告ファイルの保存は行わない。
+
+    Args:
+        args: `validate`コマンドの解析済み引数。
+
+    Returns:
+        正常なら0、不正なら2。
+    """
+
     location = _location_from_args(
         args,
         require_candidate=False,
@@ -174,6 +204,15 @@ def _validate_command(args: argparse.Namespace) -> int:
 
 
 def _recover_command(args: argparse.Namespace) -> int:
+    """一意に安全と判断できる書き込みだけを完了し、復旧結果を返す。
+
+    Args:
+        args: `recover`コマンドの解析済み引数。
+
+    Returns:
+        正常または復旧済みなら0、ユーザー対応が必要なら3。
+    """
+
     location = _location_from_args(
         args,
         require_candidate=True,
@@ -201,6 +240,12 @@ def _recover_command(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """作業記録コマンドの引数解析器を構築する。
+
+    Returns:
+        4つの公開コマンドと共通の実行引数を持つ解析器。
+    """
+
     parser = StructuredArgumentParser(prog="review-harness-artifacts")
     parser.add_argument("--version", action="version", version=CONTRACT_VERSION)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -243,6 +288,15 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """コマンド引数を実行し、すべての失敗を構造化JSONへ変換する。
+
+    Args:
+        argv: プロセス引数。`None`なら`sys.argv`を使用する。
+
+    Returns:
+        実行したコマンドの終了コード。
+    """
+
     try:
         args = build_parser().parse_args(argv)
         handler = args.handler

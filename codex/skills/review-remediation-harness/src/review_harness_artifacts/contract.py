@@ -1,4 +1,4 @@
-"""Schema 2.0 shape and pure cross-artifact contract helpers."""
+"""形式2.0の作業記録と記録間の契約を、副作用を起こさず検証する。"""
 
 from __future__ import annotations
 
@@ -658,6 +658,20 @@ def validate_common_ref(
     run_id: str | None = None,
     containing_artifact_id: str | None = None,
 ) -> dict[str, Any]:
+    """作業記録への共通参照が正しい形式か検証する。
+
+    Args:
+        value: 検証する参照値。
+        field: エラー時に報告するフィールド名。
+        run_id: 参照先に要求する実行ID。指定しない場合は照合しない。
+        containing_artifact_id: この参照を含む作業記録ID。
+
+    Returns:
+        検証済みの共通参照。
+
+    Raises:
+        ArtifactError: 参照の形式、実行ID、パス、またはハッシュが不正な場合。
+    """
     ref = require_dict(value, artifact_id=containing_artifact_id, field=field)
     require_exact_fields(
         ref,
@@ -728,6 +742,21 @@ def validate_ref_array(
     containing_artifact_id: str | None,
     allow_empty: bool = True,
 ) -> list[dict[str, Any]]:
+    """共通参照の配列を検証し、ID順かつ重複なしであることを確認する。
+
+    Args:
+        value: 検証する参照配列。
+        field: エラー時に報告するフィールド名。
+        run_id: すべての参照先に要求する実行ID。
+        containing_artifact_id: この配列を含む作業記録ID。
+        allow_empty: 空配列を許可するかどうか。
+
+    Returns:
+        検証済みの共通参照一覧。
+
+    Raises:
+        ArtifactError: 配列の形式、並び順、重複、または参照内容が不正な場合。
+    """
     values = require_list(value, artifact_id=containing_artifact_id, field=field)
     if not allow_empty and not values:
         fail(
@@ -819,6 +848,15 @@ def _validate_producer(value: Any, *, artifact_id: str, run_id: str) -> None:
 
 
 def _validate_input_snapshot(payload: dict[str, Any], *, artifact_id: str) -> None:
+    """外部入力の保存内容と信頼元に応じた必須項目を検証する。
+
+    Args:
+        payload: 入力保存記録の本体。
+        artifact_id: エラーに含める作業記録ID。
+
+    Raises:
+        ArtifactError: 入力種別、信頼元、内容、ハッシュ、または由来情報が不正な場合。
+    """
     required = {
         "input_kind",
         "trust_source",
@@ -1289,6 +1327,16 @@ def _validate_scope_paths(fingerprint: dict[str, Any], *, artifact_id: str) -> N
 
 
 def _validate_target(payload: dict[str, Any], *, artifact_id: str, run_id: str) -> None:
+    """レビュー対象の指紋、世代、作業ツリー保存内容を検証する。
+
+    Args:
+        payload: レビュー対象記録の本体。
+        artifact_id: エラーに含める作業記録ID。
+        run_id: 参照先に要求する実行ID。
+
+    Raises:
+        ArtifactError: 対象の指紋、参照、世代、または保存内容が契約に反する場合。
+    """
     required = {
         "popr_target_fingerprint",
         "repository_identity_ref",
@@ -1712,6 +1760,16 @@ def _validate_transition_index_side(
 
 
 def _validate_transition_diff(value: Any, *, artifact_id: str, run_id: str) -> None:
+    """対象変更の前後差分が再検証可能な形式で保存されているか確認する。
+
+    Args:
+        value: 前後差分の保存内容。
+        artifact_id: エラーに含める作業記録ID。
+        run_id: 前後の対象参照に要求する実行ID。
+
+    Raises:
+        ArtifactError: パス変更、索引差分、または前後の参照が不正な場合。
+    """
     content = require_dict(value, artifact_id=artifact_id, field="payload.content")
     require_exact_fields(
         content,
@@ -2245,6 +2303,17 @@ def _validate_resolved_lenses(
 def _validate_resolved_commands(
     value: Any, *, artifact_id: str, field: str, run_id: str
 ) -> None:
+    """解決済みの検証コマンドと、その選定根拠を検証する。
+
+    Args:
+        value: 解決済みコマンドの一覧。
+        artifact_id: エラーに含める作業記録ID。
+        field: エラー時に報告するフィールド名。
+        run_id: 根拠参照に要求する実行ID。
+
+    Raises:
+        ArtifactError: コマンド、由来、根拠参照、または並び順が不正な場合。
+    """
     resolved = require_dict(value, artifact_id=artifact_id, field=field)
     expected_fields = {"commands", "source_ref", "content_sha256"}
     if set(resolved) != expected_fields:
@@ -2373,6 +2442,16 @@ def _validate_resolved_commands(
 def _validate_context_resolution_payload(
     payload: dict[str, Any], *, artifact_id: str, run_id: str
 ) -> None:
+    """プロジェクト専用設定なしで解決した規約、観点、コマンドを検証する。
+
+    Args:
+        payload: 実行環境から解決した情報の本体。
+        artifact_id: エラーに含める作業記録ID。
+        run_id: 参照先に要求する実行ID。
+
+    Raises:
+        ArtifactError: 解決方法、根拠、競合、観点、またはコマンドが不正な場合。
+    """
     fields = {
         "decision_kind",
         "resolution_mode",
@@ -2488,6 +2567,16 @@ def _validate_context_resolution_payload(
 def _validate_limit_observation_payload(
     payload: dict[str, Any], *, artifact_id: str, run_id: str
 ) -> None:
+    """再試行回数や費用などの上限観測結果を検証する。
+
+    Args:
+        payload: 上限観測記録の本体。
+        artifact_id: エラーに含める作業記録ID。
+        run_id: 根拠参照に要求する実行ID。
+
+    Raises:
+        ArtifactError: 観測値、上限、超過理由、または根拠参照が不正な場合。
+    """
     fields = {
         "decision_kind",
         "blocked_state",
@@ -2683,6 +2772,20 @@ def _validate_stage_payload(
     artifact_id: str,
     run_id: str,
 ) -> None:
+    """工程別の作業記録本体を種別ごとの契約で検証する。
+
+    レビュー、修正、試験、外部確認、判断などの各記録に対し、必須項目、
+    状態値、参照関係の形状を一つの入口で確認する。
+
+    Args:
+        artifact_type: 作業記録の種別。
+        payload: 工程別の作業記録本体。
+        artifact_id: エラーに含める作業記録ID。
+        run_id: 参照先に要求する実行ID。
+
+    Raises:
+        ArtifactError: 種別固有の必須項目や値が契約に反する場合。
+    """
     require_fields(
         payload,
         PAYLOAD_REQUIRED_FIELDS[artifact_type],
@@ -3659,6 +3762,16 @@ def _validate_blocker(
 def _validate_manifest(
     payload: dict[str, Any], *, artifact_id: str, run_id: str
 ) -> None:
+    """実行状態の記録が状態遷移と再開契約を満たすか検証する。
+
+    Args:
+        payload: 実行状態の記録本体。
+        artifact_id: エラーに含める作業記録ID。
+        run_id: 参照先に要求する実行ID。
+
+    Raises:
+        ArtifactError: 改訂番号、状態、対象、参照、上限、再開情報が不正な場合。
+    """
     required = {
         "revision",
         "previous_manifest_ref",
@@ -4150,6 +4263,18 @@ def _validate_manifest_counters(value: Any, *, limits: Any, artifact_id: str) ->
 def validate_artifact_shape(
     value: Any, *, expected_path: str | None = None
 ) -> dict[str, Any]:
+    """作業記録全体を共通形式と種別固有契約の両方で検証する。
+
+    Args:
+        value: 検証する作業記録。
+        expected_path: 記録IDから導くパスと照合する保存先。指定時のみ照合する。
+
+    Returns:
+        検証済みの作業記録。
+
+    Raises:
+        ArtifactError: 共通項目、種別固有項目、参照、または保存先が不正な場合。
+    """
     artifact = require_dict(value, artifact_id=None, field="$")
     envelope_fields = {
         "schema_version",
@@ -4336,6 +4461,14 @@ def validate_artifact_shape(
 
 
 def artifact_common_ref(artifact: Mapping[str, Any]) -> dict[str, Any]:
+    """検証済みの作業記録から共通参照を生成する。
+
+    Args:
+        artifact: 共通参照へ変換する作業記録。
+
+    Returns:
+        ID、保存先、内容ハッシュを持つ共通参照。
+    """
     content = canonicalize(dict(artifact))
     content_hash = sha256_hex(content)
     payload = require_dict(
@@ -4358,7 +4491,15 @@ def artifact_common_ref(artifact: Mapping[str, Any]) -> dict[str, Any]:
 def iter_common_refs(
     value: Any, *, field: str = "$"
 ) -> Iterator[tuple[str, dict[str, Any]]]:
-    """Yield dictionaries that have the exact common-ref shape."""
+    """入れ子構造から共通参照と同じ形の辞書を場所付きで順に返す。
+
+    Args:
+        value: 探索する値。
+        field: 探索開始位置を表すフィールド名。
+
+    Yields:
+        見つかった位置と、ID、保存先、内容ハッシュだけを持つ辞書の組。
+    """
 
     if isinstance(value, dict):
         if set(value) == {"artifact_id", "artifact_path", "sha256"}:
@@ -4374,6 +4515,14 @@ def iter_common_refs(
 def lifecycle_map(
     manifest: Mapping[str, Any],
 ) -> dict[str, tuple[str, dict[str, Any] | None]]:
+    """実行状態の記録から各作業記録の有効状態を取り出す。
+
+    Args:
+        manifest: `artifact_lifecycle`を含む実行状態の記録。
+
+    Returns:
+        作業記録IDを有効状態と無効化原因の組へ対応付けた辞書。
+    """
     payload = manifest["payload"]
     return {
         wrapper["ref"]["artifact_id"]: (
@@ -4385,6 +4534,15 @@ def lifecycle_map(
 
 
 def state_transition_is_allowed(previous: str, current: str) -> bool:
+    """指定した状態遷移が許可一覧に含まれるか返す。
+
+    Args:
+        previous: 遷移前の状態。
+        current: 遷移後の状態。
+
+    Returns:
+        許可された遷移なら`True`。
+    """
     if previous == current and previous not in {"READY", "BUDGET_EXHAUSTED"}:
         return True
     return current in ALLOWED_STATE_TRANSITIONS.get(previous, set())

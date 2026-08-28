@@ -1,4 +1,4 @@
-"""Review-remediation Harness artifact store implementation."""
+"""レビュー・修正ハーネスで使う作業記録の保存機能を公開する。"""
 
 from __future__ import annotations
 

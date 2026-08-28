@@ -1,4 +1,4 @@
-"""CLI-level smoke tests for the four public commands."""
+"""4つの公開コマンドを別プロセスから実行して検証する。"""
 
 from __future__ import annotations
 

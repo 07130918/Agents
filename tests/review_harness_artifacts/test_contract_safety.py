@@ -1,4 +1,4 @@
-"""Table-driven tests for strict JSON, schema, references, and path safety."""
+"""厳密なJSON、形式、参照、パスの安全性を表形式のテストで検証する。"""
 
 from __future__ import annotations
 

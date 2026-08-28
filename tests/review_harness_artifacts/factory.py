@@ -1,4 +1,4 @@
-"""Small deterministic factories for artifact-store tests."""
+"""作業記録の保存機能を試験する、再現可能なテストデータを生成する。"""
 
 from __future__ import annotations
 
@@ -139,6 +139,20 @@ def valid_chain(
     project_review_status: str = "not_required",
     required_lens_ids: list[str] | None = None,
 ) -> tuple[str, list[dict[str, Any]], dict[str, Any]]:
+    """一連の正常な実行状態を表すテストデータを組み立てる。
+
+    Args:
+        run_id: テストデータへ設定する実行ID。
+        include_required_capability: 外部確認機能の入力記録を含めるかどうか。
+        required_capability_name: 必須となる外部確認機能の名前。
+        required_capability_declared_version: 外部確認機能が宣言する版。
+        required_capability_source_revision: 外部確認機能の内容を特定する改訂値。
+        project_review_status: プロジェクト固有観点の確認状態。
+        required_lens_ids: 必須とするプロジェクト固有観点ID。
+
+    Returns:
+        リポジトリ識別子、追記する作業記録、最新状態記録の組。
+    """
     identity_content = {
         "identity_kind": "git_common_dir_realpath",
         "identity_value": "/tmp/repositories/example/.git",
@@ -499,6 +513,19 @@ def mutable_target_batch(
     working_oid_override: str | None = None,
     index_oid_override: str | None = None,
 ) -> tuple[str, dict[str, Any], list[str]]:
+    """変更中の作業ツリーを含む追記データを組み立てる。
+
+    Args:
+        working_content: 作業ツリー上のファイル内容。
+        working_type: 作業ツリー項目の種別。
+        include_snapshot: ファイル内容を保存データへ含めるかどうか。
+        deleted: ファイルを削除済みとして扱うかどうか。
+        working_oid_override: 作業ツリー側のGitオブジェクトID差し替え値。
+        index_oid_override: 索引差分側のGitオブジェクトID差し替え値。
+
+    Returns:
+        リポジトリ識別子、追記データ、追加保存する本文パスの一覧。
+    """
     repository_id, batch = valid_batch(transaction_id="mutable-target")
     batch = copy.deepcopy(batch)
     target = batch["writes"][4]["content"]

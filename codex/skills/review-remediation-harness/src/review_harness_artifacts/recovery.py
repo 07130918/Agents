@@ -1,4 +1,4 @@
-"""Conservative transaction completion and ledger-external recovery reports."""
+"""中断した書き込みを安全側に復旧し、実行履歴の外へ結果を保存する。"""
 
 from __future__ import annotations
 
@@ -45,6 +45,8 @@ def _now() -> str:
 
 
 def new_report_id() -> str:
+    """衝突しにくい復旧報告IDを生成する。"""
+
     return f"recovery-{uuid.uuid4().hex}"
 
 
@@ -101,6 +103,20 @@ def build_recovery_report(
     transaction_id: str | None,
     violation_kind: str,
 ) -> dict[str, Any]:
+    """実行履歴を変更せず、復旧判断に必要な観測値を報告へまとめる。
+
+    Args:
+        location: 対象実行の固定済み保存位置。
+        store: 読み取り対象の実行記録保存先。
+        error: 復旧を止めた構造化エラー。
+        report_id: 実行履歴外の報告を識別するID。
+        transaction_id: 関連する書き込み処理ID。
+        violation_kind: 復旧不能状態の機械判定用分類。
+
+    Returns:
+        I-JSONとして保存可能な復旧報告。
+    """
+
     validate_identifier(report_id, field="report_id")
     observed_head_base64, observed_head_sha256, diagnostics = _observe_head(store)
     observed_manifests, manifest_diagnostics = _observe_manifests(store)
@@ -142,6 +158,19 @@ def save_recovery_report(
     location: StoreLocation,
     report: dict[str, Any],
 ) -> str:
+    """復旧報告を実行履歴の外へ一意な形式で排他的に保存する。
+
+    Args:
+        location: 報告保存先を導出する実行位置。
+        report: 保存する復旧報告。
+
+    Returns:
+        保存した報告の絶対パス。
+
+    Raises:
+        ArtifactError: 状態保存先の識別情報が変化したか、排他的作成に失敗した場合。
+    """
+
     report_id = validate_identifier(report["report_id"], field="report_id")
     relative_path = f"recovery-reports/{location.repository_id}/{location.run_id}/{report_id}/report.json"
     with open_state_root(location) as root:
@@ -187,6 +216,20 @@ def _complete_unique_transaction(
     store: SafeDirectory,
     transaction_id: str,
 ) -> LedgerSnapshot:
+    """処理内容と最新状態が一致する一意な書き込みだけを完了する。
+
+    Args:
+        location: 対象実行の固定済み保存位置。
+        store: 書き込み処理を持つ実行記録保存先。
+        transaction_id: 完了候補の書き込み処理ID。
+
+    Returns:
+        完了印まで確定した実行履歴の読み取り結果。
+
+    Raises:
+        ArtifactError: 処理内容、仮保存データ、最新状態、適用後の実行履歴が不正な場合。
+    """
+
     descriptor, descriptor_bytes = _descriptor_for_active_transaction(
         store,
         location=location,
@@ -224,7 +267,14 @@ def _complete_unique_transaction(
 
 
 def _sync_validated_committed_state(store: SafeDirectory) -> None:
-    """Re-establish durability after a crash may have exposed an unsynced marker."""
+    """中断で同期が不確かな確定済みファイルを、再度確実に永続化する。
+
+    Args:
+        store: 検証済みで正常な実行記録保存先。
+
+    Raises:
+        ArtifactError: 処理内容またはファイルの同期に失敗した場合。
+    """
 
     marker_paths: list[str] = []
     for transaction_id in store.list_names("transactions"):
@@ -292,7 +342,16 @@ def recover_run(
     store: SafeDirectory,
     report_id: str | None = None,
 ) -> RecoveryResult:
-    """Complete one uniquely recoverable transaction; otherwise write an external report."""
+    """一意に復旧できる書き込みだけを完了し、それ以外は報告へまとめる。
+
+    Args:
+        location: 対象実行の固定済み保存位置。
+        store: 復旧対象の実行記録保存先。
+        report_id: 呼び出し元が指定する復旧報告ID。未指定なら生成する。
+
+    Returns:
+        正常、復旧済み、またはユーザー対応が必要な復旧結果。
+    """
 
     selected_report_id = report_id or new_report_id()
     validate_identifier(selected_report_id, field="report_id")

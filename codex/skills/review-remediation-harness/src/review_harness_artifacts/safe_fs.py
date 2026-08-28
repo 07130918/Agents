@@ -1,4 +1,4 @@
-"""POSIX run-store path confinement and durable file primitives."""
+"""POSIX環境で実行記録の保存先を隔離し、安全に永続化する。"""
 
 from __future__ import annotations
 
@@ -33,6 +33,12 @@ _CAPABILITY_PROBE_FILES = (
 
 
 def require_supported_platform() -> None:
+    """必要なPOSIXファイルシステム操作が利用可能か確認する。
+
+    Raises:
+        ArtifactError: 実行環境または`O_NOFOLLOW`が未対応の場合。
+    """
+
     system = platform.system()
     if system not in {"Darwin", "Linux"}:
         fail(
@@ -69,6 +75,22 @@ class StoreLocation:
         candidate_worktree: Path | None = None,
         create_state_root: bool = False,
     ) -> StoreLocation:
+        """入力パスを実体パスとファイルシステム上の識別情報へ固定する。
+
+        Args:
+            state_root: 実行状態を保存するルートパス。
+            repository_id: 実行ごとの保存領域を分けるリポジトリID。
+            run_id: 1回の実行を一意に識別するID。
+            candidate_worktree: 書き込みから隔離する対象作業ツリー。
+            create_state_root: 未作成の状態保存先を永続的に作成するか。
+
+        Returns:
+            状態保存先と対象作業ツリーの識別情報を固定した保存位置。
+
+        Raises:
+            ArtifactError: パスが解決不能、重複、シンボリックリンク経由、または作成不能な場合。
+        """
+
         require_supported_platform()
         validate_repository_id(repository_id)
         validate_identifier(run_id, field="run_id")
@@ -306,7 +328,16 @@ def _create_absolute_directory_durably(
     *,
     forbidden_identity: tuple[int, int] | None = None,
 ) -> None:
-    """Create every missing component and durably publish each directory entry."""
+    """不足している各階層を作成し、ディレクトリ項目を確実に永続化する。
+
+    Args:
+        path: 作成する絶対パス。
+        forbidden_identity: 同一と判定した場合に拒否するデバイス番号とinode番号。
+
+    Raises:
+        OSError: パスが絶対パスでないか、作成または同期に失敗した場合。
+        ArtifactError: シンボリックリンクや禁止された保存先を検出した場合。
+    """
 
     if not path.is_absolute():
         raise OSError(f"State root must resolve to an absolute path: {path}")
@@ -362,7 +393,7 @@ def _reject_directory_identity(
 
 
 class SafeDirectory:
-    """A directory descriptor used for nofollow traversal below one fixed root."""
+    """固定したルート配下をシンボリックリンクを辿らず操作する。"""
 
     def __init__(
         self,
@@ -448,6 +479,19 @@ class SafeDirectory:
     def open_parent(
         self, relative_path: str, *, create: bool = False
     ) -> Iterator[tuple[int, str]]:
+        """相対パスの親ディレクトリを安全に開く。
+
+        Args:
+            relative_path: 固定したルートからの検証済み相対パス。
+            create: 不足する親ディレクトリを作成するか。
+
+        Yields:
+            親ディレクトリの記述子と最後の階層名。
+
+        Raises:
+            ArtifactError: 途中の階層が実ディレクトリでないか、安全に開けない場合。
+        """
+
         segments = self._segments(relative_path)
         current = os.dup(self.fd)
         try:
@@ -486,6 +530,19 @@ class SafeDirectory:
             os.close(current)
 
     def open_subdirectory(self, relative_path: str, *, create: bool) -> SafeDirectory:
+        """固定したルート配下の子ディレクトリを、新しい安全なルートとして開く。
+
+        Args:
+            relative_path: 開く子ディレクトリの相対パス。
+            create: 不足するディレクトリを作成するか。
+
+        Returns:
+            開いたdescriptorを所有する`SafeDirectory`。
+
+        Raises:
+            ArtifactError: パスが存在しないか、安全に開けない場合。
+        """
+
         validate_run_relative_path(relative_path, artifact_id=None, field="path")
         current = os.dup(self.fd)
         try:
@@ -521,6 +578,18 @@ class SafeDirectory:
                 os.close(current)
 
     def read_bytes(self, relative_path: str) -> bytes:
+        """シンボリックリンクを辿らず、通常ファイルの全データを読み込む。
+
+        Args:
+            relative_path: 固定したルートからの相対ファイルパス。
+
+        Returns:
+            ファイルの元データ。
+
+        Raises:
+            ArtifactError: 対象が通常ファイルでないか、安全に読めない場合。
+        """
+
         with self.open_parent(relative_path) as (parent_fd, name):
             try:
                 descriptor = os.open(name, READ_FLAGS, dir_fd=parent_fd)
@@ -570,6 +639,17 @@ class SafeDirectory:
     def write_exclusive(
         self, relative_path: str, content: bytes, *, mode: int = 0o600
     ) -> None:
+        """既存パスを置換せずファイルを作成し、内容とディレクトリ項目を永続化する。
+
+        Args:
+            relative_path: 作成する相対ファイルパス。
+            content: 保存する元データ。
+            mode: 新規ファイルへ設定する権限モード。
+
+        Raises:
+            ArtifactError: パスが既存か、安全な作成または同期に失敗した場合。
+        """
+
         with self.open_parent(relative_path, create=True) as (parent_fd, name):
             try:
                 descriptor = os.open(name, CREATE_FLAGS, mode, dir_fd=parent_fd)
@@ -591,6 +671,19 @@ class SafeDirectory:
             os.fsync(parent_fd)
 
     def hard_link_no_replace(self, source: str, destination: str) -> None:
+        """元ファイルを、既存先を置換しない不可分操作で公開する。
+
+        公開先が既存の場合は、元ファイルと内容が完全一致するときだけ、
+        再実行しても同じ結果になる成功として扱う。
+
+        Args:
+            source: 公開元ファイルの相対パス。
+            destination: 公開先ファイルの相対パス。
+
+        Raises:
+            ArtifactError: 既存内容が異なるか、不可分な配置に失敗した場合。
+        """
+
         with (
             self.open_parent(source) as (source_parent, source_name),
             self.open_parent(destination, create=True) as (
@@ -627,6 +720,16 @@ class SafeDirectory:
                 ) from error
 
     def replace(self, source: str, destination: str) -> None:
+        """元ファイルで公開先を不可分に置換し、両ディレクトリを同期する。
+
+        Args:
+            source: 置換元ファイルの相対パス。
+            destination: 置換先ファイルの相対パス。
+
+        Raises:
+            ArtifactError: 不可分な置換またはディレクトリ同期に失敗した場合。
+        """
+
         with (
             self.open_parent(source) as (source_parent, source_name),
             self.open_parent(destination, create=True) as (
@@ -680,6 +783,18 @@ class SafeDirectory:
         os.fsync(self.fd)
 
     def list_names(self, relative_path: str | None = None) -> list[str]:
+        """ディレクトリ直下の項目名を安全性確認後に並べ替えて返す。
+
+        Args:
+            relative_path: 列挙する子ディレクトリ。`None`なら固定したルート。
+
+        Returns:
+            項目名を辞書順に並べた一覧。ディレクトリがなければ空一覧。
+
+        Raises:
+            ArtifactError: シンボリックリンクを検出するか、安全に列挙できない場合。
+        """
+
         descriptor = os.dup(self.fd)
         try:
             if relative_path is not None:
@@ -717,6 +832,18 @@ class SafeDirectory:
 
     @contextlib.contextmanager
     def exclusive_lock(self, relative_path: str = "writer.lock") -> Iterator[None]:
+        """1回の実行内で書き込み元を一つに限定する協調ロックを取得する。
+
+        Args:
+            relative_path: ロックファイルの相対パス。
+
+        Yields:
+            ロックを保持している間の制御。
+
+        Raises:
+            ArtifactError: ロックファイルが通常ファイルでないか、安全に開けない場合。
+        """
+
         with self.open_parent(relative_path, create=True) as (parent_fd, name):
             try:
                 descriptor = os.open(
@@ -751,7 +878,14 @@ class SafeDirectory:
 
 
 def durable_sync(descriptor: int) -> None:
-    """Flush one file and request full durability on Darwin when available."""
+    """ファイルをフラッシュし、macOSでは可能なら完全な永続化を要求する。
+
+    Args:
+        descriptor: 同期する、開かれたファイルの記述子。
+
+    Raises:
+        ArtifactError: ファイルシステムの同期に失敗した場合。
+    """
 
     try:
         os.fsync(descriptor)
@@ -790,6 +924,15 @@ def _cleanup_capability_probe(root: SafeDirectory, probe_name: str) -> None:
 
 
 def _preflight_filesystem_capabilities(root: SafeDirectory) -> None:
+    """実行記録を作る前に、必要なファイルシステム操作を実測する。
+
+    Args:
+        root: 隔離した確認用データを作る状態保存先。
+
+    Raises:
+        ArtifactError: ロック、同期、リンク、置換、後片付けのいずれかが使えない場合。
+    """
+
     probe_name = f"capability-probe-{uuid.uuid4().hex}"
     created = False
     failure: ArtifactError | OSError | None = None
@@ -862,7 +1005,14 @@ def _preflight_filesystem_capabilities(root: SafeDirectory) -> None:
 
 
 def open_state_root(location: StoreLocation) -> SafeDirectory:
-    """Open the same state-root inode resolved at command intake."""
+    """コマンド受付時に固定した状態保存先のinodeを再確認して開く。
+
+    Args:
+        location: 固定済みのファイルシステム識別情報を持つ保存位置。
+
+    Returns:
+        識別情報を検証した状態保存先ディレクトリ。
+    """
 
     return SafeDirectory(
         location.state_root,
@@ -872,7 +1022,17 @@ def open_state_root(location: StoreLocation) -> SafeDirectory:
 
 
 def create_run_store(location: StoreLocation) -> SafeDirectory:
-    """Create the run path component-by-component below a fixed real state root."""
+    """固定した状態保存先の配下へ、実行記録の保存先を階層ごとに安全に作る。
+
+    Args:
+        location: 作成対象のリポジトリと実行を表す保存位置。
+
+    Returns:
+        作成して開いた実行記録ディレクトリ。
+
+    Raises:
+        ArtifactError: 必要なファイルシステム機能がないか、パス隔離に違反する場合。
+    """
 
     with open_state_root(location) as root:
         _preflight_filesystem_capabilities(root)
@@ -883,6 +1043,15 @@ def create_run_store(location: StoreLocation) -> SafeDirectory:
 
 
 def open_run_store(location: StoreLocation) -> SafeDirectory:
+    """既存の実行記録保存先を、識別情報を確認した状態保存先から開く。
+
+    Args:
+        location: 開くリポジトリと実行を表す保存位置。
+
+    Returns:
+        開いた実行記録ディレクトリ。
+    """
+
     with open_state_root(location) as root:
         return root.open_subdirectory(
             f"review-harness/{location.repository_id}/{location.run_id}",

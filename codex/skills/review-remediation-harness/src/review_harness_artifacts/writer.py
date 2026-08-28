@@ -1,4 +1,4 @@
-"""Single-writer append transaction protocol."""
+"""一つの書き込み元から作業記録を安全に追記する手順を実装する。"""
 
 from __future__ import annotations
 
@@ -99,6 +99,15 @@ def _checkpoint(hook: CrashHook | None, name: str) -> None:
 
 
 def bootstrap_store(store: SafeDirectory) -> None:
+    """空の実行記録保存先へ、必須ディレクトリと初期の最新状態を作成する。
+
+    Args:
+        store: 初期化する実行記録保存先。
+
+    Raises:
+        ArtifactError: 必須パスを安全または排他的に作成できない場合。
+    """
+
     store.ensure_directory("manifests")
     store.ensure_directory("objects/sha256")
     store.ensure_directory("transactions")
@@ -147,6 +156,23 @@ def prepare_transaction(
     store: SafeDirectory,
     snapshot: LedgerSnapshot,
 ) -> PreparedTransaction:
+    """呼び出し元の一括データを検証し、保存先を固定した書き込み処理へ変換する。
+
+    実行履歴へ書き込む前に、全作業記録、連続した通し番号、実行状態の改訂、
+    元データの参照関係を仮置きした状態で検証する。
+
+    Args:
+        batch_value: 呼び出し元が渡した版付きの一括JSON。
+        store: 現在の実行記録保存先。
+        snapshot: 一括データを適用する前の検証済み読み取り結果。
+
+    Returns:
+        保存データ、パス、ハッシュを固定した変更不能の書き込み処理。
+
+    Raises:
+        ArtifactError: 一括データまたは適用後の実行履歴が契約に違反する場合。
+    """
+
     batch = _validate_batch_shape(batch_value)
     if batch["expected_head"] != snapshot.head:
         fail(
@@ -360,6 +386,18 @@ def prepare_transaction(
 
 
 def validate_descriptor(value: Any) -> dict[str, Any]:
+    """変更不能な書き込み内容記録の形式と内部の対応関係を検証する。
+
+    Args:
+        value: 書き込み内容として解析したJSON値。
+
+    Returns:
+        定められた形式を正確に満たす書き込み内容。
+
+    Raises:
+        ArtifactError: 版、最新状態、通し番号、書き込み集合、パスが不正な場合。
+    """
+
     descriptor = require_dict(value, artifact_id=None, field="descriptor")
     require_exact_fields(
         descriptor,
@@ -624,6 +662,16 @@ def validate_descriptor(value: Any) -> dict[str, Any]:
 def marker_value(
     descriptor_bytes: bytes, descriptor: Mapping[str, Any]
 ) -> dict[str, Any]:
+    """書き込み内容から、一意な完了印の値を導出する。
+
+    Args:
+        descriptor_bytes: 一意な形式へ直列化した書き込み内容。
+        descriptor: 検証済みの書き込み内容。
+
+    Returns:
+        書き込み内容のハッシュと確定した最新状態を持つ完了印。
+    """
+
     return {
         "marker_version": TRANSACTION_VERSION,
         "transaction_id": descriptor["transaction_id"],
@@ -638,6 +686,20 @@ def validate_marker(
     descriptor: Mapping[str, Any],
     descriptor_bytes: bytes,
 ) -> dict[str, Any]:
+    """完了印が書き込み内容から導いた値と完全一致するか検証する。
+
+    Args:
+        value: 完了印として解析したJSON値。
+        descriptor: 完了印が参照する書き込み内容。
+        descriptor_bytes: 書き込み内容を一意な形式へ直列化したデータ。
+
+    Returns:
+        検証済みの完了印。
+
+    Raises:
+        ArtifactError: 完了印の形式または導出値が一致しない場合。
+    """
+
     marker = require_dict(value, artifact_id=None, field="commit_marker")
     require_exact_fields(
         marker,
@@ -660,7 +722,15 @@ def validate_descriptor_files(
     store: SafeDirectory,
     descriptor: Mapping[str, Any],
 ) -> None:
-    """Revalidate exact staged bytes and every derived artifact destination."""
+    """仮保存データと、導出済みの作業記録保存先を再検証する。
+
+    Args:
+        store: 書き込み内容の仮保存ファイルを持つ実行記録保存先。
+        descriptor: 検証対象の書き込み内容。
+
+    Raises:
+        ArtifactError: データ、ハッシュ、長さ、作業記録ID、保存先が一致しない場合。
+    """
 
     for write in descriptor["writes"]:
         staged = store.read_bytes(write["staged_path"])
@@ -723,6 +793,21 @@ def install_descriptor(
     *,
     crash_hook: CrashHook | None = None,
 ) -> None:
+    """書き込み集合、最新状態、完了印を順に永続化する。
+
+    中断後の再実行では同じデータだけを受理し、何度実行しても同じ結果にする。
+    最新状態は、処理前または処理後の想定値と一致する場合だけ継続する。
+
+    Args:
+        store: 書き込み処理を確定する実行記録保存先。
+        descriptor: 検証済みの書き込み内容。
+        descriptor_bytes: 書き込み内容を一意な形式へ直列化したデータ。
+        crash_hook: テストで中断位置を差し込むための関数。
+
+    Raises:
+        ArtifactError: 仮保存データ、保存先、最新状態の更新、完了印が不一致な場合。
+    """
+
     transaction_id = descriptor["transaction_id"]
     validate_descriptor_files(store, descriptor)
     for write in descriptor["writes"]:
@@ -781,6 +866,22 @@ def append_batch(
     batch_value: Any,
     crash_hook: CrashHook | None = None,
 ) -> LedgerSnapshot:
+    """一括データを、一つの書き込み元から上書きせず追記して確定する。
+
+    Args:
+        store: 追記対象の実行記録保存先。
+        repository_id: 保存先に対応するリポジトリID。
+        run_id: 保存先に対応する実行ID。
+        batch_value: 呼び出し元が渡した版付きの一括JSON。
+        crash_hook: テストで中断位置を差し込むための関数。
+
+    Returns:
+        書き込み確定後の検証済み実行履歴。
+
+    Raises:
+        ArtifactError: 未完了書き込み、一括データ、実行履歴、ファイル操作が不正な場合。
+    """
+
     with store.exclusive_lock():
         bootstrap_store(store)
         active = active_transaction_ids(store)

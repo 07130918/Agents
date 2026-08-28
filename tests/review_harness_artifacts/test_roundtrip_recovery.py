@@ -1,4 +1,4 @@
-"""Integration tests for append, read-only validation, and crash recovery."""
+"""追記、変更を伴わない検証、中断後の復旧を統合テストで確認する。"""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Focused cross-artifact validator regressions."""
+"""作業記録間の検証契約で、特に重要な回帰を確認する。"""
 
 from __future__ import annotations
 
@@ -58,6 +58,15 @@ def _capability_sources() -> list[dict[str, str]]:
 def _remediation_attempt_lineage(
     *, first_status: str, second_status: str
 ) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
+    """同じ指摘に対する2回の修正履歴を持つテストデータを生成する。
+
+    Args:
+        first_status: 1回目の修正結果に設定する状態。
+        second_status: 2回目の修正結果に設定する状態。
+
+    Returns:
+        実行状態記録の一覧と、IDで引ける作業記録の組。
+    """
     target = artifact(
         sequence=0,
         artifact_type="target",

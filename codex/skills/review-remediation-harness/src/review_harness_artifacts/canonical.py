@@ -1,4 +1,4 @@
-"""Strict JSON parsing, RFC 8785 serialization, and content hashing."""
+"""JSONを厳密に解析し、一意な直列化と内容ハッシュの計算を行う。"""
 
 from __future__ import annotations
 
@@ -18,6 +18,15 @@ SHA256_HEX_LENGTH = 64
 
 
 def sha256_hex(content: bytes) -> str:
+    """内容のSHA-256を小文字の16進数で返す。
+
+    Args:
+        content: ハッシュを計算する元データ。
+
+    Returns:
+        64文字のSHA-256ハッシュ。
+    """
+
     return hashlib.sha256(content).hexdigest()
 
 
@@ -100,7 +109,18 @@ def _validate_json_value(value: Any, field: str = "$") -> None:
 
 
 def parse_json_bytes(content: bytes, *, field: str = "$") -> Any:
-    """Parse JSON without losing duplicate keys or accepting non-I-JSON values."""
+    """重複キーやI-JSONに反する値を許可せず、JSONを解析する。
+
+    Args:
+        content: UTF-8で符号化されたJSONデータ。
+        field: エラーで示す入力項目名。
+
+    Returns:
+        I-JSON制約を満たすJSON値。
+
+    Raises:
+        ArtifactError: BOM、不正なUTF-8、重複キー、I-JSONに反する値を検出した場合。
+    """
 
     if content.startswith(b"\xef\xbb\xbf"):
         fail(
@@ -138,6 +158,18 @@ def parse_json_bytes(content: bytes, *, field: str = "$") -> Any:
 
 
 def load_json(path: Path) -> Any:
+    """ファイルを読み込み、厳密に検証したJSON値として返す。
+
+    Args:
+        path: 読み込むJSONファイルのパス。
+
+    Returns:
+        検証済みのJSON値。
+
+    Raises:
+        ArtifactError: ファイルを読めないか、JSONが契約に違反する場合。
+    """
+
     try:
         content = path.read_bytes()
     except OSError as error:
@@ -151,6 +183,18 @@ def load_json(path: Path) -> Any:
 
 
 def canonicalize(value: Any) -> bytes:
+    """JSON値をRFC 8785 JCSに従う一意なデータへ直列化する。
+
+    Args:
+        value: I-JSON制約を満たすJSON値。
+
+    Returns:
+        RFC 8785に準拠したUTF-8データ。
+
+    Raises:
+        ArtifactError: 値がJSONまたはRFC 8785の制約に違反する場合。
+    """
+
     _validate_json_value(value)
     try:
         return rfc8785.dumps(value)
@@ -164,6 +208,19 @@ def canonicalize(value: Any) -> bytes:
 
 
 def require_canonical_json(content: bytes, *, field: str) -> Any:
+    """保存済みデータが厳密なJCS表現であることを検証する。
+
+    Args:
+        content: 検証する保存済みJSONデータ。
+        field: エラーで示す保存項目またはパス。
+
+    Returns:
+        一意な表現のデータから復元したJSON値。
+
+    Raises:
+        ArtifactError: JSONが不正か、JCS表現と完全一致しない場合。
+    """
+
     value = parse_json_bytes(content, field=field)
     canonical = canonicalize(value)
     if content != canonical:
@@ -177,6 +234,20 @@ def require_canonical_json(content: bytes, *, field: str) -> Any:
 
 
 def decode_base64(value: str, *, field: str, artifact_id: str | None = None) -> bytes:
+    """一意なBase64文字列を元データへ復号する。
+
+    Args:
+        value: パディングを含むBase64文字列。
+        field: エラーで示す項目名。
+        artifact_id: エラーへ含める作業記録ID。
+
+    Returns:
+        復号済みのデータ。
+
+    Raises:
+        ArtifactError: Base64が不正か、同じデータの一意な表現でない場合。
+    """
+
     try:
         decoded = base64.b64decode(value, validate=True)
     except (ValueError, base64.binascii.Error) as error:
@@ -197,10 +268,21 @@ def decode_base64(value: str, *, field: str, artifact_id: str | None = None) -> 
 
 
 def encode_base64(value: bytes) -> str:
+    """元データを一意なBase64文字列へ符号化する。"""
+
     return base64.b64encode(value).decode("ascii")
 
 
 def object_path(content_hash: str) -> str:
+    """内容ハッシュから実行記録内の保存先を導出する。
+
+    Args:
+        content_hash: 小文字16進数のSHA-256。
+
+    Returns:
+        `objects/sha256/`配下の内容ハッシュで決まるパス。
+    """
+
     if len(content_hash) != SHA256_HEX_LENGTH or any(
         character not in "0123456789abcdef" for character in content_hash
     ):
@@ -214,6 +296,15 @@ def object_path(content_hash: str) -> str:
 
 
 def manifest_path(revision: int) -> str:
+    """実行状態の改訂番号から保存先を導出する。
+
+    Args:
+        revision: 0以上の改訂番号。
+
+    Returns:
+        `manifests/<revision>.json`形式のパス。
+    """
+
     if not isinstance(revision, int) or isinstance(revision, bool):
         fail(
             artifact_id=None,
@@ -232,6 +323,19 @@ def manifest_path(revision: int) -> str:
 
 
 def git_blob_oid(content: bytes, object_format: str) -> str:
+    """元データからGit blobのオブジェクトIDを再計算する。
+
+    Args:
+        content: Git blobとして扱うデータ。
+        object_format: ハッシュ形式を表す`sha1`または`sha256`。
+
+    Returns:
+        Gitオブジェクトのヘッダーを含めて計算したID。
+
+    Raises:
+        ArtifactError: 未対応のGitオブジェクト形式が指定された場合。
+    """
+
     header = f"blob {len(content)}\0".encode("ascii")
     if object_format == "sha1":
         return hashlib.sha1(header + content).hexdigest()
