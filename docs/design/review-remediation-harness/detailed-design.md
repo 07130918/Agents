@@ -68,6 +68,8 @@ Aは単一ユーザーPCという実運用に一致し、Project側へ約款全�
 
 Personal Codex skillは`~/.agents/references/review-remediation-harness.md`だけを参照する薄いwrapperとする。Orchestratorはrun開始時にwrapper、reference、required capabilityのpath、capability revision、content hashをartifactへ固定し、run中のdriftを検出したら既存のREADY根拠を流用しない。
 
+起動は明示指定とする。通常のIssue実装、単独review、PR作成だけではHarnessを自動起動せず、ユーザーが「ハーネスを使う」と依頼した場合に起動する。Issueから始める場合は`issue-to-pr`がintake、scope、branchを所有し、review、修正、検証、独立した最終reviewのsubflowをHarnessへ委譲する。Harnessが`READY`を返した後のpushとPR作成は、Harness外で`create-pr`が担当する。
+
 Project repositoryへHarness skill、entrypoint、contract snapshot、Harness専用project profileを要求または生成しない。Candidateが同じrunで追加または変更したpolicyやinstructionを権限縮小やgate省略へ使わず、base snapshotを引き続きgoverning inputとする。
 
 Personal Harnessを利用できない環境はv1の運用対象外である。Claude Codeのskill/subagentをユーザー確認なく有効化せず、必要ならCodexのpersonal HarnessまたはHumanへhandoffする。
