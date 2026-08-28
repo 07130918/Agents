@@ -93,7 +93,7 @@ Profileless generic pilot #42では、personal Harnessからの起動、reposito
 | 候補 | 判断 | 保護するもの、または不採用理由 | Follow-up |
 | --- | --- | --- | --- |
 | Append-only artifact writer/validator | 採用 | Canonical JSON、hash、過去record参照、連続sequence、exact evidence | #49 |
-| Deterministic target checker | 採用 | Popr fingerprintとinput/contract/project ruleのdrift、generation、invalidation | #50 |
+| Target fingerprint checker | 採用 | Popr fingerprintのHEAD、working tree、local skill、project ruleの差分を検出 | #50 |
 | 最小自動化後のprofileless再pilot | 採用 | Valid artifact、resume、READYまたは根拠付きblockerの実証 | #51 |
 | Harness専用project profileとauthoring支援 | 不採用 | 既存正本との二重管理と更新忘れによるdriftを生む | なし |
 | Full CLI runner、CI gate、常設fixture、hook、auto-learning | 不採用 | Pilotで壊れたinvariantを超え、現時点の証拠に対して過剰 | なし |
@@ -182,7 +182,7 @@ Codexでfresh subagentを使える場合は、過去会話をforkせず、必要
 
 ### 8.1 長期の意味契約と初期toolの境界
 
-Harness全体では、target、input、review、remediation、verification、gate、decisionを追跡し、READYやblockerを同じtargetへ結び付ける。一方、#49の初期toolはその意味を判定せず、保存したrecordと根拠bytesが後から変わっていないことだけを保証する。
+Harness全体では、target、input、review、remediation、verification、gate、decisionを追跡し、READYやblockerを同じtargetへ結び付ける。一方、初期toolは#49でrecordと根拠bytesの改変を検出し、#50で保存済みtarget fingerprintと現在のlocal repositoryを比較する。State、READY、新targetの採用は判定しない。
 
 この分離により、長期の状態機械を設計として保持しながら、pilotでまだ実証していないstate transition、lifecycle、permission、budget、independence、security policyを初期実装へ先回りして固定しない。
 
@@ -190,7 +190,7 @@ Harness全体では、target、input、review、remediation、verification、gat
 
 - 作業記録はJSON、stdout、stderr、patch、入力本文などの根拠はraw bytesで保存する。
 - Run storeはcandidate worktree外の`~/.agents/state/review-harness/<repository_id>/<run_id>/`を既定とし、Git管理とlocal設定同期の対象外にする。
-- 公開commandは`append`とread-onlyな`validate`だけにする。初期版に`canonicalize`、`recover`、state選択commandを設けない。
+- 公開commandは`append`、read-onlyな`validate`、local repositoryを読み取り専用で確認して結果だけをrun storeへ追記する`check-target`に限定する。初期版に`canonicalize`、`recover`、state選択commandを設けない。
 - Record fileは0から連続するsequence、record ID、JCS bytesのSHA-256をfile名に持つ。Evidence objectはraw bytesのSHA-256をfile名に持つ。
 - Append要求はrecord ID、type、日時、過去record ID、payloadだけを渡す。Sequence、参照先hash、evidence hashと長さ、保存pathはtoolが導出する。
 - 同じrecord ID、sequence、保存pathを上書きしない。破損、不完全な書き込み、未知fileを検出したrunへ追記しない。
@@ -205,7 +205,7 @@ Exact schema、record type、必須evidence label、path grammar、実行例は`
 
 ### 8.4 Targetとstage payload
 
-Target fingerprintの構成要素と意味はpoprが所有する。初期toolは`target`または`target_check`のpayloadをJSONとして保存できるが、その意味、Git object ID、tree、index、working treeとの一致を検証しない。Current repositoryからの再取得とdrift判断は#50が所有する。
+Target fingerprintの構成要素と意味はpoprが所有する。#49は`target`または`target_check`のpayloadをJSONとして保存し、#50は保存済み`popr_target_fingerprint`のうち、対応するlocal targetのHEAD、working tree、skill、project ruleを再取得して比較する。別schemaへ変換せず、外部input、permission、generation、stateの意味は判定しない。
 
 Review、change request、remediation、verification、gate、decisionのpayloadはpersonal Harness contractに従ってOrchestratorが作る。初期toolはpayloadをJSON objectとして保持するだけで、severity、status、READY、blocker、permission、budget、independence、security policyを再判定しない。
 
@@ -213,25 +213,21 @@ Review、change request、remediation、verification、gate、decisionのpayload
 
 Required gateの選定、成功status、target一致、`sync-docs-code`の`PASS|UPDATED`、security-auditのHuman判断はHarnessの意味契約として残す。初期toolはgateの完全なstdout/stderrを保存し、改変と欠落を検出するだけである。Gate結果をREADYへ採用できるかはOrchestratorとHumanが判断し、toolの`validate`成功をgate成功へ読み替えない。
 
-### 8.6 Targetとinputのconsistency checkpoint
+### 8.6 Target fingerprint checkpoint
 
-Orchestratorはtarget依存stageの開始前と完了後、READY判定前、base refをfetchした後、呼び出し元へ`READY`を返す直前にtarget fingerprintの全componentを再取得する。
+Orchestratorはtarget依存stageの開始前と完了後、READY判定前、呼び出し元へ`READY`を返す直前にtarget fingerprintを再確認する。
 
-- run store用repository identity inputとtarget source
-- exact base refとbase SHA
-- exact head SHA
-- working treeのcleanまたはdirty、mode、manifest
-- index diffが対象ならそのhash
-- PR remote
-- includeとexclude scope
-- skill/referenceのcapability revisionとcontent hash
-- project rulesのsource、path、blob hash
+- 初期版が扱うtarget sourceは`current_branch`と`commit_range`だけとする。
+- Git object format、current HEAD、保存済みscope内のHEAD追跡fileと最終filesystem snapshotを直接hash比較する。Indexの変更候補やstat cacheだけに依存せず、`skip-worktree`と親directory symlinkは`unresolved`にする。Promisor remoteのlazy fetchを無効にし、object不足時もnetworkやobject databaseを変更せず`unresolved`にする。
+- Skill/referenceのpathとcontent OID、project ruleのsource SHA、path、blob OIDを比較する。
+- Scopeは`.`またはliteral pathだけとし、PR、staged-only、wildcard pathspecは`unresolved`にする。
+- External Issue、comment、permission、budget、deadlineは初期checkerで再取得しない。
 
-`target_check`は保存済みtargetと再取得値を比較する。全componentを観測でき差分がなければ`unchanged`、全componentを観測でき差分があれば`changed`、1件でも再取得または比較できなければ`unresolved`とする。`unresolved`ではcomponent、理由、観測証拠refを記録し、`changed`へ丸めず旧artifactを再利用しない。Target依存stageが`local_write|repository_write`を実行した場合も必ずcheckする。Tracked content、対象に含むuntracked content、file modeが変わった場合は、そのstageの成功結果をREADYへ使わない。Pre-commit `VERIFYING`で許可された変更なら新しいworking-tree targetを固定して`VERIFYING`を再実行し、`PRECOMMIT_DOCS_PENDING`を飛ばさない。Candidate commit後の`TARGET_VERIFYING`または`GATES_PENDING`で許可された変更なら`CANDIDATE_COMMIT_PENDING`へ戻して新commitを固定する。想定外の変更または`unresolved`は`EVALUATION_DEFERRED`にする。
+`target_check`は保存済みtargetと再取得値を比較する。全componentを観測でき差分がなければ`unchanged`、全componentを観測でき差分があれば`changed`、1件でも再取得または比較できなければ`unresolved`とする。終了codeは順に0、3、2とし、3結果を指定targetへの参照付きで#49のrun storeへ追記する。Target依存stageがlocalまたはrepository writeを実行した後は必ずcheckし、`changed|unresolved`なら旧review、verification、gateを再利用しない。
 
-各generationは実行判定を決めるcurrent input集合をtargetまたはdecision recordのpayloadへ固定する。Input変更を観測する`target_check`はexpected旧集合とobserved新集合をpayloadで区別し、新generationのtargetが確定するまで新集合を通常stageへ流用しない。初期toolはこの意味を判定せず、#50のtarget checkerとOrchestratorが照合する。
+初期checkerは`changed`でも新しいtarget、generation、stateを作らない。新targetを採用する場合はOrchestratorまたはHumanが新しい`target` recordを明示的に保存し、そのtargetを再度`unchanged`として確認する。
 
-Candidate準備で`git fetch`した後はbase ref SHAとcandidate targetのbase SHAも比較する。Base、head、scope、capability revision、project rules、input refsのいずれかが変わればREADYを作らず、`CONTEXT_RESOLVING`からreview、verification、gate、Final reviewをやり直す。Harnessは`READY`またはblockerを返した時点で終了し、push、PR作成、project hook、提出結果の再開を所有しない。
+PR target、staged-only、fetch後のremote base再確認、external authoritative inputの再取得は長期契約として残すが、初期checkerへ含めない。対応が必要な共通failureを#51または実運用で観測した場合だけ、別Issueで追加する。
 
 External authoritative inputは保存済みsnapshotのhash検証だけで済ませない。`CONTEXT_RESOLVING`、resume、`REREVIEW_PENDING`開始前、READY判定直前にsource APIからIssue governing projection、全comment、採用候補の関連Issue/decisionを再取得してrecord単位にauthorityを再判定する。Issue本体または`governing|pending` recordのrevision/content hash変更と、新規recordが`governing|pending`になった場合だけ新しいgeneration inputを作り、依存artifactをinvalidateして`CONTEXT_RESOLVING`へ戻る。Evidence-only recordの追加、編集、削除は観測Evidenceを更新できるがgenerationを変えない。Stable revisionまたは再取得手段を提供しないgoverning/pending sourceは自動READYの入力にせず、Humanがexact contentを承認した`human_approved_run_local` snapshotへ凍結する。
 
@@ -496,7 +492,7 @@ CounterとlimitはOrchestratorが`decision` recordのpayloadへ追記し、各�
 1. `validate`で全recordのJCS、sequence、参照、evidence bytesを再検証する。
 2. 破損、欠落、未知file、未参照objectがあれば同じrunへ追記せず停止する。初期toolはrollback、repair、自動crash recoveryを行わない。
 3. Personal Harness contract、Issue、project context、permissionを再取得し、保存済みinput recordと照合する。
-4. #50導入後はrepository identity、base/head、working tree、inputを再取得し、保存済みtargetとのdriftを確認する。
+4. `check-target`でHEAD、working tree、local skill、project ruleを再取得し、保存済みtarget fingerprintとの差分を確認する。
 5. Targetまたはgoverning inputが変わっていれば、以前のverification、gate、Final reviewを成功扱いしない。
 6. 保存済み`decision`とstage recordからHumanまたはOrchestratorが再開stateを決める。初期toolの`validate`成功だけで自動再開しない。
 
@@ -666,8 +662,8 @@ Issue #40の成果物は設計、実行contract、採否decisionだけとし、r
 
 - CLI非依存のpersonal/global運用契約: `shared/references/review-remediation-harness.md`
 - Codex wrapper: `codex/skills/review-remediation-harness/SKILL.md`。Personal contractへの薄い起動adapterとする
-- #49 (実装中): Candidate worktree外の軽量な作業記録writer/validator。JCS、sequence、過去record参照、exact evidence、改変検出だけを所有し、state、READY、permission、budget、完全復旧を含めない
-- #50: Popr fingerprintを再定義しないdeterministic target checker。#49のartifact interfaceを使う
+- #49 (完了): Candidate worktree外の軽量な作業記録writer/validator。JCS、sequence、過去record参照、exact evidence、改変検出だけを所有する
+- #50 (実装中): Popr fingerprintを再定義せず、`current_branch|commit_range`のlocal targetだけを確認して#49へ結果を追記する。PR、staged-only、external input、generation管理を含めない
 - #51: #49と#50を使うprofileless再pilot。Pilot evidenceはproject mainへ恒久commitしない
 - Claude Code wrapper: ユーザーが明示的に有効化を承認した場合だけ`claude/skills/`へ追加
 - Claude Code subagent: 現在の無効化方針を変更する別ADRと比較評価なしには追加しない

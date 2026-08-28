@@ -13,6 +13,7 @@ from .canonical import canonicalize, load_json
 from .contract import require_identifier
 from .errors import ArtifactError
 from .store import RunStore
+from .target_check import check_and_record_target
 
 DEFAULT_STATE_ROOT = "~/.agents/state"
 
@@ -115,8 +116,35 @@ def _validate_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def _check_target_command(args: argparse.Namespace) -> int:
+    """保存済みtargetと現在のrepositoryを比較して結果を追記する。
+
+    Args:
+        args: 解析済みコマンド引数。
+
+    Returns:
+        `unchanged`は0、`unresolved`は2、`changed`は3。
+    """
+
+    store = _store_from_args(args, create=False)
+    execution = check_and_record_target(
+        store=store,
+        target_record_id=args.target_record_id,
+        check_record_id=args.record_id,
+        candidate_worktree=Path(args.candidate_worktree),
+    )
+    output = execution.validation.as_dict(status="target_checked")
+    output.update(execution.result.as_payload())
+    _write_json(output)
+    if execution.result.status == "unchanged":
+        return 0
+    if execution.result.status == "changed":
+        return 3
+    return 2
+
+
 def build_parser() -> argparse.ArgumentParser:
-    """appendとvalidateだけを持つ引数解析器を作る。
+    """append、validate、check-targetを持つ引数解析器を作る。
 
     Returns:
         公開コマンドの引数解析器。
@@ -153,6 +181,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     add_run_arguments(validate_parser)
     validate_parser.set_defaults(handler=_validate_command)
+
+    check_parser = commands.add_parser(
+        "check-target",
+        help="保存済みtargetと現在のrepositoryを比較して結果を追記します。",
+    )
+    add_run_arguments(check_parser)
+    check_parser.add_argument("--candidate-worktree", required=True)
+    check_parser.add_argument("--target-record-id", required=True)
+    check_parser.add_argument("--record-id", required=True)
+    check_parser.set_defaults(handler=_check_target_command)
     return parser
 
 

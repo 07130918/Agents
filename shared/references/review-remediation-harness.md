@@ -103,7 +103,7 @@ Base側情報から全fieldを決定的に解決できれば`context_status: res
 
 Canonical run artifactはJSONとし、candidate worktree外のrun storeへappend-onlyで保存する。会話履歴、PR本文、candidate内fileをrun stateの正本にしない。Orchestratorだけが`write_run_store`を持ち、各roleが返した結果を保存する。
 
-初期版の作業記録toolは「保存した事実が壊れていないか」だけを扱う。Stateの選択、READY判定、retry、permission、budget、gateの意味、reviewerの独立性、targetの現在値は判断しない。Toolの成功をexact target、review完了、merge可能の証明として扱わない。
+初期版のtoolは、保存した事実の改変検出と、保存済みtarget fingerprintが現在のlocal repositoryおよびlocal skillと一致するかの確認だけを扱う。Stateの選択、READY判定、retry、permission、budget、gateの意味、reviewerの独立性、新しいtargetの採用は判断しない。Toolの成功をreview完了またはmerge可能の証明として扱わない。
 
 Toolはpersonal Codex skill内の`~/.agents/skills/review-remediation-harness/`へ配置し、次の形式で必ず`uv`から実行する。
 
@@ -119,8 +119,9 @@ uv run --isolated --frozen \
 
 - `append`: 作業記録要求1件と0件以上の根拠fileを読み、通し番号、参照先hash、根拠hashと長さをtool側で計算して上書きせず保存する。
 - `validate`: 1つのrunにある全記録と全根拠を変更せず再検証する。
+- `check-target`: 保存済み`target` recordの`popr_target_fingerprint`を現在値と比較し、結果を同じrunへ`target_check`として直接追記する。対象repositoryへは書き込まない。
 
-初期版は`canonicalize`、`recover`、batch transaction、状態遷移commandを公開しない。JCS変換は`append`と`validate`の内部で同じ実装を使用する。保存中断や競合でrunが不完全になった場合は自動修復せず、`validate`を失敗させて新しいrunまたはHumanによる外部復元を要求する。
+初期版は`canonicalize`、`recover`、batch transaction、状態遷移commandを公開しない。JCS変換は全commandで同じ内部実装を使用する。保存中断や競合でrunが不完全になった場合は自動修復せず、`validate`を失敗させて新しいrunまたはHumanによる外部復元を要求する。
 
 ### append入力
 
@@ -221,6 +222,43 @@ Record JSONは[RFC 8785](https://www.rfc-editor.org/rfc/rfc8785) JCSで末尾改
 
 失敗時は`status: error`、短い`summary`、安全な`next_actions`、`record_id`、`field`、安定した`invariant`、`detail`をJSONで返す。壊れたrunへ追記せず、自動rollbackや古い正常recordへのfallbackをしない。
 
+### check-targetの契約
+
+`target` recordのpayloadは、poprが定義するmachine-readableな値を次のkeyへ変換せず保存する。
+
+```json
+{
+  "popr_target_fingerprint": {}
+}
+```
+
+`check-target`は最初にrun全体を`validate`し、指定recordが同じrunの`target`であることを確認する。次の形式で実行する。
+
+```bash
+uv run --isolated --frozen \
+  --project ~/.agents/skills/review-remediation-harness \
+  review-harness-artifacts check-target \
+  --repository-id <repository_id> \
+  --run-id <run_id> \
+  --candidate-worktree <absolute_repository_root> \
+  --target-record-id <target_record_id> \
+  --record-id <new_target_check_record_id>
+```
+
+初期版は`target_source.kind`が`current_branch`または`commit_range`で、`index_diff.included: false`、`pr_remote: null`のtargetだけを扱う。Scopeは`.`またはliteralなrepository相対pathに限定し、pathspec wildcard、`pull_request`、`staged_only`は`unresolved`にする。
+
+比較する値はGit object format、current HEAD、宣言済みscope内の最終working tree snapshot、`skill_versions`の現在content OID、`project_rules`のsource SHA/path/blob OIDである。通常targetはHEADの追跡fileと最終filesystem snapshotを直接hash比較し、indexの変更候補やstat cacheを一致判定の正本にしない。Stageとunstageの分け方だけでは別targetにせず、`skip-worktree`またはrepository pathの親directory symlinkによりfilesystemとの比較が成立しないscopeは`unresolved`にする。Git commandはoptional lock、system/global config、pager、promisor remoteのlazy fetchを無効にし、hash取得ではfilterを書き込まず、network、worktree、index、object database、ref、Git configを変更しない。
+
+結果と終了codeは次へ固定する。
+
+| status | 意味 | 終了code |
+| --- | --- | --- |
+| `unchanged` | 全項目を取得でき、保存値と一致した | 0 |
+| `changed` | 全項目を取得でき、1件以上の差分があった | 3 |
+| `unresolved` | fingerprint不正、未対応target、必要情報の取得不能 | 2 |
+
+Run storeがvalidで指定recordが存在する場合、3結果とも指定targetへの参照を持つ`target_check`として直接追記する。Run store自体が壊れている、または指定recordが存在しない場合は追記しない。`changed`でも新しい`target`、generation、stateを自動作成せず、以前のreviewやverificationを再利用できるかはOrchestratorとHumanが判断する。
+
 ### 初期版で機械化しないもの
 
 次はHarnessの意味契約として残すが、初期版の保存toolでは検証しない。
@@ -230,8 +268,9 @@ Record JSONは[RFC 8785](https://www.rfc-editor.org/rfc/rfc8785) JCSで末尾改
 - Permission、budget、deadline、retry counter
 - Project lens、required gate、security-auditの判定
 - Final reviewerの独立性、blind pass、remediation lineage
-- Current repositoryからのtarget/input再取得とdrift判断。これは#50が所有する
-- Git object IDとtree、index、working treeの意味的なbinding。これは#50が所有する
+- `pull_request`、`staged_only`、wildcard pathspecのtarget確認
+- External Issue、comment、permission、budget、deadlineなどtarget fingerprint外のinput再取得
+- Target generation、record lifecycle、古いrecordの自動無効化と新targetの自動採用
 - Transaction descriptor、HEAD compare-and-swap、hard link、commit marker、自動crash recovery
 
 #51の再pilotまたは実運用で共通failureを再現し、小さな決定的検証で防げる場合だけ別Issueで追加する。長期設計に存在するだけの規則を先回りしてtoolへ実装しない。

@@ -46,7 +46,7 @@ scripts/apply-to-local.sh
 
 Harnessはrepository instruction、CI、manifest、governing Issueなど、projectが既に持つ正本から必要なcontextを解決します。Harness専用project profileは作らず、必須情報を一意に解決できない場合はHuman承認のrun-local inputで補完するか、fail-closedで停止します。
 
-Harnessの構造化された作業記録は、対象project内ではなく既定で`~/.agents/state/review-harness/`へ保存します。初期toolは`append`とread-onlyな`validate`だけを提供し、JCS、通し番号、過去record参照、正確な根拠bytes、保存後の改変を検証します。State、READY、権限、予算、完全復旧は初期toolで自動判定しません。`~/.agents/state/`配下のruntime stateは、Git管理とこのリポジトリの同期対象外です。
+Harnessの構造化された作業記録は、対象project内ではなく既定で`~/.agents/state/review-harness/`へ保存します。初期toolは`append`、read-onlyな`validate`、保存済みtarget fingerprintを現在のlocal repositoryと比較する`check-target`を提供します。State、READY、権限、予算、完全復旧、新しいtargetの採用は自動判定しません。`~/.agents/state/`配下のruntime stateは、Git管理とこのリポジトリの同期対象外です。
 
 ```bash
 cp templates/AGENTS.md templates/CLAUDE.md <プロジェクトルート>/
