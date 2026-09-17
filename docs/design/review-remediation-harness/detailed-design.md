@@ -3,7 +3,7 @@
 - status: Issue #34のv1採用案、Issue #39のpersonal Harness配置、Issue #40のprofileless-only改訂、Issue #49/#50の最小tool実装
 - scope: orchestration contractの設計
 - issue: https://github.com/07130918/Agents/issues/34、https://github.com/07130918/Agents/issues/39、https://github.com/07130918/Agents/issues/40、https://github.com/07130918/Agents/issues/41
-- last updated: 2026-08-28
+- last updated: 2026-09-17
 
 ## 1. 目的
 
@@ -99,7 +99,7 @@ Profileless generic pilot #42では、personal Harnessからの起動、reposito
 | 最小自動化後のprofileless再pilot | 採用 | Valid artifact、resume、READYまたは根拠付きblockerの実証 | #51 |
 | Harness専用project profileとauthoring支援 | 不採用 | 既存正本との二重管理と更新忘れによるdriftを生む | なし |
 | Full CLI runner、CI gate、常設fixture、hook、auto-learning | 不採用 | Pilotで壊れたinvariantを超え、現時点の証拠に対して過剰 | なし |
-| Permission allowlistの自動拡張 | 不採用 | Adjacent testを含めてもscope判断を自動化できないためrun単位でHumanが固定する | なし |
+| 元の許可を超えるpermission allowlistの自動拡張 | 不採用 | ユーザーの制限や権限を進行役が変更しない。許可内の作業計画・path設定ミスの訂正とは区別する | #58 |
 | Security triggerの独自rule engine | 不採用 | Base側policyまたはHumanを正本とし、project固有ruleをpersonal Harnessへ埋め込まない | なし |
 
 #49は保存した事実の改変、参照切れ、根拠漏れだけを防ぎ、#50は保存済みtargetと現在値を比較する。State、READY、permission、budget、gateの意味は初期toolへ実装せず、#51の結果で不足が観測されるまで自動化を追加しない。
@@ -277,6 +277,8 @@ Resolved verification commandはstableなID、exact command、累積effects、�
 
 ## 10. Permissionと外部副作用
 
+確認する差分、依頼に基づく修正可能範囲、進行役の変更見込みを区別する。元差分にない関連testや既存仕様に合わせる運用文書でも、依頼を満たす最小修正なら開始時の候補に含める。各pathの許可根拠と、ユーザー指定の制限か進行役の判断かを記録し、関連fileを無条件に許可しない。具体的な設定・訂正手順は[共通契約](../../../shared/references/review-remediation-harness.md#permissionとlimitを固定する)を正本とする。
+
 Run開始時に次のpermissionを個別に記録する。
 
 | Permission | 初期値 | 許可されるrole | 備考 |
@@ -326,7 +328,7 @@ stateDiagram-v2
     REVIEW_PENDING --> HUMAN_DECISION_REQUIRED: materialな仕様矛盾
     REVIEW_PENDING --> BUDGET_EXHAUSTED: run-wide budget guard
     CHANGES_REQUESTED --> FIXING: scopeとpermission内
-    CHANGES_REQUESTED --> SCOPE_CHANGE_REQUIRED: scope外修正が必要
+    CHANGES_REQUESTED --> SCOPE_CHANGE_REQUIRED: 許可された修正範囲外
     CHANGES_REQUESTED --> HUMAN_DECISION_REQUIRED: write permissionまたはlimit不足
     CHANGES_REQUESTED --> BUDGET_EXHAUSTED: run-wide budget guard
     FIXING --> VERIFYING: 修正完了
@@ -371,8 +373,8 @@ stateDiagram-v2
     REREVIEW_PENDING --> HUMAN_DECISION_REQUIRED: materialな仕様矛盾
     REREVIEW_PENDING --> BUDGET_EXHAUSTED: run-wide budget guard
     EVALUATION_DEFERRED --> CONTEXT_RESOLVING: 不足input、capability、targetを補完
-    HUMAN_DECISION_REQUIRED --> CONTEXT_RESOLVING: decisionを新input/permission snapshotへ固定
-    SCOPE_CHANGE_REQUIRED --> CONTEXT_RESOLVING: Humanが同一Issueへのscope変更を承認
+    HUMAN_DECISION_REQUIRED --> CONTEXT_RESOLVING: limit不変、必要decisionと新inputを固定
+    SCOPE_CHANGE_REQUIRED --> CONTEXT_RESOLVING: limit不変、scope変更を承認または設定誤りを訂正
     VERIFICATION_BLOCKED --> VERIFYING: 同じpermission setの環境またはserviceが回復
     VERIFICATION_BLOCKED --> TARGET_VERIFYING: 同じpermission setでcandidate環境またはserviceが回復
     INDEPENDENCE_BLOCKED --> REREVIEW_PENDING: fresh reviewerを確保
@@ -385,12 +387,12 @@ stateDiagram-v2
 | `READY` | しない | なし(提出時のdriftは新run) | merge可能性の必要条件を満たした。mergeやPR公開を実行する意味ではない |
 | `EVALUATION_DEFERRED` | しない | 不足artifact解消後 | target、coverage、gate、project context、capabilityの不足 |
 | `VERIFICATION_BLOCKED` | しない | 環境回復後 | test/E2Eを実行できない |
-| `SCOPE_CHANGE_REQUIRED` | しない | Humanのscope判断後 | 元Issueへ混ぜられない変更が必要 |
+| `SCOPE_CHANGE_REQUIRED` | しない | Humanのscope判断後、または設定誤りの訂正後 | 許可された修正範囲外。誤停止の訂正は共通契約に従う |
 | `HUMAN_DECISION_REQUIRED` | しない | decision artifact後 | 仕様またはrisk受容が必要 |
 | `INDEPENDENCE_BLOCKED` | しない | fresh reviewer確保後 | 独立reviewを証明できない |
 | `BUDGET_EXHAUSTED` | しない | なし(新runのみ) | 現runの上限へ到達 |
 
-Blocker stateからの再開は、既存runのlimitを黙って増やさない。Humanがscopeまたはpermissionを変更して同じrunを再開する場合はdecisionと新input snapshotを追加し、`CONTEXT_RESOLVING`へ戻る。`BUDGET_EXHAUSTED`だけは現在runのterminal stateとし、budget変更後の継続はprior runを参照する新しい`run_id`で開始する。`EVALUATION_DEFERRED`からは常に`CONTEXT_RESOLVING`へ戻し、target、Issue、personal Harness contract、project contextのinput hashを再固定してからreviewを再開する。
+この図は同一run内の遷移を示す。Scopeまたはpermissionの承認済み変更、あるいは元の許可内の設定訂正では、decisionと新input snapshotを残して`CONTEXT_RESOLVING`へ戻る。ただし`allowed_write_paths`を含むlimitはrun中不変なので、変える場合は旧runの進行を終了し、新しい`run_id`の`CONTEXT_RESOLVING`へ引き継ぐ。設定訂正は再承認を不要とするが、旧停止・失敗記録、未解決blocker、元の期限と累計使用量を保持し、上限をリセットしない。`BUDGET_EXHAUSTED`は設定訂正で解除せず、Humanが継続を承認した場合だけ新runへ進む。`EVALUATION_DEFERRED`からもinputを再固定してからreviewを再開する。
 
 State、resume state、blockerはHarnessの意味契約として`decision` recordのpayloadへ保存する。通常進行stateと`READY`はblockerを持たず、`READY`と`BUDGET_EXHAUSTED`は同じrunへresumeしない。各blockerは分類、原因record、観測Evidence、必要なHuman action、許可されたresume先を一組で固定し、自由文のlogから再開先を推測しない。初期toolは組み合わせの正しさを判定しない。
 
@@ -481,6 +483,7 @@ CounterとlimitはOrchestratorが`decision` recordのpayloadへ追記し、各�
 - Token計測をruntimeが提供しない場合は`unsupported`と記録し、cycle、stage retry、deadlineで無制限loopを防ぐ。未計測を無制限と解釈しない。
 - Paid external APIは既定0とする。Humanが金額またはcall数を明示したdecision artifactがある場合だけ増やせる。
 - `allowed_write_paths`、`max_changed_files`、`max_diff_lines`が未設定ならread-only reviewまでは進められるが、自動修正は開始しない。
+- Path設定の訂正で別runへ移っても、元の期限・上限と先行runの累計使用量を引き継ぐ。新run内counterが0でも残りbudgetは回復しない。IDの対応、記録検証、累計の照合は共通契約の「作業範囲の設定ミスを訂正する」に従う。
 - 新しいtop-level component、migration、public API、permission boundary、external integrationが必要になった場合は数値limit内でも`SCOPE_CHANGE_REQUIRED`にする。
 
 ## 15. Failure、resume、idempotency
@@ -655,6 +658,20 @@ Docs gateをFinal reviewより前に置くのは、`mutated_target: true`がrevi
 - Pressure promptの有無でfinding資格と停止条件を変更しない
 - Harness専用project fileを要求せず、解決済みproject contextの内容で判定する
 - 異なるrepositoryでも同じartifact schemaとREADY条件を使う
+
+### 19.5 範囲設定の訂正を確認するケース (#58)
+
+2026-09-17に観測した2ケースを一般化し、設定ミスの訂正と必要な停止を分けて机上確認する。これは実行成功やレビュー精度の向上を示すものではない。Merge・個人設定への反映後、次の実行で不要な停止、訂正記録、残り上限を観測する。実運用の結果は#58と評価Issue #47へ記録し、未観測の間は実証済みとしない。
+
+| 入力・状況 | 期待する判断と確認点 |
+| --- | --- |
+| 関連する最小修正は許可済みだが、進行役が元差分だけを許可pathにして運用文書を除外した | 既存仕様に合わせる更新と確認できれば再承認は不要。旧停止を残し、pathを訂正した新runでcontextから再確認する |
+| 同じpath設定ミスに加え、集計方法などの仕様選択も未決 | Path訂正だけで進めず`HUMAN_DECISION_REQUIRED`を維持する。2件目の停止全体を不要とは扱わない |
+| 元差分にない回帰testが必要だが、既に許可path内で仕様も確定 | 作業見込みを更新し、通常のguardを通して修正する。元差分にないことだけで停止しない |
+| ユーザーが明示的に文書変更を禁止、または許可の根拠が不明 | 進行役の設定ミスとして制限を解除せず、Humanへ確認する |
+| 別機能、新しい公開APIや外部操作が必要 | 別Issue相当は`SCOPE_CHANGE_REQUIRED`。外部write等の禁止を訂正で回避しない |
+| 2回上限の修正を既に1回実行してpath訂正を2回行う | 累計1回のまま残り1回。新run内counterが0でも2回へ回復せず、期限も元の値を使う |
+| 期限切れ、旧run破損、累計やrequest対応を照合不能 | 自動続行しない。期限切れは`BUDGET_EXHAUSTED`、破損・照合不能は根拠を残して停止する |
 
 ## 20. 最小自動化の実装境界
 
