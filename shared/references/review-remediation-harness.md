@@ -1,6 +1,6 @@
 # review-remediation-harness
 
-独立reviewerを含むreview、修正、検証、fresh Final reviewを、exact targetとappend-only artifactで接続するCLI非依存workflow。Contract versionは`2.0.0`とする。
+独立reviewerを含むreview、修正、検証、fresh Final reviewを、exact targetとappend-only artifactで接続するCLI非依存workflow。Contract versionは`2.1.0`とする。
 
 ## 使う場面
 
@@ -293,6 +293,18 @@ Runtime由来のinstance/context metadataを取得できない、新しいinstan
 
 ## Permissionとlimitを固定する
 
+### 確認範囲、修正範囲、作業見込みを区別する
+
+Run開始時に、次の3つを混同せず既存の`input_snapshot`のcontentへ記録する。
+
+- 確認する差分: Base/headとpoprのreview scope。開始時の変更file一覧は修正権限の根拠ではない。
+- 許可された修正範囲: ユーザーの依頼、acceptance、非目標、明示制限と信頼済み規約から解決する。関連test、既存仕様に合わせる文書・運用手順も、依頼を満たすために必要な最小変更かを開始前に検討する。
+- 変更する見込みのfile: Orchestratorの作業計画。ユーザーの禁止事項として扱わない。
+
+`allowed_write_paths`は許可された修正範囲の内側で固定し、各pathと依頼の関係、制限がユーザー指定かOrchestratorの判断か、そのsourceと理由を残す。「関連fileだから」だけで許可せず、元差分の一覧だけから機械的に限定もしない。修正で増えた差分も次のtargetとreview coverageへ含める。
+
+### 実行権限と上限
+
 Run開始時に次を個別に記録する。
 
 - `read_repository`: 初期true。固定read-only inspectionだけ。
@@ -305,7 +317,7 @@ Run開始時に次を個別に記録する。
 - `push`、`create_or_update_pr`、`write_external_system`: 常にfalse。`READY`後の提出は呼び出し元が既存の`create-pr` contractで実行する。
 - `merge`、`deploy_or_production_write`、`accept_risk_or_spec`: 初期false。Harnessはtrueにしない。
 
-この集合全体を`input_snapshot` recordと`content` evidenceへ固定する。Permissionの追加・縮小、対象identity、allowed path/ref/source/host、effects、approval scopeの変更はすべてgoverning input変更であり、途中stageへ直接resumeせず`CONTEXT_RESOLVING`へ戻る。単なるservice復旧などpermission setのbytesが不変な場合だけ、記録済みresume stateへ戻れる。初期toolはpermissionの意味や変更影響を判定せず、Orchestratorが照合する。
+この集合全体を`input_snapshot` recordと`content` evidenceへ固定する。Permissionの追加・縮小、対象identity、allowed path/ref/source/host、effects、approval scopeの変更はすべてgoverning input変更であり、途中stageへ直接resumeせず`CONTEXT_RESOLVING`へ戻る。ただし`allowed_write_paths`など不変のlimitも変わる場合は、同じrunを書き換えず新しいrunの`CONTEXT_RESOLVING`から開始する。単なるservice復旧などpermission setのbytesが不変な場合だけ、記録済みresume stateへ戻れる。初期toolはpermissionの意味や変更影響を判定せず、Orchestratorが照合する。
 
 解決済みcommandはstable ID、exact command、declared `effects`、1以上でrun deadline以下のtimeout、required servicesを持つ。`effects`は`repository_read|local_write|repository_write|external_read|external_write`の重複なし配列をこの順に並べる。複合commandは該当effectをすべて持ち、各rowのpermissionとretry制約を累積する。
 
@@ -357,7 +369,19 @@ Targetを変更したstageは`TARGET_MUTATED`相当の結果を返し、影響�
 - `GATES_PENDING`: Same-targetのrequired gate成功は`REREVIEW_PENDING`へ進む。信頼済み期待値に結び付く修正可能な`BLOCKED`は`gate_failure` requestを作って`CHANGES_REQUESTED`へ進む。仕様選択、risk受容、外部副作用判断は`HUMAN_DECISION_REQUIRED`、未実行、実行失敗、利用不能、別targetは`EVALUATION_DEFERRED`にする。許可済みgateがtargetを変更した場合は`CANDIDATE_COMMIT_PENDING`、base、scope、rule、inputを変更した場合は`CONTEXT_RESOLVING`へ戻る。
 - `REREVIEW_PENDING`: Candidate project resultが新しいrequired gateを返した場合はblind artifactを保持して`GATES_PENDING`へ戻る。`New`、`Remaining`、`Regressed`のうち、`Introduced`または`Exposed`のCritical/Majorがありbudget内ならreview findingを参照する`change_request`を作って`CHANGES_REQUESTED`へ進む。Coverage不足は`EVALUATION_DEFERRED`、仕様矛盾は`HUMAN_DECISION_REQUIRED`、独立性不足は`INDEPENDENCE_BLOCKED`にする。新gateがtargetを変更した場合はblind artifactをinvalidateし、新targetでFinal reviewを最初から行う。
 
-`CHANGES_REQUESTED`へ入る前にsource review、verification、gate artifactを参照する`change_request`を確定する。Expected behaviorが不明、scopeまたはwrite permission外、次のattemptがlimit超過の場合は`FIXING`へ進まず、それぞれHumanまたは対応blockerへ遷移する。
+`CHANGES_REQUESTED`へ入る前にsource review、verification、gate artifactを参照する`change_request`を確定する。Expected behaviorが不明、scopeまたはwrite permission外、次のattemptがlimit超過の場合は`FIXING`へ進まず、それぞれHumanまたは対応blockerへ遷移する。Path不足だけの場合は、次節の設定訂正か本当の権限不足かを先に区別する。
+
+### 作業範囲の設定ミスを訂正する
+
+Orchestratorが自分で狭めたpath設定は、元の依頼の範囲内と根拠付きで確認できればユーザーへの再承認なしで訂正できる。これは新しい権限の取得ではない。仕様選択、別Issue相当の変更、明示された制限の変更、新しい外部操作が必要、または許可の根拠が不明な場合は訂正扱いにせず、対応blockerで停止する。他の仕様・環境・独立性blockerも訂正によって解消したことにしない。
+
+1. 変更前に既存の`decision`へ、元の設定と訂正後の設定、設定者、依頼と規約の根拠、元の停止結果、残るblocker、使用済みcounterと残り上限を保存する。過去の停止・失敗recordを消したり成功へ書き換えたりしない。
+2. 作業見込みだけの訂正でtarget/input/permission/limitが不変なら、記録済みstateから通常のguardを経て進む。Governing inputだけが変われば同じrunの`CONTEXT_RESOLVING`へ戻る。
+3. `allowed_write_paths`を変える場合は旧runの進行を終了し、訂正したpathだけを差し替えた新しいrunへ引き継ぐ。新runの`input_snapshot`のcontentに、旧run ID、末尾record ID/hash、訂正decision、元の許可・停止理由・未解決request・累計使用量を自己完結した引き継ぎとして保存する。別runのIDを同一run専用の`references`へ入れない。旧runは`validate`で再検証し、破損または引き継ぎ内容を照合できなければ停止する。
+4. 新run内のcounterは0/空で開始するが、上限判定には「引き継いだ全先行runの累計 + 新runの使用量」を使う。Request IDとexecution keyの対応を保持し、IDの付け直しでattempt/retryを消さない。期限、回数、token、費用、file/diff上限は据え置き、差分量も元の比較基準から数える。再訂正時は累計を一度だけ引き継ぐ。算出不能なら停止する。Tokenの`unsupported`は維持し、0へ置き換えない。Deadline超過や次のattemptが上限を超える場合など、通常のguardで`BUDGET_EXHAUSTED`となる条件を訂正で回避しない。
+5. 新runは`CONTEXT_RESOLVING`からtargetとinputを再固定する。旧runの成功結果を新runの検証・gate・Final reviewへ転記せず、独立性を含む通常の順序で再確認する。設定訂正の前後は別の実行条件として評価する。
+
+この照合はOrchestratorが既存recordのpayloadとevidenceで行う。保存toolへ新schema、権限昇格、自動再開の処理を追加しない。
 
 ## READYと停止条件
 
@@ -377,13 +401,15 @@ Finding 0件、A grade、100%の確信はREADY条件にしない。MinorとNit�
 
 - Target、source of truth、command、required gateを一意に固定できない: `EVALUATION_DEFERRED`または`HUMAN_DECISION_REQUIRED`。
 - 仕様判断またはrisk受容が必要: `HUMAN_DECISION_REQUIRED`。
-- Scope外修正が必要: `SCOPE_CHANGE_REQUIRED`。
+- 許可された修正範囲外の変更が必要: `SCOPE_CHANGE_REQUIRED`。元差分にないpathや作業見込みの変更だけではこの理由にしない。
 - Test環境、権限、serviceで実行不能: `VERIFICATION_BLOCKED`。
 - Fresh reviewerを確保できない: `INDEPENDENCE_BLOCKED`。
 - Retry、cycle、deadline、token、cost、diff上限へ到達: `BUDGET_EXHAUSTED`。
 - Required gateが未実行、実行失敗、利用不能、別target、または修正可能なfailureへ分類できない: `EVALUATION_DEFERRED`。信頼済み期待値へ結び付く修正可能なfailureは`CHANGES_REQUESTED`へ進む。
 
 Blockerからは記録されたresume stateへだけ戻る。`EVALUATION_DEFERRED`は`CONTEXT_RESOLVING`、verification blockerは停止したverification state、independence blockerは`REREVIEW_PENDING`を再開候補にするが、次の再検証に成功するまで遷移しない。`BUDGET_EXHAUSTED`は現在runのterminal stateとし、同じrunのlimitを増やしてresumeしない。Humanが継続を承認した場合は、新しいlimit/permissionとself-containedなprior run handoffを持つ別`run_id`を開始する。
+
+作業範囲の設定訂正または承認済みinput変更で再開先が変わる場合は、元の停止recordを保持し、訂正decisionと新inputに基づいて`CONTEXT_RESOLVING`を再開先にする。Limit変更は新runで扱い、設定訂正だけでは既存の`BUDGET_EXHAUSTED`を解除しない。
 
 Resumeでは次を順に行う。
 
