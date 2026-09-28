@@ -33,7 +33,7 @@ def _reject_constant(value: str) -> None:
         field="$",
         invariant="json_number_must_be_finite",
         detail=f"有限でないJSON数値は使用できません: {value}",
-        next_action="NaNまたはInfinityを有限のJSON数値へ置き換えてください。",
+        next_action="原本を編集せず、保存時の版・記録・参照先を確認してください。",
     )
 
 
@@ -45,7 +45,7 @@ def _pairs_without_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
                 field=f"$.{key}",
                 invariant="json_object_keys_must_be_unique",
                 detail=f"JSON object内でkeyが重複しています: {key}",
-                next_action="重複したkeyを1つにまとめてください。",
+                next_action="原本を編集せず、保存時の版・記録・参照先を確認してください。",
             )
         result[key] = value
     return result
@@ -60,7 +60,7 @@ def _validate_json_value(value: Any, field: str = "$") -> None:
                 field=field,
                 invariant="json_string_must_be_unicode_scalar_values",
                 detail="単独のUnicode surrogateはI-JSONとして保存できません。",
-                next_action="正しいUnicode文字へ置き換えてください。",
+                next_action="原本を編集せず、保存時の版・記録・参照先を確認してください。",
             )
         return
     if isinstance(value, int):
@@ -69,7 +69,7 @@ def _validate_json_value(value: Any, field: str = "$") -> None:
                 field=field,
                 invariant="json_integer_must_be_ijson_exact",
                 detail=f"整数がI-JSONの正確な範囲を超えています: {value}",
-                next_action="文字列にするか、安全な整数範囲へ変更してください。",
+                next_action="原本を編集せず、保存時の版・記録・参照先を確認してください。",
             )
         return
     if isinstance(value, float):
@@ -87,7 +87,7 @@ def _validate_json_value(value: Any, field: str = "$") -> None:
                     field=field,
                     invariant="json_object_key_must_be_string",
                     detail="JSON objectのkeyは文字列である必要があります。",
-                    next_action="すべてのkeyを文字列へ変更してください。",
+                    next_action="原本を編集せず、保存時の版・記録・参照先を確認してください。",
                 )
             _validate_json_value(key, f"{field}.<key>")
             _validate_json_value(item, f"{field}.{key}")
@@ -96,7 +96,7 @@ def _validate_json_value(value: Any, field: str = "$") -> None:
         field=field,
         invariant="value_must_be_json",
         detail=f"JSONへ保存できない値です: {type(value).__name__}",
-        next_action="null、bool、数値、文字列、配列、objectのいずれかへ変換してください。",
+        next_action="原本を編集せず、保存時の版・記録・参照先を確認してください。",
     )
 
 
@@ -119,7 +119,7 @@ def parse_json_bytes(content: bytes, *, field: str = "$input") -> Any:
             field=field,
             invariant="json_must_not_have_bom",
             detail="UTF-8 BOM付きJSONは受け付けません。",
-            next_action="BOMを削除して再実行してください。",
+            next_action="原本を編集せず、保存時の版・記録・参照先を確認してください。",
         )
     try:
         text = content.decode("utf-8", errors="strict")
@@ -135,7 +135,7 @@ def parse_json_bytes(content: bytes, *, field: str = "$input") -> Any:
             field=field,
             invariant="input_must_be_valid_utf8_json",
             detail=str(error),
-            next_action="UTF-8の正しいJSONへ修正してください。",
+            next_action="原本を編集せず、保存時の版・記録・参照先を確認してください。",
         )
     _validate_json_value(value)
     return value
@@ -162,7 +162,7 @@ def canonicalize(value: Any) -> bytes:
             field="$",
             invariant="value_must_be_jcs_canonicalizable",
             detail=str(error),
-            next_action="RFC 8785 JCSで表現可能なJSON値へ修正してください。",
+            next_action="原本を編集せず、保存時の版・記録・参照先を確認してください。",
         )
 
 
@@ -186,6 +186,6 @@ def load_json(path: Path) -> Any:
             field=str(path),
             invariant="input_file_must_be_readable",
             detail=str(error),
-            next_action="fileの存在と読み取り権限を確認してください。",
+            next_action="原本を編集せず、保存時の版・記録・参照先を確認してください。",
         )
     return parse_json_bytes(content, field=str(path))

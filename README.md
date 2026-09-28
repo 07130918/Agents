@@ -44,11 +44,11 @@ scripts/apply-to-local.sh
 
 新しいプロジェクトを始めるときは、`templates/` の AGENTS.md / CLAUDE.md をコピーして使うことを推奨します。Review-remediation Harnessはpersonal/global skillとして管理し、projectへcontract全文をコピーしません。
 
-Harnessはrepository instruction、CI、manifest、governing Issueなど、projectが既に持つ正本から必要なcontextを解決します。Harness専用project profileは作らず、必須情報を一意に解決できない場合はHuman承認のrun-local inputで補完するか、fail-closedで停止します。
+Harnessはrepository instruction、CI、manifest、Issueなど、projectが既に持つ正本から必要な情報を解決します。専用project profileは作らず、仕様や権限の判断が必要な場合はユーザーへ確認します。
 
-初めて仕組みを確認する場合は、図解付きの[レビュー・修正ハーネスの全体像](docs/design/review-remediation-harness/README.md)から読み始めてください。判断理由、全状態、記録形式は同じディレクトリの詳しい設計へ分離しています。
+初めて仕組みを確認する場合は、[レビュー・修正ハーネスの全体像](docs/design/review-remediation-harness/README.md)から読み始めてください。契約3.0.0では進行を軽量化し、初回実装・文書同期・提出を既存workflowへ委譲します。
 
-Harnessの構造化された作業記録は、対象project内ではなく既定で`~/.agents/state/review-harness/`へ保存します。初期toolは`append`、read-onlyな`validate`、保存済みtarget fingerprintを現在のlocal repositoryと比較する`check-target`を提供します。State、READY、権限、予算、完全復旧、新しいtargetの採用は自動判定しません。`~/.agents/state/`配下のruntime stateは、Git管理とこのリポジトリの同期対象外です。
+新規作業は[Markdownの確認記録](shared/references/review-harness-records.md)を使い、既定で`~/.agents/state/review-harness-work/`へ保存します。旧JSON台帳は新規利用を終了し、切替時に`~/.agents/state/archives/review-harness/2026-09-28/`へ移します。旧toolはread-onlyな`validate`だけを残します。[旧記録の探索・移行・検証の限界](shared/references/review-harness-archive.md)を参照してください。`~/.agents/state/`配下はGit管理と設定同期の対象外です。
 
 ```bash
 cp templates/AGENTS.md templates/CLAUDE.md <プロジェクトルート>/
