@@ -56,7 +56,8 @@
 ## Gitと成果物の共通契約
 
 - `main`と`develop`では作業せず、issue対応branchは`<issue番号>/<slug>`を使う。
-- Commitは既定でuserが行う。commitまたはPR作成まで明示された場合は、対応skillの手順に従いagentが実行する。
+- Commitは、依頼scope内の変更を必要な検証後にCodex / Claude Codeが追加確認なしで行ってよい。userの未commit作業を混ぜず、commit不要・事前確認の指定があれば従う。
+- Push・PR作成は依頼に含まれる場合に対応skillの手順で行う。commitの許可だけでpush・PR作成まで許可されたとは扱わない。
 - Commit件名は`<prefix>: <日本語の要約>`とし、prefixは`feat|fix|chore|refactor|perf|docs|test|style|build|ci|revert`から選ぶ。末尾に句点を付けない。
 - Mergeはuserが行う。merge後はbaseをfast-forwardし、merge済み作業branchをlocalとremoteから整理する。
 - 完了報告には、やったこと、成果物link、検証結果、次の候補を含める。
