@@ -47,6 +47,7 @@
    - Next.js で不可解な挙動がある場合は `.next` のキャッシュ不整合を候補に入れる。
 5. 疎通確認を行う。
    - 画面は Browser/Chrome/Playwright で開く。
+   - 認証付き画面の診断は [chrome-devtools-mcp の取得前選別](chrome-devtools-mcp.md#診断情報は取得前に絞る)に従い、代替ツールが自動で返す情報も確認する。
    - API は `curl` や既存テストで確認する。
    - ログインが必要なら、seed のテストアカウントやプロジェクト文書を確認する。
 6. 終了や再起動を依頼された場合は、対象を絞る。
@@ -60,7 +61,7 @@
 | 起動しない | env validation、port conflict、DB container、package install |
 | 無限リロード | bind mount、Next.js cache、env watch、container clock、generated files |
 | 画面が古い | `.next`、browser cache、service worker、SWR cache |
-| APIだけ失敗 | Network response body、server log、DB seed、auth cookie |
+| APIだけ失敗 | 対象APIのステータス、既知のエラー分類、DB seed、認証状態の判定値。秘密値を含む本文・cookieは出力しない |
 | DBだけ失敗 | migration state、volume、seed、connection string |
 
 ## 停止条件
