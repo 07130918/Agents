@@ -1,79 +1,83 @@
-"""軽量な作業記録toolのテスト入力を生成する。"""
+"""旧schema 1.0の保存済み記録を隔離領域に用意する。"""
 
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
 
-from review_harness_artifacts.store import RunStore
+from review_harness_artifacts.canonical import (
+    canonicalize,
+    parse_json_bytes,
+    sha256_hex,
+)
 
-CREATED_AT = "2026-08-28T00:00:00Z"
 REPOSITORY_ID = "repository-test"
 RUN_ID = "run-test"
 
 
-def request(
+def write_record(
+    state_root: Path,
     record_id: str,
-    record_type: str,
+    record_type: str = "review",
     *,
-    references: list[str] | None = None,
+    references: list[Path] | None = None,
+    evidence: dict[str, bytes] | None = None,
     payload: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    """appendへ渡す最小の作業記録要求を作る。
-
-    Args:
-        record_id: run内で一意な作業記録ID。
-        record_type: 作業記録の種別。
-        references: 参照する過去の作業記録ID。
-        payload: 工程固有の任意データ。
-
-    Returns:
-        初期版schemaに一致する要求。
-    """
-
-    return {
+) -> Path:
+    """廃止したappend実装を使わず、既知の旧形式を保存する。"""
+    run_root = state_root / "review-harness" / REPOSITORY_ID / RUN_ID
+    records = run_root / "records"
+    objects = run_root / "objects" / "sha256"
+    records.mkdir(parents=True, exist_ok=True)
+    objects.mkdir(parents=True, exist_ok=True)
+    sequence = len(list(records.iterdir()))
+    stored_references = []
+    for path in references or []:
+        content = path.read_bytes()
+        record = parse_json_bytes(content)
+        stored_references.append(
+            {
+                "record_id": record["record_id"],
+                "sequence": record["sequence"],
+                "content_sha256": sha256_hex(content),
+            }
+        )
+    stored_evidence = []
+    for label, content in sorted((evidence or {}).items()):
+        content_hash = sha256_hex(content)
+        (objects / content_hash).write_bytes(content)
+        stored_evidence.append(
+            {
+                "label": label,
+                "content_sha256": content_hash,
+                "byte_length": len(content),
+                "object_path": f"objects/sha256/{content_hash}",
+            }
+        )
+    value = {
+        "schema_version": "1.0",
+        "repository_id": REPOSITORY_ID,
+        "run_id": RUN_ID,
+        "sequence": sequence,
         "record_id": record_id,
         "record_type": record_type,
-        "created_at": CREATED_AT,
-        "references": references or [],
+        "created_at": "2026-08-28T00:00:00Z",
+        "references": stored_references,
+        "evidence": stored_evidence,
         "payload": payload or {},
     }
-
-
-def create_store(state_root: Path, *, run_id: str = RUN_ID) -> RunStore:
-    """テスト用run storeを作る。
-
-    Args:
-        state_root: 隔離した保存先。
-        run_id: テスト対象のrun ID。
-
-    Returns:
-        新規作成済みの保存先。
-    """
-
-    candidate = state_root.parent / f"candidate-{run_id}"
-    candidate.mkdir(exist_ok=True)
-    return RunStore(
-        state_root=state_root,
-        repository_id=REPOSITORY_ID,
-        run_id=run_id,
-        create=True,
-        candidate_worktree=candidate,
-    )
-
-
-def write_evidence(root: Path, name: str, content: bytes) -> Path:
-    """根拠として渡す通常fileを作る。
-
-    Args:
-        root: fileを置くdirectory。
-        name: file名。
-        content: 保存する正確なbytes。
-
-    Returns:
-        作成したfileのpath。
-    """
-
-    path = root / name
+    content = canonicalize(value)
+    path = records / f"{sequence:012d}--{record_id}--{sha256_hex(content)}.json"
     path.write_bytes(content)
     return path
+
+
+def replace_record(path: Path, value: dict[str, Any]) -> Path:
+    """内容とfile名hashを整合的に変更し、検出限界も試験する。"""
+    content = canonicalize(value)
+    replacement = path.with_name(
+        f"{value['sequence']:012d}--{value['record_id']}--{sha256_hex(content)}.json"
+    )
+    path.unlink()
+    replacement.write_bytes(content)
+    return replacement

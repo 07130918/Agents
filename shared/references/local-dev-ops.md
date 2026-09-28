@@ -43,6 +43,7 @@
    - DB が必要な場合は app より先に DB/依存コンテナを起動する。
 4. ログを確認する。
    - 起動直後の error、missing env、migration failure、port conflict、cache warning を見る。
+   - 対象のサービス・PIDと必要な項目へ限定する。全プロセスの引数、環境変数、認証設定を広く取得しない。秘密値を出力せず、不足する設定は名前だけ確認する。
    - Next.js で不可解な挙動がある場合は `.next` のキャッシュ不整合を候補に入れる。
 5. 疎通確認を行う。
    - 画面は Browser/Chrome/Playwright で開く。
@@ -71,9 +72,11 @@
 ## 検証
 
 - 起動 URL を開ける。
-- 対象画面/APIで期待する status code または UI 状態を確認する。
+- 対象画面/APIで期待する status code と必要な UI 状態を確認し、受入条件に応じて保存値・副作用まで照合する。
 - console error、server log、network failure の有無を確認する。
 - PR 作成前なら、確認内容を PR 本文へ転記できる粒度で残す。
+
+ハーネスから呼ばれた場合、結果は[確認記録](review-harness-records.md)へ保存する。記録形式・証跡の保存方法はこの正本を参照し、ここへ重複定義しない。対象・受入条件・結果・未解決事項を進行役へ返し、必要な修正と再確認へつなぐ。
 
 ## 関連 skill
 

@@ -1,9 +1,9 @@
 ---
 name: review-remediation-harness
 description: |
-  独立reviewerを含むreview、修正、検証、fresh Final reviewをexact targetで進行する。
+  独立した最終レビューを含む修正・検証を、既存workflowと確認記録につないで自律的に進める。
   Use when: user explicitly asks for a review-remediation harness, reviewer/implementer separation across a fix workflow, or a review/fix/verify/re-review loop with an independent final reviewer.
-  For Issue URLs, issue-to-pr owns intake and delegates its review/fix/verify subflow here. Does not trigger on: standalone initial/final/review-only requests without remediation, PR creation only, or an ordinary Issue implementation that does not request the Harness.
+  For Issue URLs, issue-to-pr owns intake and initial implementation before handing over the candidate. Does not trigger on: review-only requests, PR creation only, ordinary Issue implementation without a Harness request, or evaluation/updates of this Harness itself.
 ---
 
 # review-remediation-harness
