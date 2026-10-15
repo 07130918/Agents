@@ -20,7 +20,33 @@ mkdir -p "${TEST_CONFIG_ROOT}/.agents/skills/grill-with-docs"
 printf '%s\n' 'legacy duplicated format' >"${TEST_CONFIG_ROOT}/.agents/skills/grill-with-docs/CONTEXT-FORMAT.md"
 printf '%s\n' 'legacy duplicated format' >"${TEST_CONFIG_ROOT}/.agents/skills/grill-with-docs/ADR-FORMAT.md"
 
+removed_serena_paths=(
+  .agents/skills/serena/SKILL.md
+  .codex/agents/serena-dev.toml
+  .agents/references/serena.md
+  .agents/references/serena-dev-agent.md
+  .claude/skills.disabled/serena/SKILL.md
+  .claude/agents.disabled/serena-dev.md
+)
+for removed_path in "${removed_serena_paths[@]}"; do
+  mkdir -p "$(dirname "${TEST_CONFIG_ROOT}/${removed_path}")"
+  printf '%s\n' '廃止済みのSerenaワークフロー定義' >"${TEST_CONFIG_ROOT}/${removed_path}"
+done
+printf '%s\n' '[mcp_servers.serena]' 'command = "serena"' >"${TEST_ROOT}/mcp-config.toml"
+cp "${TEST_ROOT}/mcp-config.toml" "${TEST_CONFIG_ROOT}/.codex/config.toml"
+
 AGENTS_LOCAL_CONFIG_ROOT="${TEST_CONFIG_ROOT}" "${ROOT}/scripts/apply-to-local.sh" >/dev/null
+
+for removed_path in "${removed_serena_paths[@]}"; do
+  if [ -e "${TEST_CONFIG_ROOT}/${removed_path}" ]; then
+    echo "廃止済みのSerenaワークフロー定義が残っています: ${removed_path}" >&2
+    exit 1
+  fi
+done
+if ! cmp -s "${TEST_ROOT}/mcp-config.toml" "${TEST_CONFIG_ROOT}/.codex/config.toml"; then
+  echo "Serena MCPの接続設定は変更せず保持してください。" >&2
+  exit 1
+fi
 
 if [ ! -f "${TEST_CONFIG_ROOT}/.agents/references/grilling.md" ]; then
   echo "Shared grilling reference must be applied to local settings." >&2
@@ -81,11 +107,6 @@ fi
 
 if [ ! -f "${TEST_CONFIG_ROOT}/.claude/skills.disabled/create-pr/SKILL.md" ]; then
   echo "Managed Claude Code skills must be copied into skills.disabled." >&2
-  exit 1
-fi
-
-if [ ! -f "${TEST_CONFIG_ROOT}/.claude/agents.disabled/serena-dev.md" ]; then
-  echo "Managed Claude Code agents must be copied into agents.disabled." >&2
   exit 1
 fi
 
