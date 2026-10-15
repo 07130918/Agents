@@ -40,6 +40,14 @@ scripts/apply-to-local.sh
 
 `scripts/validate.sh` を変更した場合は `scripts/validate.test.sh`、ローカル適用処理を変更した場合は `scripts/apply-to-local.test.sh`、ローカル同期処理を変更した場合は `scripts/sync-from-local.test.sh` で回帰確認します。Global指示またはworkflow移管先を変更した場合は `scripts/global-instructions.test.sh` も実行します。
 
+## Issue本文の作成・起票
+
+Codex用の [`issue-authoring`](codex/skills/issue-authoring/SKILL.md) は、調査結果・議事録・レビュー指摘を、初見の担当者が着手できる簡潔なIssueへ整理します。重複確認、受入条件の記述、依頼された起票・更新、保存内容の確認までの手順は [共通reference](shared/references/issue-authoring.md) にあります。
+
+「この調査結果をIssueにして」「ジュニアでも着手できる本文にして」で利用できます。本文案だけの依頼では外部へ書き込まず、「とりあえず起票」では詳細設計を追加しません。Asanaも依頼された場合は `asana-workflow` と連携します。既存Issueの実装は `issue-to-pr` が担当します。
+
+グローバル配置先は `~/.agents/skills/issue-authoring/SKILL.md` と `~/.agents/references/issue-authoring.md` です。Claude Code用wrapperは追加していません。
+
 ## 新規プロジェクトのセットアップ
 
 新しいプロジェクトを始めるときは、`templates/` の AGENTS.md / CLAUDE.md をコピーして使うことを推奨します。Review-remediation Harnessはpersonal/global skillとして管理し、projectへcontract全文をコピーしません。
