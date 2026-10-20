@@ -15,6 +15,12 @@
 - TypeScriptで`any`を使わず、Pythonには型hintを付ける。
 - `let`より`const`と宣言的な処理を優先し、nested ternaryはif文へ分ける。
 
+## ブラウザ操作
+
+- Computer Use、ブラウザ操作、UI検証は、普段使っているBraveの既存プロファイルとログインセッションを優先する。接続済みのBrave拡張を使い、必要な新規タブも同じプロファイルに開く。
+- Braveへ接続できない場合は、接続に必要な操作を具体的に案内する。ユーザーの指定なしにChrome、内蔵ブラウザ、一時・別プロファイルへ切り替えて再ログインを求めない。
+- ツールの選択・接続とDevTools診断の詳細は `~/.agents/references/chrome-devtools-mcp.md` に従う。
+
 ## 作業原則
 
 - 着手前に計画とscopeを宣言し、依頼と無関係な変更を混ぜない。
