@@ -1,8 +1,25 @@
-# Chrome DevTools MCP ワークフロー
+# Braveを使うブラウザ操作・UI検証
 
-この PC では、ブラウザ操作・UI検証・スクリーンショット取得はこの workflow に統一する。別のブラウザ自動化 runner を追加しない。
+この PC では、普段使うBraveの既存プロファイルを使う。ブラウザ操作・UI検証・スクリーンショット取得は、接続済みのBrave拡張を優先する。
 
 UIの変更完了を「コード上は正しい」ではなく「ブラウザで期待通り動く」まで検証するためのワークフロー。
+
+## ブラウザの選択と接続
+
+- Codex desktopではComputer Useのブラウザ一覧からBraveを選ぶ。`cua_repl` が使える場合は一覧にあるBraveのIDで接続し、Chromeや内蔵ブラウザのIDを流用しない。未接続ならSettings > Computer UseでBraveを有効にし、普段のプロファイルに拡張を接続するよう案内する。
+- Claude CodeではBraveに接続したClaude in Chrome拡張を使う。`/chrome` の `Select browser…` でBraveを選び、必要なら `Enabled by default` を有効にする。`--chrome` は連携機能の名前であり、Google Chromeを選ぶ指示として扱わない。
+- 既存のログイン状態・パスワードマネージャーを利用できるプロファイルを維持する。接続できないときにChromeや別プロファイルを起動して再ログインを求めず、必要な接続操作を具体的に案内する。
+
+### DevTools MCPが必要な場合
+
+通常の画面操作はBrave拡張で行い、拡張だけではできない診断に限りChrome DevTools MCPを検討する。以下のMCP固有の手順は、接続先を確認できた場合だけ使う。
+
+- MCPは `--browserUrl http://127.0.0.1:9222` による既存インスタンスへの接続専用とする。`--isolated` とChromeを探す `--autoConnect` は使わず、引数を外して自動起動へ戻さない。
+- この設定だけではBraveのリモートデバッグは有効にならない。接続先が普段のBraveであることを確認できない場合はMCPを使わず、拡張で続ける。リモートデバッグの有効化やBraveの再起動が必要なら、目的と影響を説明してユーザーへ確認する。
+- 実行ファイルをBraveへ変えるだけでは既存セッションを共有できない。通常プロファイルの複製やCookie・保存パスワードの抽出で代用しない。
+- Chrome DevTools MCPの公式サポートはChromeのみで、Brave接続の互換性は保証されない。取得できない診断項目は未検証として記録する。
+
+接続方法の一次情報: [Codexのブラウザ拡張](https://learn.chatgpt.com/docs/chrome-extension)、[Claude Codeのブラウザ連携](https://code.claude.com/docs/en/chrome)、[DevTools MCPの接続設定](https://github.com/ChromeDevTools/chrome-devtools-mcp/blob/main/docs/configuration.md)。
 
 ## 基本原則
 
@@ -31,7 +48,7 @@ UIの変更完了を「コード上は正しい」ではなく「ブラウザで
 
 専用の合成データで確認する場合も、戻り値に必要な情報が残り、URL・DOM本文・storageなどのダミー秘密値が出ないことを照合する。この手順はツール全体の秘密情報除去を機械保証するものではない。
 
-## 標準検証フロー
+## Chrome DevTools MCPでの検証フロー
 
 ### 1. ページ起動・ナビゲート
 ```
@@ -107,7 +124,7 @@ mcp__chrome-devtools__evaluate_script        # 必要なDOM判定値だけを返
 - 操作のたびに最新の snapshot を取り直す
 
 ### ⚠️ 複数タブを開いたまま
-- テスト終了時に `close_page` で片付ける (タブが増え続けると select_page が煩雑になる)
+- テスト終了時は自分が作成した不要なタブだけを `close_page` で片付け、ユーザーの既存タブは保持する
 
 ### ⚠️ evaluate_script の副作用
 - DOM を書き換えるスクリプトは後続テストに影響する

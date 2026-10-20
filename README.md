@@ -42,6 +42,12 @@ scripts/apply-to-local.sh
 
 `scripts/validate.sh` を変更した場合は `scripts/validate.test.sh`、ローカル適用処理を変更した場合は `scripts/apply-to-local.test.sh`、ローカル同期処理を変更した場合は `scripts/sync-from-local.test.sh` で回帰確認します。Global指示またはworkflow移管先を変更した場合は `scripts/global-instructions.test.sh` も実行します。
 
+## ブラウザ操作
+
+Codex / Claude Codeのユーザー指示では、普段使っているBraveの既存プロファイルとログインセッションを優先します。接続できないときはBraveの接続を案内し、Chromeや一時プロファイルへ自動で切り替えて再ログインを求めません。[接続・UI検証の手順](shared/references/chrome-devtools-mcp.md)を参照してください。
+
+ローカルのChrome DevTools MCPは `--isolated` / `--autoConnect` を使わず、`--browserUrl http://127.0.0.1:9222` で既存インスタンスへの接続専用にします。Braveのリモートデバッグを有効にする設定ではありません。通常操作はBrave拡張で行い、MCP診断には接続先がBraveであることの確認が別途必要です。実際のMCP設定は同期対象外です。
+
 ## Issue本文の作成・起票
 
 Codex用の [`issue-authoring`](codex/skills/issue-authoring/SKILL.md) は、調査結果・議事録・レビュー指摘を、初見の担当者が着手できる簡潔なIssueへ整理します。重複確認、受入条件の記述、依頼された起票・更新、保存内容の確認までの手順は [共通reference](shared/references/issue-authoring.md) にあります。
