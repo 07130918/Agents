@@ -2,7 +2,7 @@
 
 `CONTEXT.md` はプロジェクト固有のdomain languageを記録するglossaryであり、spec、scratch pad、実装決定の保管場所ではない。
 
-参考: [Matt Pocock domain-modeling/CONTEXT-FORMAT.md](https://github.com/mattpocock/skills/blob/main/skills/engineering/domain-modeling/CONTEXT-FORMAT.md)
+参考: [Matt Pocock domain-modeling/GLOSSARY-FORMAT.md](https://github.com/mattpocock/skills/blob/main/skills/engineering/domain-modeling/GLOSSARY-FORMAT.md)
 
 ## 単一context
 
