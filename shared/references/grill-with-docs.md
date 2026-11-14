@@ -94,7 +94,7 @@ Created ADRs:
 Next step:
 ```
 
-`Deferred questions` は実装前に解くものと、後でよいものを分ける。`Next step` は `docs-driven-development`、実装、prototype、追加調査から1つ推奨する。glossaryやADRに入らない具体的な制約、negative requirement、数値defaultもsummaryに残し、同じtaskのまま次へ進める。
+`Deferred questions` は実装前に解くものと、後でよいものを分け、再開条件を添える。合意した案に残る仮説と検証方法・実施時点もsummaryへ含める。`Next step` は `docs-driven-development`、実装、prototype、計測、追加調査、質問票、熟考から1つ推奨する。glossaryやADRに入らない具体的な制約、negative requirement、数値defaultもsummaryに残す。熟考で持ち帰る場合は次の作業を開始せず、再開時に前提から見直す。
 
 ## 関連 skill
 
