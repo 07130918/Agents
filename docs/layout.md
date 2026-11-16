@@ -20,7 +20,7 @@ claude/skills.disabled/ -> ~/.claude/skills.disabled/
 claude/agents.disabled/ -> ~/.claude/agents.disabled/
 ```
 
-Claude Code の既存ユーザーグローバル skill とsubagentは、Claude 5 世代向けの再設計が完了するまで `skills.disabled/` と `agents.disabled/` に退避します。新規skillは作成時にClaude Codeへ反映するかをユーザーへ確認し、明示されたwrapperだけを `claude/skills/` で管理します。`scripts/apply-to-local.sh` は管理対象のactive skillだけを `~/.claude/skills/` に同期し、Claude Code agentは引き続き有効化しません。判断の詳細は [ADR](decisions/2026-07-26-disable-claude-skills-and-subagents-for-claude-5.md) を参照してください。
+Claude Code のユーザーグローバル skill は、有効な定義を `skills/`、退避中の定義を `skills.disabled/` で管理します。`scripts/apply-to-local.sh` は両方を対応するローカルディレクトリへ同期し、subagent は `~/.claude/agents.disabled/` に配置します。新規追加と再導入の判断は [ADR](decisions/2026-07-26-disable-claude-skills-and-subagents-for-claude-5.md) を参照してください。
 
 ## Excluded Runtime State
 
