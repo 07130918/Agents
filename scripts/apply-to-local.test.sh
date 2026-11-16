@@ -114,7 +114,23 @@ if [ -e "${TEST_CONFIG_ROOT}/.claude/agents" ]; then
   exit 1
 fi
 
-if [ ! -f "${TEST_CONFIG_ROOT}/.claude/skills.disabled/create-pr/SKILL.md" ]; then
+for skill_name in create-pr bug-investigation sync-docs-code; do
+  if [ ! -f "${TEST_CONFIG_ROOT}/.claude/skills/${skill_name}/SKILL.md" ] ||
+    [ -e "${TEST_CONFIG_ROOT}/.claude/skills.disabled/${skill_name}" ] ||
+    [ ! -f "${TEST_CONFIG_ROOT}/.agents/references/${skill_name}.md" ]; then
+    echo "Claude Code の有効なスキルと共通手順を同期してください: ${skill_name}" >&2
+    exit 1
+  fi
+done
+
+create_pr_skill="${TEST_CONFIG_ROOT}/.claude/skills/create-pr/SKILL.md"
+if ! grep -qx 'disable-model-invocation: true' "${create_pr_skill}" ||
+  grep -q '^allowed-tools:' "${create_pr_skill}"; then
+  echo "create-pr は手動呼び出し専用とし、ツールの権限は Claude Code の設定に従ってください。" >&2
+  exit 1
+fi
+
+if [ ! -f "${TEST_CONFIG_ROOT}/.claude/skills.disabled/issue-to-pr/SKILL.md" ]; then
   echo "Managed Claude Code skills must be copied into skills.disabled." >&2
   exit 1
 fi

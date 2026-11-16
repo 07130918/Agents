@@ -6,7 +6,6 @@ description: |
   Does not trigger on: commit only without a PR, issue investigation or implementation (defer to issue-to-pr), or diff inspection only (defer to git-diff).
   Accepts args: none.
 disable-model-invocation: true
-allowed-tools: Bash(git *), Bash(gh *), Read
 ---
 
 # create-pr
