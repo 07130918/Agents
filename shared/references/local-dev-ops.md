@@ -11,7 +11,7 @@
 ## 対象外
 
 - Cloud Run、Cloud Build、GCP Secret、Terraform などクラウド環境の変更は `gcp-cloud-run-ops` を使う。
-- DB schema 変更や migration 作成は `nextjs-drizzle-patterns` / `nextjs-prisma-patterns`、またはプロジェクト固有の migration skill を使う。
+- DB schema 変更や migration 作成は、使用中の ORM とプロジェクトの手順に従う。
 - UI 実装やブラウザ操作そのものは `chrome-devtools-mcp`、`frontend-design`、プロジェクト固有の frontend skill を併用する。
 
 ## 入力

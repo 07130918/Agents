@@ -8,7 +8,7 @@ Next.js App Router と Drizzle ORM を組み合わせた MySQL アプリで、AP
 - Knex query や `@/lib/knex` 依存を Drizzle query に移行する作業。
 - DB migration を Cloud Build、Cloud Run Job、GitHub Actions、Docker image で実行する設計確認。
 - Zod request / response schema、Drizzle schema、SQL migration、ドキュメントの整合性を確認する作業。
-- Prisma 固有の設計は `nextjs-prisma-patterns`、Chakra UI 部品は `react-chakra-ui`、一般的な CI 調査は `github-actions-ops` を優先する。
+- Prisma 固有の設計は対象外。Chakra UI 部品は `react-chakra-ui`、一般的な CI 調査は `github-actions-ops` を優先する。
 
 ## 対象外
 
@@ -108,9 +108,7 @@ Next.js App Router と Drizzle ORM を組み合わせた MySQL アプリで、AP
 
 ## 関連 skill
 
-- `nextjs-prisma-patterns`: Prisma を使う Next.js project。
 - `react-chakra-ui`: Chakra UI v3 component 実装。
-- `testing-patterns`: Jest / Vitest / pytest の test 設計。
 - `github-actions-ops`: GitHub Actions の失敗調査と workflow 運用。
 - `docs-code-consistency-audit`: docs と schema / API の乖離監査。
 

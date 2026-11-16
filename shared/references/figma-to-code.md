@@ -90,7 +90,7 @@ Figma で token 外の色 (e.g. `#F3F4F5`) が使われていたら、デザイ�
 
 - UI設計が自由度高い場合 → `frontend-design` スキルも併用 (AI美学を避けたクラフト設計)
 - Chakra UI v3 特有の prop 変更対応 → `react-chakra-ui` スキル参照
-- Next.js App Router での配置 → `nextjs-prisma-patterns` スキル参照
+- Next.js App Router での配置 → プロジェクトのルーティング規約を確認
 
 ## 実装完了後の検証
 

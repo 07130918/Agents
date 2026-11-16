@@ -99,5 +99,4 @@ Next step:
 ## 関連 skill
 
 - ドキュメントを書かない軽量版: `grill-me`
-- アーキテクチャ改善のgrilling: `software-architecture` のworkflow Step 3
 - `docs/design/` を正本にして実装へ進む: `docs-driven-development`

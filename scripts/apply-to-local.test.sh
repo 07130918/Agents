@@ -22,7 +22,7 @@ mkdir -p "${TEST_CONFIG_ROOT}/.agents/skills/grill-with-docs"
 printf '%s\n' 'legacy duplicated format' >"${TEST_CONFIG_ROOT}/.agents/skills/grill-with-docs/CONTEXT-FORMAT.md"
 printf '%s\n' 'legacy duplicated format' >"${TEST_CONFIG_ROOT}/.agents/skills/grill-with-docs/ADR-FORMAT.md"
 
-removed_serena_paths=(
+removed_paths=(
   .agents/skills/serena/SKILL.md
   .codex/agents/serena-dev.toml
   .agents/references/serena.md
@@ -30,18 +30,25 @@ removed_serena_paths=(
   .claude/skills.disabled/serena/SKILL.md
   .claude/agents.disabled/serena-dev.md
 )
-for removed_path in "${removed_serena_paths[@]}"; do
+for skill_name in testing-patterns software-architecture prompt-engineering nextjs-prisma-patterns; do
+  removed_paths+=(
+    ".agents/skills/${skill_name}/SKILL.md"
+    ".claude/skills.disabled/${skill_name}/SKILL.md"
+    ".agents/references/${skill_name}.md"
+  )
+done
+for removed_path in "${removed_paths[@]}"; do
   mkdir -p "$(dirname "${TEST_CONFIG_ROOT}/${removed_path}")"
-  printf '%s\n' '廃止済みのSerenaワークフロー定義' >"${TEST_CONFIG_ROOT}/${removed_path}"
+  printf '%s\n' '廃止済みの定義' >"${TEST_CONFIG_ROOT}/${removed_path}"
 done
 printf '%s\n' '[mcp_servers.serena]' 'command = "serena"' >"${TEST_ROOT}/mcp-config.toml"
 cp "${TEST_ROOT}/mcp-config.toml" "${TEST_CONFIG_ROOT}/.codex/config.toml"
 
 AGENTS_LOCAL_CONFIG_ROOT="${TEST_CONFIG_ROOT}" "${ROOT}/scripts/apply-to-local.sh" >/dev/null
 
-for removed_path in "${removed_serena_paths[@]}"; do
+for removed_path in "${removed_paths[@]}"; do
   if [ -e "${TEST_CONFIG_ROOT}/${removed_path}" ]; then
-    echo "廃止済みのSerenaワークフロー定義が残っています: ${removed_path}" >&2
+    echo "廃止済みの定義が残っています: ${removed_path}" >&2
     exit 1
   fi
 done
@@ -114,7 +121,23 @@ if [ -e "${TEST_CONFIG_ROOT}/.claude/agents" ]; then
   exit 1
 fi
 
-if [ ! -f "${TEST_CONFIG_ROOT}/.claude/skills.disabled/create-pr/SKILL.md" ]; then
+for skill_name in create-pr bug-investigation sync-docs-code; do
+  if [ ! -f "${TEST_CONFIG_ROOT}/.claude/skills/${skill_name}/SKILL.md" ] ||
+    [ -e "${TEST_CONFIG_ROOT}/.claude/skills.disabled/${skill_name}" ] ||
+    [ ! -f "${TEST_CONFIG_ROOT}/.agents/references/${skill_name}.md" ]; then
+    echo "Claude Code の有効なスキルと共通手順を同期してください: ${skill_name}" >&2
+    exit 1
+  fi
+done
+
+create_pr_skill="${TEST_CONFIG_ROOT}/.claude/skills/create-pr/SKILL.md"
+if ! grep -qx 'disable-model-invocation: true' "${create_pr_skill}" ||
+  grep -q '^allowed-tools:' "${create_pr_skill}"; then
+  echo "create-pr は手動呼び出し専用とし、ツールの権限は Claude Code の設定に従ってください。" >&2
+  exit 1
+fi
+
+if [ ! -f "${TEST_CONFIG_ROOT}/.claude/skills.disabled/issue-to-pr/SKILL.md" ]; then
   echo "Managed Claude Code skills must be copied into skills.disabled." >&2
   exit 1
 fi

@@ -60,6 +60,12 @@ Codex用の [`issue-authoring`](codex/skills/issue-authoring/SKILL.md) は、調
 
 Claude Code で `/handoff-prompt` を実行すると、会話の文脈と作業ディレクトリの状態を確認し、次のセッションに貼り付ける Markdown を作成します。Codex では `$handoff-prompt` で呼び出せます。[共通手順](shared/references/handoff-prompt.md)
 
+## Claude Code でのバグ調査と PR 提出
+
+- `/bug-investigation` で、再現から原因調査、修正の検証まで進めます。[共通手順](shared/references/bug-investigation.md)
+- `/create-pr` を明示的に呼び出すと、検証、コミット、push、PR 作成へ進みます。ツールの使用許可は Claude Code の権限設定に従います。[共通手順](shared/references/create-pr.md)
+- `/sync-docs-code` で、実装差分に対応する文書を確認・更新します。`create-pr` の提出前確認にも使われます。[共通手順](shared/references/sync-docs-code.md)
+
 ## 新規プロジェクトのセットアップ
 
 新しいプロジェクトを始めるときは、`templates/` の AGENTS.md / CLAUDE.md をコピーして使うことを推奨します。Review-remediation Harnessはpersonal/global skillとして管理し、projectへcontract全文をコピーしません。
