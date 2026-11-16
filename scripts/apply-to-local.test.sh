@@ -22,7 +22,7 @@ mkdir -p "${TEST_CONFIG_ROOT}/.agents/skills/grill-with-docs"
 printf '%s\n' 'legacy duplicated format' >"${TEST_CONFIG_ROOT}/.agents/skills/grill-with-docs/CONTEXT-FORMAT.md"
 printf '%s\n' 'legacy duplicated format' >"${TEST_CONFIG_ROOT}/.agents/skills/grill-with-docs/ADR-FORMAT.md"
 
-removed_serena_paths=(
+removed_paths=(
   .agents/skills/serena/SKILL.md
   .codex/agents/serena-dev.toml
   .agents/references/serena.md
@@ -30,18 +30,25 @@ removed_serena_paths=(
   .claude/skills.disabled/serena/SKILL.md
   .claude/agents.disabled/serena-dev.md
 )
-for removed_path in "${removed_serena_paths[@]}"; do
+for skill_name in testing-patterns software-architecture prompt-engineering nextjs-prisma-patterns; do
+  removed_paths+=(
+    ".agents/skills/${skill_name}/SKILL.md"
+    ".claude/skills.disabled/${skill_name}/SKILL.md"
+    ".agents/references/${skill_name}.md"
+  )
+done
+for removed_path in "${removed_paths[@]}"; do
   mkdir -p "$(dirname "${TEST_CONFIG_ROOT}/${removed_path}")"
-  printf '%s\n' '廃止済みのSerenaワークフロー定義' >"${TEST_CONFIG_ROOT}/${removed_path}"
+  printf '%s\n' '廃止済みの定義' >"${TEST_CONFIG_ROOT}/${removed_path}"
 done
 printf '%s\n' '[mcp_servers.serena]' 'command = "serena"' >"${TEST_ROOT}/mcp-config.toml"
 cp "${TEST_ROOT}/mcp-config.toml" "${TEST_CONFIG_ROOT}/.codex/config.toml"
 
 AGENTS_LOCAL_CONFIG_ROOT="${TEST_CONFIG_ROOT}" "${ROOT}/scripts/apply-to-local.sh" >/dev/null
 
-for removed_path in "${removed_serena_paths[@]}"; do
+for removed_path in "${removed_paths[@]}"; do
   if [ -e "${TEST_CONFIG_ROOT}/${removed_path}" ]; then
-    echo "廃止済みのSerenaワークフロー定義が残っています: ${removed_path}" >&2
+    echo "廃止済みの定義が残っています: ${removed_path}" >&2
     exit 1
   fi
 done

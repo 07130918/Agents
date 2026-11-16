@@ -12,7 +12,7 @@ GCP Cloud Run、Cloud Build、Cloud SQL、Secret Manager、Artifact Registry、T
 
 - localhost、Docker Compose、`.next` などローカル起動は `local-dev-ops` を使う。
 - GitHub Actions の workflow 自体の失敗調査は `github-actions-ops` を併用する。
-- DB schema 変更は `nextjs-drizzle-patterns` / `nextjs-prisma-patterns`、またはプロジェクト固有の migration skill を使う。
+- DB schema 変更や migration 作成は、使用中の ORM とプロジェクトの手順に従う。
 
 ## 基本方針
 

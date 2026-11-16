@@ -261,7 +261,6 @@ README を少し整えてください。
 
 ## 関連 skill
 
-- `prompt-engineering`: description、命令文、発火条件を設計するとき。
 - `empirical-prompt-tuning`: 作成した skill を独立評価で改善するとき。
 - `skill-trigger-regression`: 新規作成または更新した skill の発火漏れ・過剰発火・競合を検査するとき。
 - `audit-codex-config` / `audit-claude-config`: 既存設定や肥大化した skill を整理するとき。

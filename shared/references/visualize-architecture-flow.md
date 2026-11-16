@@ -13,7 +13,7 @@
 
 - Mermaidなどによる静止図だけを求める依頼。
 - 一般的なランディングページや業務画面のUI実装。`frontend-design`を使う。
-- アーキテクチャ自体の新規設計やリファクタ。`software-architecture`を併用する。
+- アーキテクチャ自体の新規設計やリファクタ。
 - docsとコードの乖離監査だけを行う依頼。`docs-code-consistency-audit`を使う。
 - 外部公開を前提とした機密情報レビューや公開判定。成果物の内容確定後に別途実施する。
 
@@ -284,6 +284,5 @@ UIを変更したら、コードを眺めるだけで完了としない。スク
 ## 関連skill
 
 - `frontend-design`: 一般的なWebページやUIを制作する。
-- `software-architecture`: アーキテクチャ自体を設計・評価する。
 - `docs-code-consistency-audit`: docsとコードの乖離を監査する。
 - `chrome-devtools-mcp`: 完成したHTMLを実ブラウザで検証する。

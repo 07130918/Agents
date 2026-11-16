@@ -25,4 +25,3 @@
 
 - ドメイン用語集 (`CONTEXT.md`) や `docs/adr/` を意識した本格版: `grill-with-docs`
 - バグ調査の文脈で同じ規律を使うなら: `bug-investigation` の Step 4 (3-5 個のランク付け仮説 + ファルシファイア)
-- アーキテクチャ改善の grilling: `software-architecture` のワークフロー Step 3

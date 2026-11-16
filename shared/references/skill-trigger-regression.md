@@ -116,7 +116,6 @@ known_conflicts:
 - `create-skill` と `skill-trigger-regression`: 作成するのか、作成後の発火品質を検査するのか。
 - `discover-skills` と `session-retrospective`: 過去 30 日を分析するのか、今の 1 セッションを振り返るのか。
 - `audit-codex-config` と `skill-trigger-regression`: 構造監査か、発火テストか。
-- `prompt-engineering` と `skill-trigger-regression`: 指示文一般の改善か、skill 発火の回帰テストか。
 
 ### 6. 修正する
 
@@ -203,5 +202,4 @@ Result: `PASS` / `WARN` / `FAIL`
 - `create-skill`: 新規 skill 作成と wrapper/reference 設計。
 - `audit-codex-config`: 既存設定の構造監査とリファクタ。
 - `discover-skills`: セッション履歴から不足 skill を発見する。
-- `prompt-engineering`: description と指示文の質を上げる。
 - `empirical-prompt-tuning`: 独立評価で発火例と命令文を改善する。

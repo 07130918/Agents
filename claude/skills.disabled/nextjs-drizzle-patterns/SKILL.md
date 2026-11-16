@@ -1,6 +1,6 @@
 ---
 name: nextjs-drizzle-patterns
-description: Next.js App Router と Drizzle ORM / MySQL の実装・レビュー・移行 workflow。drizzle-kit migration、`src/lib/db/schema.ts`、KnexからDrizzle移行、Cloud Run JobやCIでのDB migration実行、Zod/API/schema整合性を扱うときに参照する。Prisma固有の作業は `nextjs-prisma-patterns` を使う。
+description: Next.js App Router と Drizzle ORM / MySQL の実装・レビュー・移行 workflow。drizzle-kit migration、`src/lib/db/schema.ts`、KnexからDrizzle移行、Cloud Run JobやCIでのDB migration実行、Zod/API/schema整合性を扱うときに参照する。Prisma固有の作業は対象外。
 allowed-tools: Read Write Edit Glob Grep Bash(find *) Bash(wc *) Bash(mkdir *)
 ---
 
