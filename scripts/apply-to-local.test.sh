@@ -14,6 +14,8 @@ mkdir -p "${TEST_CONFIG_ROOT}/.claude/skills/tp-local-test"
 printf '%s\n' 'local private skill' >"${TEST_CONFIG_ROOT}/.claude/skills/tp-local-test/SKILL.md"
 mkdir -p "${TEST_CONFIG_ROOT}/.claude/skills/legacy-active"
 printf '%s\n' 'legacy active skill' >"${TEST_CONFIG_ROOT}/.claude/skills/legacy-active/SKILL.md"
+mkdir -p "${TEST_CONFIG_ROOT}/.claude/skills.disabled/handoff-prompt"
+printf '%s\n' '退避中の引き継ぎスキル' >"${TEST_CONFIG_ROOT}/.claude/skills.disabled/handoff-prompt/SKILL.md"
 mkdir -p "${TEST_CONFIG_ROOT}/.claude/agents"
 printf '%s\n' 'local private subagent' >"${TEST_CONFIG_ROOT}/.claude/agents/tp-local-test.md"
 mkdir -p "${TEST_CONFIG_ROOT}/.agents/skills/grill-with-docs"
@@ -87,6 +89,13 @@ fi
 
 if [ ! -f "${TEST_CONFIG_ROOT}/.claude/skills/visualize-architecture-flow/SKILL.md" ]; then
   echo "Managed active Claude Code skills must be copied into skills." >&2
+  exit 1
+fi
+
+if [ ! -f "${TEST_CONFIG_ROOT}/.claude/skills/handoff-prompt/SKILL.md" ] ||
+  [ -e "${TEST_CONFIG_ROOT}/.claude/skills.disabled/handoff-prompt" ] ||
+  [ ! -f "${TEST_CONFIG_ROOT}/.agents/references/handoff-prompt.md" ]; then
+  echo "引き継ぎスキルを退避先から有効な配置に切り替え、共通手順を同期してください。" >&2
   exit 1
 fi
 

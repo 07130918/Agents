@@ -34,8 +34,8 @@ Claude Code のユーザー subagent は全プロジェクトから検出され�
 
 ## 影響
 
-- Claude Code は、ユーザーが明示的に反映を希望した新規skillだけを `~/.claude/skills/` から検出する。
-- 2026-07-26時点の既存skillと全subagentは、引き続き `.disabled` 配下にあり検出されない。
+- Claude Code は、有効に配置した新規skillと再導入したskillを `~/.claude/skills/` から検出する。
+- 退避中のskillと全subagentは、引き続き `.disabled` 配下にあり検出されない。
 - 組み込み、plugin 提供、プロジェクトローカルの skill と subagent はこの決定の対象外となる。
 - 退避した wrapper、subagent 定義、共通 reference は削除しないため、内容の参照と段階的な再設計ができる。
 - `scripts/sync-from-local.sh` は有効な `~/.claude/skills/` を管理対象として同期する。有効な `~/.claude/agents/` が存在する場合は引き続き失敗し、意図しないsubagent再有効化を防ぐ。

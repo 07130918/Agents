@@ -38,7 +38,7 @@ scripts/apply-to-local.sh
 
 `serena` skillと`serena-dev` agentは廃止し、適用時に旧定義も削除します。Serena MCPはこれらとは独立して利用できます。接続設定を含むローカルの`~/.codex/config.toml`は同期対象外のため保持されます。
 
-現在、Claude Code の既存ユーザーグローバル skill と subagent は Claude 5 世代向けに再設計するため一時無効化しています。新規skillは作成時にClaude Codeへ反映するかをユーザーへ確認し、明示されたものだけを `claude/skills/` から有効な `~/.claude/skills/` へ同期します。既存skillとsubagentは `claude/skills.disabled/` と `claude/agents.disabled/` に維持し、有効な `~/.claude/agents/` は作成しません。判断の背景と復帰条件は [ADR](docs/decisions/2026-07-26-disable-claude-skills-and-subagents-for-claude-5.md) を参照してください。
+Claude Code で有効なユーザーグローバル skill は `claude/skills/` から `~/.claude/skills/` へ同期します。新規skillは作成時にClaude Codeへ反映するかをユーザーへ確認します。退避中のskillとsubagentは `claude/skills.disabled/` と `claude/agents.disabled/` で管理します。判断の背景と復帰条件は [ADR](docs/decisions/2026-07-26-disable-claude-skills-and-subagents-for-claude-5.md) を参照してください。
 
 `scripts/validate.sh` を変更した場合は `scripts/validate.test.sh`、ローカル適用処理を変更した場合は `scripts/apply-to-local.test.sh`、ローカル同期処理を変更した場合は `scripts/sync-from-local.test.sh` で回帰確認します。Global指示またはworkflow移管先を変更した場合は `scripts/global-instructions.test.sh` も実行します。
 
@@ -55,6 +55,10 @@ Codex用の [`issue-authoring`](codex/skills/issue-authoring/SKILL.md) は、調
 「この調査結果をIssueにして」「ジュニアでも着手できる本文にして」で利用できます。本文案だけの依頼では外部へ書き込まず、「とりあえず起票」では詳細設計を追加しません。Asanaも依頼された場合は `asana-workflow` と連携します。既存Issueの実装は `issue-to-pr` が担当します。
 
 グローバル配置先は `~/.agents/skills/issue-authoring/SKILL.md` と `~/.agents/references/issue-authoring.md` です。Claude Code用wrapperは追加していません。
+
+## セッションの引き継ぎ
+
+Claude Code で `/handoff-prompt` を実行すると、会話の文脈と作業ディレクトリの状態を確認し、次のセッションに貼り付ける Markdown を作成します。Codex では `$handoff-prompt` で呼び出せます。[共通手順](shared/references/handoff-prompt.md)
 
 ## 新規プロジェクトのセットアップ
 
