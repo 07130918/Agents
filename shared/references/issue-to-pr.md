@@ -22,7 +22,7 @@ Issue番号・URLとともに「このIssueに対応して」「実装してPR�
 
 ### 3. 作業branchを作る
 
-現在のGit状態を確認し、ユーザーの未commit作業を保全する。比較元は明示値、なければ`develop`、なければ`main`とし、許可済みremoteの対象refだけをfetchして最新化する。`<issue番号>/<短い英語slug>`のbranchで作業し、main/developを編集しない。
+現在のGit状態を確認し、ユーザーの未commit作業を保全する。比較元はglobal指示のGit契約 (明示値、`origin/HEAD`、`develop`、`main`の順) で決め、許可済みremoteの対象refだけをfetchして最新化する。`<issue番号>/<短い英語slug>`のbranchで作業し、main/developを編集しない。
 
 ### 4. 初回実装を行う
 

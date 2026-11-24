@@ -9,6 +9,7 @@ UIの変更完了を「コード上は正しい」ではなく「ブラウザで
 - Codex desktopではComputer Useのブラウザ一覧からBraveを選ぶ。`cua_repl` が使える場合は一覧にあるBraveのIDで接続し、Chromeや内蔵ブラウザのIDを流用しない。未接続ならSettings > Computer UseでBraveを有効にし、普段のプロファイルに拡張を接続するよう案内する。
 - Claude CodeではBraveに接続したClaude in Chrome拡張を使う。`/chrome` の `Select browser…` でBraveを選び、必要なら `Enabled by default` を有効にする。`--chrome` は連携機能の名前であり、Google Chromeを選ぶ指示として扱わない。
 - 既存のログイン状態・パスワードマネージャーを利用できるプロファイルを維持する。接続できないときにChromeや別プロファイルを起動して再ログインを求めず、必要な接続操作を具体的に案内する。
+- ログイン不要のlocalhost確認とproject既存のe2e testは例外とし、Playwright等の隔離ブラウザやheadlessで実行してよい。Brave接続用に登録したDevTools MCPの設定は変えない。
 
 ### DevTools MCPが必要な場合
 

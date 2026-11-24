@@ -104,7 +104,7 @@ git diff --cached --stat
 git diff --cached --name-only
 ```
 
-branch が base branch と差分を持つ場合は、base を `develop` 優先、なければ `main` として確認する。
+branch が base branch と差分を持つ場合は、base は global 指示の Git 契約 (明示値、`origin/HEAD`、`develop`、`main` の順) で決めて確認する。
 
 ```bash
 git branch --all --format='%(refname:short)'
