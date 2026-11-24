@@ -100,18 +100,9 @@ gh pr view <number-or-url> --json reviews,comments
 
 修正は最小差分にする。無関係な整形、依存追加、別issueの先取りを混ぜない。
 
-修正後はリポジトリ規約に沿って検証する。最低限:
+修正後はリポジトリ規約に沿って検証する。変更の影響範囲に対応するproject指定のlint、format、型check、testと `git diff --check` を実行する。プロジェクトで `make ci`、`make db-check`、`npm audit --audit-level=moderate` 等が必須なら実行する。依存追加がある場合は必ずauditする。
 
-```bash
-npm run check -- <changed-files>
-npm run type-check
-npm run test:run -- <related-tests>
-git diff --check
-```
-
-プロジェクトで `make ci`、`make db-check`、`npm audit --audit-level=moderate` が必須なら実行する。依存追加がある場合は必ずauditする。
-
-コミット済みPRなら、レビュー対応コミットを作成してpushする。小さなPRで直前コミットをamendする方が自然な場合だけ、`--force-with-lease` を使う。無関係差分をstageしない。
+コミット済みPRなら、レビュー対応コミットを作成してnon-force pushする。amendや `--force-with-lease` はユーザーが明示した場合だけ使う。無関係差分をstageしない。
 
 ### 5. 返信してresolveする
 

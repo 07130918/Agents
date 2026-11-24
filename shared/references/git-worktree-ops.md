@@ -93,7 +93,7 @@ Git worktreeを使って作業場所とbranchを安全に分離し、状態確�
 4. 対象worktreeの `git status --short --branch` がcleanであることを確認する。dirtyなら削除しない。
 5. `git worktree remove <exact-path>` でworktreeを削除する。
 6. `git branch -d <branch>` でlocal branchを削除する。
-7. ユーザーがmerge後の完全整理を依頼している場合は `git push origin --delete <branch>` でremote branchも削除する。remote側で既に削除済みならその事実を報告する。
+7. remoteに同名branchが残っている場合は `git push origin --delete <branch>` で削除する (保持の指定がある場合を除く)。remote側で既に削除済みならその事実を報告する。
 8. `git worktree list --porcelain` と `git branch -vv` で最終状態を確認する。
 
 ## 検証

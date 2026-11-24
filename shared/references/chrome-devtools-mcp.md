@@ -9,15 +9,21 @@ UIの変更完了を「コード上は正しい」ではなく「ブラウザで
 - Codex desktopではComputer Useのブラウザ一覧からBraveを選ぶ。`cua_repl` が使える場合は一覧にあるBraveのIDで接続し、Chromeや内蔵ブラウザのIDを流用しない。未接続ならSettings > Computer UseでBraveを有効にし、普段のプロファイルに拡張を接続するよう案内する。
 - Claude CodeではBraveに接続したClaude in Chrome拡張を使う。`/chrome` の `Select browser…` でBraveを選び、必要なら `Enabled by default` を有効にする。`--chrome` は連携機能の名前であり、Google Chromeを選ぶ指示として扱わない。
 - 既存のログイン状態・パスワードマネージャーを利用できるプロファイルを維持する。接続できないときにChromeや別プロファイルを起動して再ログインを求めず、必要な接続操作を具体的に案内する。
-- ログイン不要のlocalhost確認とproject既存のe2e testは例外とし、Playwright等の隔離ブラウザやheadlessで実行してよい。Brave接続用に登録したDevTools MCPの設定は変えない。
+- ログイン不要のlocalhost確認とproject既存のe2e testは例外とし、実行環境の共有プレビュー(T3 Codeの`preview_*`等)、Playwright等の隔離ブラウザ、headlessで実行してよい。Brave接続用に登録したDevTools MCPの設定は変えない。
 
 ### DevTools MCPが必要な場合
 
 通常の画面操作はBrave拡張で行い、拡張だけではできない診断に限りChrome DevTools MCPを検討する。以下のMCP固有の手順は、接続先を確認できた場合だけ使う。
 
-- MCPは `--browserUrl http://127.0.0.1:9222` による既存インスタンスへの接続専用とする。`--isolated` とChromeを探す `--autoConnect` は使わず、引数を外して自動起動へ戻さない。
-- この設定だけではBraveのリモートデバッグは有効にならない。接続先が普段のBraveであることを確認できない場合はMCPを使わず、拡張で続ける。リモートデバッグの有効化やBraveの再起動が必要なら、目的と影響を説明してユーザーへ確認する。
+- MCPは普段のBraveへの接続専用とし、`--autoConnect --userDataDir "$HOME/Library/Application Support/BraveSoftware/Brave-Browser"` で登録する (Claude Codeはuser scope)。`--userDataDir`を付けた`--autoConnect`は、Braveのデータフォルダにある`DevToolsActivePort`からWebSocketの接続先を読み、既存のBraveへつなぐ。Chromeを探したり、ブラウザを新しく起動したりはしない。Braveを再起動して接続先が変わっても追従する。
+- `--userDataDir`を外した`--autoConnect` (Chromeのデータフォルダを探す)、`--isolated`、引数なしの自動起動は使わない。
+- Braveのリモートデバッグは`brave://inspect/#remote-debugging`の切り替えで有効にする。この方式では`http://127.0.0.1:9222/json/version`が404を返すため、`--browserUrl http://127.0.0.1:9222`では接続できない (`HTTP Not Found`)。
+- Braveのデータフォルダは、macOSの「他のアプリのデータ」保護の対象である。MCPを起動するアプリ (T3 Code、ターミナルなど) にフルディスクアクセスがないと、`DevToolsActivePort`の読み取りが`EPERM: operation not permitted`で失敗する。システム設定 > プライバシーとセキュリティ > フルディスクアクセスで対象アプリを許可し、アプリを再起動する。
+- 初回の接続時に、Braveがリモートデバッグの許可を求めることがある。ユーザーに許可してもらう。
+- 設定の変更は、実行中のセッションには反映されない。セッションを開き直してから`list_pages`で接続を確かめる。
+- 接続先が普段のBraveであることを確認できない場合はMCPを使わず、拡張で続ける。リモートデバッグの有効化やBraveの再起動が必要なら、目的と影響を説明してユーザーへ確認する。
 - 実行ファイルをBraveへ変えるだけでは既存セッションを共有できない。通常プロファイルの複製やCookie・保存パスワードの抽出で代用しない。
+- 作業用のタブは`new_page`で開き、終わったら`close_page`で閉じる。ユーザーが開いていたタブは操作・遷移させない。
 - Chrome DevTools MCPの公式サポートはChromeのみで、Brave接続の互換性は保証されない。取得できない診断項目は未検証として記録する。
 
 接続方法の一次情報: [Codexのブラウザ拡張](https://learn.chatgpt.com/docs/chrome-extension)、[Claude Codeのブラウザ連携](https://code.claude.com/docs/en/chrome)、[DevTools MCPの接続設定](https://github.com/ChromeDevTools/chrome-devtools-mcp/blob/main/docs/configuration.md)。

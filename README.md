@@ -46,7 +46,7 @@ Claude Code で有効なユーザーグローバル skill は `claude/skills/` �
 
 Codex / Claude Codeのユーザー指示では、普段使っているBraveの既存プロファイルとログインセッションを優先します。接続できないときはBraveの接続を案内し、Chromeや一時プロファイルへ自動で切り替えて再ログインを求めません。[接続・UI検証の手順](shared/references/chrome-devtools-mcp.md)を参照してください。
 
-ローカルのChrome DevTools MCPは `--isolated` / `--autoConnect` を使わず、`--browserUrl http://127.0.0.1:9222` で既存インスタンスへの接続専用にします。Braveのリモートデバッグを有効にする設定ではありません。通常操作はBrave拡張で行い、MCP診断には接続先がBraveであることの確認が別途必要です。実際のMCP設定は同期対象外です。
+ローカルのChrome DevTools MCPは普段のBraveへの接続専用とし、`--autoConnect --userDataDir "$HOME/Library/Application Support/BraveSoftware/Brave-Browser"` で登録します (`--userDataDir` なしの `--autoConnect` や `--isolated`、`--browserUrl http://127.0.0.1:9222` は使いません)。通常操作はBrave拡張で行い、MCP診断には接続先がBraveであることの確認が別途必要です。実際のMCP設定は同期対象外です。
 
 ## Issue本文の作成・起票
 

@@ -11,14 +11,13 @@
 ## 対象外
 
 - 汎用レビュー: `pr-risk-reviewer` agent (正確性/セキュリティ) と `principle-of-programming-reviewer` skill (設計原則) を使う。
-- 上記2つの一括実行: `multi-model-code-reviewer` agent を使う。
 - セキュリティ専門の網羅監査: `security-audit` を使う。
 - GitHub PR 単位のレビュー: PR レビュー用の workflow を使う。
 
 ## 入力
 
-- 観点リスト。無い場合は diff の内容から下のプリセットを基に 3〜5 観点を提案し、確認してから進める。
-- レビュー対象: 既定は作業ブランチとベースブランチ (develop/main) の差分に、staged / unstaged / untracked の作業ツリー差分を加えたもの。paths や commit range が指定されたらそれに従う。
+- 観点リスト。無い場合は diff から明白な 3 観点を選んで前提宣言して進めてよい。依頼の意図が大きく分かれる場合だけ、3〜5 観点を提案して確認する。
+- レビュー対象: 既定は作業ブランチとベースブランチ (global 指示の Git 契約: 明示値、`origin/HEAD`、`develop`、`main` の順) の差分に、staged / unstaged / untracked の作業ツリー差分を加えたもの。paths や commit range が指定されたらそれに従う。
 - 追加制約 (あれば): 深掘りする領域、既知の懸念、除外パス。
 
 ## 出力
@@ -53,12 +52,12 @@
 
 ## 手順
 
-1. 対象 diff を確定する。base はプロジェクトの既定 (develop/main)。
+1. 対象 diff を確定する。base は global 指示の Git 契約 (明示値、`origin/HEAD`、`develop`、`main` の順) で決める。
    - コミット済み差分: `git diff <base>...HEAD` と `git diff --name-status <base>...HEAD`
    - staged 差分: `git diff --cached`
    - unstaged 差分: `git diff`
    - untracked ファイル: `git ls-files --others --exclude-standard` で対象パスを列挙し、各ファイルの内容は `git diff --no-index -- /dev/null <file>` で diff に含める。`git diff --no-index` の exit code 1 は差分ありとして扱う。
-2. 観点リストを確定する。ユーザー指定が無ければ提案して確認する。
+2. 観点リストを確定する。ユーザー指定が無ければ diff から明白な 3 観点を選んで前提宣言して進める。意図が大きく分かれる場合だけ提案して確認する。
 3. 観点ごとに独立レビューを実行する。
    - Claude Code: Agent tool で観点ごとに subagent を並列起動する (読み取り専用を明示)。
    - Codex / subagent が使えない場合: 観点ごとに順番に実行し、観点間でコンテキストと結論を混ぜない。
@@ -100,5 +99,4 @@
 ## 関連 skill
 
 - `pr-risk-reviewer` agent / `principle-of-programming-reviewer` skill: 汎用2観点。中規模以上の変更では `principle-of-programming-reviewer` を先に実行し、その後に本 skill でドメイン観点を追加する。
-- `multi-model-code-reviewer` agent: 上記2つの一括実行。
 - `security-audit`: セキュリティ専門の網羅監査。

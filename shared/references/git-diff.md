@@ -10,7 +10,7 @@
 
 ## 手順
 
-1. ベースブランチ決定: `git show-ref --verify --quiet refs/heads/develop` → 成功なら `develop`、失敗なら `main`
+1. ベースブランチ決定: global 指示の Git 契約 (明示値、`origin/HEAD`、`develop`、`main` の順) で解決する
 2. 以下を順に表示:
    - `git diff --name-status <base>...HEAD` (変更ファイル一覧)
    - `git diff --stat <base>...HEAD` (変更統計)
@@ -50,12 +50,12 @@
 
 # /git-diff
 
-現在のブランチとベースブランチ (`develop` 優先、無ければ `main`) の差分を表示し、日本語サマリーを生成する。
+現在のブランチとベースブランチ (global 指示の Git 契約: 明示値、`origin/HEAD`、`develop`、`main` の順) の差分を表示し、日本語サマリーを生成する。
 
 ## 手順
 
 1. `current_branch=$(git branch --show-current)`
-2. `base_branch=$(git show-ref --verify --quiet refs/heads/develop && echo develop || echo main)`
+2. `base_branch` を global 指示の Git 契約 (明示値、`git symbolic-ref --short refs/remotes/origin/HEAD`、なければ `develop`、`main` の順) で解決する
 3. 以下を順に表示
    - `git diff --name-status $base_branch...$current_branch` (変更ファイル)
    - `git diff --stat $base_branch...$current_branch` (統計)
