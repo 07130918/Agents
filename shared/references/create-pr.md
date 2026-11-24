@@ -7,7 +7,7 @@
 - PR提出依頼は、今回scopeのcommit・push・PR作成と、現在repositoryの解決済みremoteへの必要なfetchを含む。別repositoryや別remote、tag、実サービス操作へ許可を広げない。Mergeはユーザーが行う。
 - 無関係な整形・依存更新・別課題を混ぜない。Commitは目的ごとに分け、各commitは単独checkout時にもbuild、型check、関連testが通る状態を保つ。同じ目的の実装と関連testは原則として同じcommitに含め、必要な文書も同じ単位で更新する。
 - `git add <path>`または`git add -p`で対象を明示してstageし、`git diff --cached`を確認する。Commit件名はglobal規約に従う日本語、PR title・本文も日本語とする。
-- PRには`07130918`をassigneeに設定し、内容に合う既存labelを付ける。Copilotのレビュー依頼とmergeはユーザーが行う。
+- PRには`@me`(未対応ツール時は現在認証ユーザー)をassigneeに設定し、内容に合う既存labelを付ける。Copilotのレビュー依頼とmergeはユーザーが行う。
 - 必須確認の失敗、未実施、未解決blockerがある状態では完了扱いにしない。`--no-verify`やforce pushで迂回しない。
 - Hook等で対象が変わった場合は、その影響を確認してから提出する。結果不明のpush・PR操作はremote/PRを読み直し、成否が不明なまま重複実行しない。
 

@@ -56,7 +56,7 @@ for skill_name in \
 done
 
 for required_text in \
-  '07130918' \
+  '@me' \
   'git add <path>' \
   'git diff --cached' \
   'lint、format、型check、test' \

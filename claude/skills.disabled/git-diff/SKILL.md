@@ -1,6 +1,6 @@
 ---
 name: git-diff
-description: 現在のブランチとベースブランチ(develop/main)の差分を表示し、変更内容の日本語サマリーを生成する。変更ファイル一覧、統計、コミット履歴を含む。`/git-diff` で呼び出される。
+description: "現在のブランチとベースブランチ(global指示のGit契約: 明示値、`origin/HEAD`、`develop`、`main`の順)の差分を表示し、変更内容の日本語サマリーを生成する。変更ファイル一覧、統計、コミット履歴を含む。`/git-diff` で呼び出される。"
 allowed-tools: Bash(git *)
 ---
 

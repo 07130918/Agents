@@ -4,7 +4,7 @@
 
 ## 手順
 
-1. ベースブランチを判定 (`develop` を優先、無ければ `main`)
+1. ベースブランチを判定 (global 指示の Git 契約: 明示値、`origin/HEAD`、`develop`、`main` の順)
 2. `git diff --name-status <base>...HEAD` と `git diff --stat <base>...HEAD` で変更概要を取得
 3. `git diff <base>...HEAD --no-color` で差分取得
 4. 差分が空なら中止、50,000 文字超なら警告

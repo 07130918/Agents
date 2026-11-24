@@ -37,7 +37,7 @@ CodexとClaude Codeが共通して使う、言語・プロジェクト非依存�
 
 1. ユーザーが明示したPR URL、base/head SHA、commit range、path scope
 2. 実行環境から明示的に渡されたPRまたはreview対象
-3. 現在branchとbase branchの差分。baseは`develop`を優先し、なければ`main`
+3. 現在branchとbase branchの差分。baseはglobal指示のGit契約 (明示値、`origin/HEAD`、`develop`、`main`の順) で決める
 
 明示された対象を暗黙に現在branchへ置き換えない。対象を取得できない場合は推測せず`Evaluation deferred`にする。
 
@@ -77,7 +77,9 @@ repository rootと変更pathに適用される`AGENTS.md`、`CLAUDE.md`、`CONTR
 
 ### 2. 対象fingerprintを固定する
 
-レビュー開始前に次を取得し、結果の冒頭へそのまま出力する。
+通常の単発レビューでは、`Target fingerprint`は`target source`、`base/head SHA`、`working tree (clean/dirty)`の簡易表記でよく、全ファイルhash・skill version hash・`Machine fingerprint` JSON・該当なしsectionの網羅出力は省略してよい。完全fingerprintと厳密schemaは、ハーネス経由、machine-consumable result要求時、または再レビュー比較時だけ出力する。
+
+完全fingerprintが必要な場合は、レビュー開始前に次を取得し、結果の冒頭へそのまま出力する。
 
 - target source: user-specified PR / commit range / current branch
 - base branchとexact base SHA

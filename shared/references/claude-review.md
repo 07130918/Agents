@@ -16,7 +16,7 @@ Codex から Claude Code CLI を介して、現在の作業ブランチの差分
 
 ## 入力
 
-- 任意の base branch 名。未指定なら `origin/develop`、`develop`、`origin/main`、`main` の順で存在確認し、最初に見つかったものを使う。
+- 任意の base branch 名。未指定なら global 指示の Git 契約 (明示値、`origin/HEAD`、`develop`、`main` の順) で存在確認し、最初に見つかったものを使う。
 - 現在の git worktree。未コミット差分も `git diff <base>...HEAD` には含まれないため、必要なら実行前にユーザーへ確認する。
 
 ## 出力
@@ -31,7 +31,7 @@ Codex から Claude Code CLI を介して、現在の作業ブランチの差分
 2. `git branch --show-current` で現在のブランチを確認する。空または `HEAD` の場合は detached HEAD として明記する。
 3. base branch を決める。
    - 引数があればそれを使う。
-   - 未指定なら `origin/develop`、`develop`、`origin/main`、`main` の順に `git rev-parse --verify <candidate>` で確認する。
+   - 未指定なら global 指示の Git 契約 (`origin/HEAD`、なければ `origin/develop` / `develop`、なければ `origin/main` / `main`) に従い `git symbolic-ref refs/remotes/origin/HEAD` と `git rev-parse --verify <candidate>` で確認する。
    - どれも存在しなければ停止する。
 4. `git diff --name-only <base>...HEAD` を確認する。空なら「レビュー対象の差分がありません」と伝えて停止する。
 5. `git diff --name-status <base>...HEAD`、`git diff --stat <base>...HEAD`、`git diff <base>...HEAD --no-color` でレビュー対象を取得する。
