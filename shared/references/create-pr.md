@@ -22,7 +22,7 @@
 ### 1. 対象を確認する
 
 1. BranchとGit状態を確認する。main/develop、detached HEADでは編集・commitせず、許可済みの作業branchを用意する。無関係な未commit変更を混ぜない。
-2. Repositoryとremote URLを照合する。Baseは明示値、なければremote default、解決できなければdevelop、mainの順に調べる。
+2. Repositoryとremote URLを照合する。Baseはglobal指示のGit契約 (明示値、`origin/HEAD`、`develop`、`main`の順) で決める。
 3. `git ls-remote`等で対象refを確認し、`git -c maintenance.auto=false fetch --no-tags <remote> refs/heads/<base>:refs/remotes/<remote>/<base>`で選択したbaseだけを取得する。別refやtagをまとめて更新しない。
 4. 比較元のfull SHA、HEAD、index・working tree・untrackedを確認する。以前の確認からbaseや対象が変わっていれば、影響する検証・レビューへ戻る。
 5. 秘密情報や対象外ファイルをstageしない。

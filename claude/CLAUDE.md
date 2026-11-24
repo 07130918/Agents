@@ -19,6 +19,7 @@
 
 - Computer Use、ブラウザ操作、UI検証は、普段使っているBraveの既存プロファイルとログインセッションを優先する。接続済みのBrave拡張を使い、必要な新規タブも同じプロファイルに開く。
 - Braveへ接続できない場合は、接続に必要な操作を具体的に案内する。ユーザーの指定なしにChrome、内蔵ブラウザ、一時・別プロファイルへ切り替えて再ログインを求めない。
+- ログイン不要のlocalhost確認とproject既存のe2e testは、隔離ブラウザやheadlessで実行してよい。
 - ツールの選択・接続とDevTools診断の詳細は `~/.agents/references/chrome-devtools-mcp.md` に従う。
 
 ## 作業原則
@@ -28,7 +29,7 @@
 - 機能実装とbug修正には、変更を検証するunit testを追加する。test seamがなければ理由を記録する。
 - 外部libraryのAPIに確信がなければ、一次情報の最新documentationを確認する。
 - 実装と関連documentationの乖離を確認し、必要な更新を同じ変更へ含める。
-- 判断の確信度が中または低なら、根拠と未確定点を示して変更前に確認する。
+- 変更前の確認は、仕様の選択、不可逆な操作、追加権限が必要な場合に限る。それ以外は前提を1行示して進める。
 - 派生課題へscopeを広げず、日本語のissue候補として報告する。
 - 説明のないlogやerror貼り付けは対応依頼として全文を読み、明らかなtypoは解釈を一言添えて進める。
 - 「コミットしました」「mergeしました」「続けて」は続行合図として扱う。
@@ -38,16 +39,16 @@
 
 完了報告の前に、変更に該当する項目をすべて満たす。
 
-1. Project指定のlint、format、型check、testを実行し、必須commandが成功している。
+1. 変更の影響範囲に対応するproject指定のlint、format、型check、testを実行し、必須commandが成功している。baseでも同じ失敗が出ると確認できたものは、既知の失敗として報告すれば完了を妨げない。
 2. Bug修正とUI変更は再現手順を実環境で再実行し、期待する挙動を確認している。
 3. 最終diffでscope外変更、秘密情報、debug用code、未処理errorがないことを確認している。
 4. 関連documentationと実装の契約が一致している。
 
-実行できない検証は未検証として理由とuser向け確認手順を示す。必須checkの失敗または未解決のblockerが残る状態を完了と報告しない。
+実行できない検証は未検証として理由とuser向け確認手順を示す。既知の失敗を除く必須checkの失敗、または未解決のblockerが残る状態を完了と報告しない。
 
 ## Workflow索引
 
-依頼に一致するskillを使う。wrapperが利用できないCLIでは、同名の`~/.agents/references/<skill-name>.md`を読む。
+依頼に一致するskillを使う。wrapperが利用できない、退避中、またはmodelから呼び出せない場合は、同名の`~/.agents/references/<skill-name>.md`を正本として読む。Claude Codeでのwrapper退避は自動発火を止めるためで、referenceの無効化ではない。
 
 - Issue起点で実装からPRまで: `issue-to-pr`
 - Bugの原因調査: `bug-investigation`
@@ -62,6 +63,7 @@
 ## Gitと成果物の共通契約
 
 - `main`と`develop`では作業せず、issue対応branchは`<issue番号>/<slug>`を使う。
+- Baseは明示値、なければ`origin/HEAD`、解決できなければ`develop`、`main`の順で決める。
 - Commitは、依頼scope内の変更を必要な検証後にCodex / Claude Codeが追加確認なしで行ってよい。userの未commit作業を混ぜず、commit不要・事前確認の指定があれば従う。
 - Push・PR作成は依頼に含まれる場合に対応skillの手順で行う。commitの許可だけでpush・PR作成まで許可されたとは扱わない。
 - Commit件名は`<prefix>: <日本語の要約>`とし、prefixは`feat|fix|chore|refactor|perf|docs|test|style|build|ci|revert`から選ぶ。末尾に句点を付けない。
@@ -75,5 +77,5 @@
 - 元の要件と実際のGitの差分を確認すること。
 - 前のエージェントの判断や結論が正しいと決めつけないこと。
 - エッジケース、エラーハンドリング、認証、認可、並行処理、後方互換性を確認すること。
-- 問題が確認された場合は、指摘するだけでなく実際に修正すること。
+- 問題が確認された場合、手元のworktreeにある変更は指摘するだけでなく実際に修正すること。他者のPRや報告だけの依頼では指摘に留めること。
 - 関連するテストを実行し、未解決のリスクがあれば報告すること。
