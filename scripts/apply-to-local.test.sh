@@ -128,7 +128,7 @@ if [ -e "${TEST_CONFIG_ROOT}/.claude/agents" ]; then
   exit 1
 fi
 
-for skill_name in create-pr bug-investigation sync-docs-code; do
+for skill_name in create-pr bug-investigation sync-docs-code issue-to-pr review-remediation-harness; do
   if [ ! -f "${TEST_CONFIG_ROOT}/.claude/skills/${skill_name}/SKILL.md" ] ||
     [ -e "${TEST_CONFIG_ROOT}/.claude/skills.disabled/${skill_name}" ] ||
     [ ! -f "${TEST_CONFIG_ROOT}/.agents/references/${skill_name}.md" ]; then
@@ -144,7 +144,7 @@ if ! grep -qx 'disable-model-invocation: true' "${create_pr_skill}" ||
   exit 1
 fi
 
-if [ ! -f "${TEST_CONFIG_ROOT}/.claude/skills.disabled/issue-to-pr/SKILL.md" ]; then
+if [ ! -f "${TEST_CONFIG_ROOT}/.claude/skills.disabled/codex-review/SKILL.md" ]; then
   echo "Managed Claude Code skills must be copied into skills.disabled." >&2
   exit 1
 fi
