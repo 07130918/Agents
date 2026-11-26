@@ -1,6 +1,6 @@
 # Agents
 
-Codex と Claude Code のユーザーグローバル設定を管理するリポジトリです。
+Codex、Claude Code、Gemini (Antigravity) のユーザーグローバル設定を管理するリポジトリです。
 
 ## 管理対象
 
@@ -8,6 +8,7 @@ Codex と Claude Code のユーザーグローバル設定を管理するリポ�
 shared/references/   skill 本体の共通参照
 codex/               Codex 用グローバル設定と wrapper
 claude/              Claude Code 用グローバル設定と wrapper
+gemini/              Gemini (Antigravity) 用グローバル設定
 templates/           新規プロジェクト用の AGENTS.md / CLAUDE.md テンプレート
 scripts/             同期・検証スクリプト
 docs/                運用メモ
@@ -15,7 +16,7 @@ docs/                運用メモ
 
 ## 基本運用
 
-ローカルの `~/.codex`、`~/.claude`、`~/.agents` を更新したあと、このリポジトリへ同期します。
+ローカルの `~/.codex`、`~/.claude`、`~/.gemini`、`~/.agents` を更新したあと、このリポジトリへ同期します。
 
 ```bash
 scripts/sync-from-local.sh
@@ -36,7 +37,9 @@ scripts/apply-to-local.sh
 
 `scripts/validate.sh` と `scripts/diff-local.sh` で `AGENTS.md` / `CLAUDE.md` / skill wrapper の意味が壊れていないことを確認してから `scripts/apply-to-local.sh` を実行します。ローカルから同期する `scripts/sync-from-local.sh` は本文を自動変換せず、同期後の `scripts/validate.sh` で禁止文字や秘密情報を検出します。
 
-`serena` skillと`serena-dev` agentは廃止し、適用時に旧定義も削除します。Serena MCPはこれらとは独立して利用できます。接続設定を含むローカルの`~/.codex/config.toml`は同期対象外のため保持されます。
+`serena` skillと`serena-dev` agentは廃止し、適用時に旧定義も削除します。Serena MCPはこれらとは独立して利用できます。接続設定を含むローカルの`~/.codex/config.toml`、`~/.claude/settings.json`、`~/.gemini/config/mcp_config.json`は同期対象外のため保持されます。
+
+ローカル適用時 (`scripts/apply-to-local.sh`) は `~/.claude/CLAUDE.md` を実体とし、`~/.codex/AGENTS.md` と `~/.gemini/AGENTS.md` をシンボリックリンクとして配置します。Gemini (Antigravity) のスキル共有設定 (`~/.gemini/config/skills.json`) とフック (`~/.gemini/config/hooks.json`) も合わせて同期します。
 
 Claude Code で有効なユーザーグローバル skill は `claude/skills/` から `~/.claude/skills/` へ同期します。新規skillは作成時にClaude Codeへ反映するかをユーザーへ確認します。退避中のskillとsubagentは `claude/skills.disabled/` と `claude/agents.disabled/` で管理します。判断の背景と復帰条件は [ADR](docs/decisions/2026-07-26-disable-claude-skills-and-subagents-for-claude-5.md) を参照してください。
 

@@ -74,4 +74,20 @@ find "${ROOT}/codex/skills" "${ROOT}/claude/skills" "${ROOT}/claude/skills.disab
   grep -q '^description:' "$file" || { echo "Missing description: $file" >&2; exit 1; }
 done
 
+for json_file in \
+  "${ROOT}/codex/hooks.json" \
+  "${ROOT}/claude/settings.example.json" \
+  "${ROOT}/gemini/config/skills.json" \
+  "${ROOT}/gemini/config/hooks.json" \
+  "${ROOT}/gemini/config/mcp_config.example.json"; do
+  if [ ! -f "${json_file}" ]; then
+    echo "Missing required JSON config: ${json_file}" >&2
+    exit 1
+  fi
+  ruby -rjson -e 'JSON.parse(File.read(ARGV.fetch(0)))' "${json_file}" || {
+    echo "Invalid JSON config: ${json_file}" >&2
+    exit 1
+  }
+done
+
 echo "Validation passed."

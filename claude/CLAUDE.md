@@ -75,7 +75,7 @@
 - `main`と`develop`では直接編集・commitせず(調査・閲覧は可)、issue対応branchは`<issue番号>/<slug>`、issueなしは`<type>/<slug>`を使う。
 - Baseは明示値、なければ`origin/HEAD`、解決できなければ`develop`、`main`の順で決める。
 - PR・Issue・CI操作は、実行環境が専用ツール(T3 Codeの`pull_request_*`・`ci_*`等)を提供している場合はそれを優先し、未対応操作(GraphQL等)や専用ツールがない環境だけ`gh`を使う。
-- Commitは、依頼scope内の変更を必要な検証後にCodex / Claude Codeが追加確認なしで行ってよい。userの未commit作業を混ぜず、commit不要・事前確認の指定があれば従う。
+- Commitは、依頼scope内の変更を必要な検証後にCodex / Claude Code / Geminiが追加確認なしで行ってよい。userの未commit作業を混ぜず、commit不要・事前確認の指定があれば従う。
 - Push・PR作成は依頼に含まれる場合に対応skillの手順で行う。commitの許可だけでpush・PR作成まで許可されたとは扱わない。
 - Commit件名は`<prefix>: <日本語の要約>`とし、prefixは`feat|fix|chore|refactor|perf|docs|test|style|build|ci|revert`から選ぶ。末尾に句点を付けない。
 - Mergeはuserが行う。merge後はbaseをfast-forwardし、merge済み作業branchをlocalとremote(残っている場合)から整理する。

@@ -1,6 +1,6 @@
 # Agents Repository Guidelines
 
-このリポジトリは、ユーザーグローバルの Codex / Claude Code 設定を管理するための作業場所です。
+このリポジトリは、ユーザーグローバルの Codex / Claude Code / Gemini (Antigravity) 設定を管理するための作業場所です。
 
 ## 方針
 
@@ -16,20 +16,23 @@
 
 ## 同期先
 
-- `codex/AGENTS.md` -> `~/.codex/AGENTS.md`
+- `claude/CLAUDE.md` -> `~/.claude/CLAUDE.md` (ローカル実体)
+- `codex/AGENTS.md` -> `~/.codex/AGENTS.md` (ローカル適用時は `~/.claude/CLAUDE.md` へのシンボリックリンク)
+- `~/.gemini/AGENTS.md` -> `~/.claude/CLAUDE.md` へのシンボリックリンク
 - `codex/skills/` -> `~/.agents/skills/`
 - `codex/agents/` -> `~/.codex/agents/`
 - `codex/hooks.json` -> `~/.codex/hooks.json`
-- `claude/CLAUDE.md` -> `~/.claude/CLAUDE.md`
 - `claude/skills/` -> `~/.claude/skills/`
 - `claude/skills.disabled/` -> `~/.claude/skills.disabled/`
 - `claude/agents.disabled/` -> `~/.claude/agents.disabled/`
+- `gemini/config/skills.json` -> `~/.gemini/config/skills.json`
+- `gemini/config/hooks.json` -> `~/.gemini/config/hooks.json`
 - `shared/references/` -> `~/.agents/references/`
 
 ## 注意
 
-- `~/.codex/config.toml` は secrets を含みやすいため、実物は管理しない。
-- `codex/config.example.toml` は構成の参考だけに使う。
+- `~/.codex/config.toml`、`~/.claude/settings.json`、`~/.gemini/config/mcp_config.json` は secrets やマシン固有設定を含みやすいため、実物は管理しない。
+- `codex/config.example.toml`、`claude/settings.example.json`、`gemini/config/mcp_config.example.json` は構成の参考だけに使う。
 - `tp-*` のローカル専用 skill / agent は GitHub に含めない。同期スクリプトと `.gitignore` で除外する。
 - Claude Code の既存ユーザーグローバル skill と subagent を一時無効化し、明示確認した新規skillだけを有効化する理由は `docs/decisions/2026-07-26-disable-claude-skills-and-subagents-for-claude-5.md` を参照する。
 - GitHub に push する前に `scripts/validate.sh` を実行する。

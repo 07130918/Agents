@@ -28,10 +28,11 @@ file-history/
 shell_snapshots/
 vendor_imports/
 
-# Codex / Claude runtime-only files
+# Codex / Claude / Gemini runtime-only files
 .serena/
 codex/config.toml
 claude/settings.json
+gemini/config/mcp_config.json
 
 # Private company-specific skills/agents kept only in local global settings
 codex/skills/tp-*/

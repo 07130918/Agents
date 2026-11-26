@@ -1,0 +1,11 @@
+{
+  "entries": [
+    {
+      "path": "~/.agents/skills",
+      "exclude": [
+        "audit-codex-config",
+        "claude-review"
+      ]
+    }
+  ]
+}
