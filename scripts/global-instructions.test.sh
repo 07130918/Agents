@@ -12,6 +12,11 @@ if ! cmp -s "${CODEX_GLOBAL}" "${CLAUDE_GLOBAL}"; then
   exit 1
 fi
 
+if ! grep -Fq 'Codex / Claude Code / Geminiが追加確認なしで行ってよい' "${CODEX_GLOBAL}"; then
+  echo "Global指示のcommit権限にGeminiが含まれていません。" >&2
+  exit 1
+fi
+
 for global_file in "${CODEX_GLOBAL}" "${CLAUDE_GLOBAL}"; do
   if [ "$(wc -l <"${global_file}")" -ge 200 ]; then
     echo "Global指示は200行未満である必要があります: ${global_file}" >&2

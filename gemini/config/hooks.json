@@ -1,0 +1,28 @@
+{
+  "env-guard": {
+    "PreToolUse": [
+      {
+        "matcher": "write_file|edit_file|write_to_file|replace_file_content|multi_replace_file_content",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=$(jq -r '.toolCall.args.Path // .toolCall.args.TargetFile // .toolCall.args.file_path // empty'); if printf '%s\\n' \"$f\" | grep -qE '(^|/)\\.env(\\.|$)' && ! printf '%s\\n' \"$f\" | grep -qE '(^|/)\\.env\\.(example|sample|template)$'; then printf '%s\\n' '{\"decision\":\"deny\",\"reason\":\"Blocked: .env edits require manual review\"}'; else printf '%s\\n' '{\"decision\":\"allow\"}'; fi"
+          }
+        ]
+      }
+    ]
+  },
+  "auto-format": {
+    "PostToolUse": [
+      {
+        "matcher": "write_file|edit_file|write_to_file|replace_file_content|multi_replace_file_content",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "payload=$(cat); err=$(printf '%s' \"$payload\" | jq -r '.error // empty'); f=$(printf '%s' \"$payload\" | jq -r '.toolCall.args.Path // .toolCall.args.TargetFile // .toolCall.args.file_path // empty'); if [ -z \"$err\" ] && [ -n \"$f\" ] && [ -f \"$f\" ]; then case \"$f\" in *.py) (cd \"$(dirname \"$f\")\" && uv run --no-sync ruff check --fix --unfixable F401 \"$f\" >/dev/null 2>&1) || true ;; *.ts|*.tsx|*.js|*.jsx) (cd \"$(dirname \"$f\")\" && npx --no-install biome format --write \"$f\" >/dev/null 2>&1) || true ;; esac; fi; printf '{}\\n'"
+          }
+        ]
+      }
+    ]
+  }
+}

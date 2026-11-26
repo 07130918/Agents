@@ -43,6 +43,10 @@ cp "${LOCAL_CONFIG_ROOT}/.codex/AGENTS.md" "${ROOT}/codex/AGENTS.md"
 cp "${LOCAL_CONFIG_ROOT}/.codex/hooks.json" "${ROOT}/codex/hooks.json"
 cp "${LOCAL_CONFIG_ROOT}/.claude/CLAUDE.md" "${ROOT}/claude/CLAUDE.md"
 
+mkdir -p "${ROOT}/gemini/config"
+cp "${LOCAL_CONFIG_ROOT}/.gemini/config/skills.json" "${ROOT}/gemini/config/skills.json"
+cp "${LOCAL_CONFIG_ROOT}/.gemini/config/hooks.json" "${ROOT}/gemini/config/hooks.json"
+
 "${ROOT}/scripts/validate.sh"
 
 echo "Synced local global AI settings into ${ROOT}"

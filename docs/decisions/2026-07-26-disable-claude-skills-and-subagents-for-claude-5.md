@@ -2,7 +2,7 @@
 
 - ステータス: 採用
 - 決定日: 2026-07-26
-- 更新日: 2026-08-09
+- 更新日: 2026-11-26
 - 対象: Claude Code の既存ユーザーグローバル skill と subagent、および新規skillの反映判断
 
 ## 背景
@@ -64,3 +64,11 @@ skill 名ごとの設定管理が必要で、新規追加時の無効化漏れ�
 4. 定義、共通 reference、同期スクリプト、運用文書の対応が検証されている。
 
 緊急に以前の状態へ戻す場合は、この決定を取り消す PR を作成して `claude/skills.disabled/` と `claude/agents.disabled/` を有効な配置へ戻し、同期先も同時に復元する。
+
+## 再導入の記録
+
+### 2026-11-26: `issue-to-pr` と `review-remediation-harness`
+
+- `CLAUDE.md` のWorkflow索引が参照する2つのskillがClaude Codeで検出されず、依頼文からの自動発火ができなかった。modelが索引を見て `~/.agents/references/*.md` を手動で読みに行く必要があり、読み漏れの余地があった。
+- ユーザーの明示的な依頼により、`issue-to-pr` を `claude/skills.disabled/` から `claude/skills/` へ戻し、`review-remediation-harness` の wrapper を `claude/skills/` へ新規配置した。どちらも詳細手順を共通 reference へ委ねる軽量な wrapper で、`review-remediation-harness` は明示依頼時だけ発火する description を持つ。
+- 復帰条件1〜3の代表タスク比較は未実施のため、早期終了や不要な委譲が増えた場合は再び退避する。subagent は引き続きすべて退避中とする。

@@ -29,6 +29,7 @@ disable_claude_directory() {
 
 mkdir -p "${LOCAL_CONFIG_ROOT}/.agents/references" "${LOCAL_CONFIG_ROOT}/.agents/skills"
 mkdir -p "${LOCAL_CONFIG_ROOT}/.codex/agents" "${LOCAL_CONFIG_ROOT}/.claude/skills"
+mkdir -p "${LOCAL_CONFIG_ROOT}/.gemini/config"
 
 disable_claude_directory "agents"
 
@@ -47,8 +48,11 @@ rsync -a --delete --exclude 'tp-*' "${ROOT}/claude/skills/" "${LOCAL_CONFIG_ROOT
 rsync -a --delete --exclude 'tp-*' "${ROOT}/claude/skills.disabled/" "${LOCAL_CONFIG_ROOT}/.claude/skills.disabled/"
 rsync -a --delete --exclude 'tp-*.md' "${ROOT}/claude/agents.disabled/" "${LOCAL_CONFIG_ROOT}/.claude/agents.disabled/"
 
-cp "${ROOT}/codex/AGENTS.md" "${LOCAL_CONFIG_ROOT}/.codex/AGENTS.md"
-cp "${ROOT}/codex/hooks.json" "${LOCAL_CONFIG_ROOT}/.codex/hooks.json"
 cp "${ROOT}/claude/CLAUDE.md" "${LOCAL_CONFIG_ROOT}/.claude/CLAUDE.md"
+ln -sfn "${LOCAL_CONFIG_ROOT}/.claude/CLAUDE.md" "${LOCAL_CONFIG_ROOT}/.codex/AGENTS.md"
+ln -sfn "${LOCAL_CONFIG_ROOT}/.claude/CLAUDE.md" "${LOCAL_CONFIG_ROOT}/.gemini/AGENTS.md"
+cp "${ROOT}/codex/hooks.json" "${LOCAL_CONFIG_ROOT}/.codex/hooks.json"
+cp "${ROOT}/gemini/config/skills.json" "${LOCAL_CONFIG_ROOT}/.gemini/config/skills.json"
+cp "${ROOT}/gemini/config/hooks.json" "${LOCAL_CONFIG_ROOT}/.gemini/config/hooks.json"
 
 echo "Applied ${ROOT} into local global AI settings"

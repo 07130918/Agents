@@ -16,3 +16,6 @@ fi
 diff -ru -x 'tp-*' "${LOCAL_CONFIG_ROOT}/.claude/skills.disabled" "${ROOT}/claude/skills.disabled" || true
 diff -ru -x 'tp-*.md' "${LOCAL_CONFIG_ROOT}/.claude/agents.disabled" "${ROOT}/claude/agents.disabled" || true
 diff -u "${LOCAL_CONFIG_ROOT}/.claude/CLAUDE.md" "${ROOT}/claude/CLAUDE.md" || true
+diff -u "${LOCAL_CONFIG_ROOT}/.gemini/AGENTS.md" "${ROOT}/claude/CLAUDE.md" || true
+diff -u "${LOCAL_CONFIG_ROOT}/.gemini/config/skills.json" "${ROOT}/gemini/config/skills.json" || true
+diff -u "${LOCAL_CONFIG_ROOT}/.gemini/config/hooks.json" "${ROOT}/gemini/config/hooks.json" || true

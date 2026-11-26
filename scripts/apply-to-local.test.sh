@@ -43,6 +43,9 @@ for removed_path in "${removed_paths[@]}"; do
 done
 printf '%s\n' '[mcp_servers.serena]' 'command = "serena"' >"${TEST_ROOT}/mcp-config.toml"
 cp "${TEST_ROOT}/mcp-config.toml" "${TEST_CONFIG_ROOT}/.codex/config.toml"
+mkdir -p "${TEST_CONFIG_ROOT}/.gemini/config"
+printf '%s\n' '{"mcpServers":{"local-only":{"command":"echo"}}}' >"${TEST_ROOT}/gemini-mcp-config.json"
+cp "${TEST_ROOT}/gemini-mcp-config.json" "${TEST_CONFIG_ROOT}/.gemini/config/mcp_config.json"
 
 AGENTS_LOCAL_CONFIG_ROOT="${TEST_CONFIG_ROOT}" "${ROOT}/scripts/apply-to-local.sh" >/dev/null
 
@@ -54,6 +57,10 @@ for removed_path in "${removed_paths[@]}"; do
 done
 if ! cmp -s "${TEST_ROOT}/mcp-config.toml" "${TEST_CONFIG_ROOT}/.codex/config.toml"; then
   echo "Serena MCPの接続設定は変更せず保持してください。" >&2
+  exit 1
+fi
+if ! cmp -s "${TEST_ROOT}/gemini-mcp-config.json" "${TEST_CONFIG_ROOT}/.gemini/config/mcp_config.json"; then
+  echo "Gemini MCPのローカル設定は変更せず保持してください。" >&2
   exit 1
 fi
 
@@ -121,7 +128,7 @@ if [ -e "${TEST_CONFIG_ROOT}/.claude/agents" ]; then
   exit 1
 fi
 
-for skill_name in create-pr bug-investigation sync-docs-code; do
+for skill_name in create-pr bug-investigation sync-docs-code issue-to-pr review-remediation-harness; do
   if [ ! -f "${TEST_CONFIG_ROOT}/.claude/skills/${skill_name}/SKILL.md" ] ||
     [ -e "${TEST_CONFIG_ROOT}/.claude/skills.disabled/${skill_name}" ] ||
     [ ! -f "${TEST_CONFIG_ROOT}/.agents/references/${skill_name}.md" ]; then
@@ -137,7 +144,7 @@ if ! grep -qx 'disable-model-invocation: true' "${create_pr_skill}" ||
   exit 1
 fi
 
-if [ ! -f "${TEST_CONFIG_ROOT}/.claude/skills.disabled/issue-to-pr/SKILL.md" ]; then
+if [ ! -f "${TEST_CONFIG_ROOT}/.claude/skills.disabled/codex-review/SKILL.md" ]; then
   echo "Managed Claude Code skills must be copied into skills.disabled." >&2
   exit 1
 fi
@@ -159,6 +166,63 @@ fi
 
 if ! diff -ru -x 'tp-*.md' "${ROOT}/claude/agents.disabled" "${TEST_CONFIG_ROOT}/.claude/agents.disabled" >/dev/null; then
   echo "Applied Claude Code disabled agents differ from the repository." >&2
+  exit 1
+fi
+
+for linked_agents in "${TEST_CONFIG_ROOT}/.codex/AGENTS.md" "${TEST_CONFIG_ROOT}/.gemini/AGENTS.md"; do
+  if [ ! -L "${linked_agents}" ] || [ "$(readlink "${linked_agents}")" != "${TEST_CONFIG_ROOT}/.claude/CLAUDE.md" ]; then
+    echo "AGENTS.md must be a symlink to ~/.claude/CLAUDE.md: ${linked_agents}" >&2
+    exit 1
+  fi
+done
+
+if ! cmp -s "${ROOT}/gemini/config/skills.json" "${TEST_CONFIG_ROOT}/.gemini/config/skills.json"; then
+  echo "Applied Gemini skills.json differs from the repository." >&2
+  exit 1
+fi
+
+if ! cmp -s "${ROOT}/gemini/config/hooks.json" "${TEST_CONFIG_ROOT}/.gemini/config/hooks.json"; then
+  echo "Applied Gemini hooks.json differs from the repository." >&2
+  exit 1
+fi
+
+gemini_pre_cmd="$(jq -r '.["env-guard"].PreToolUse[0].hooks[0].command' "${TEST_CONFIG_ROOT}/.gemini/config/hooks.json")"
+gemini_post_cmd="$(jq -r '.["auto-format"].PostToolUse[0].hooks[0].command' "${TEST_CONFIG_ROOT}/.gemini/config/hooks.json")"
+claude_pre_cmd="$(jq -r '.hooks.PreToolUse[0].hooks[0].command' "${ROOT}/claude/settings.example.json")"
+
+if [ "$(printf '%s' '{"toolCall":{"name":"write_file","args":{"Path":"/tmp/app/.env"}}}' | sh -c "${gemini_pre_cmd}" | jq -r '.decision')" != "deny" ]; then
+  echo "Gemini env-guard hook must deny .env edits." >&2
+  exit 1
+fi
+
+if [ "$(printf '%s' '{"toolCall":{"name":"edit_file","args":{"Path":"/tmp/app/.env.local"}}}' | sh -c "${gemini_pre_cmd}" | jq -r '.decision')" != "deny" ]; then
+  echo "Gemini env-guard hook must deny .env.local edits." >&2
+  exit 1
+fi
+
+if [ "$(printf '%s' '{"toolCall":{"name":"write_file","args":{"Path":"/tmp/app/.env.example"}}}' | sh -c "${gemini_pre_cmd}" | jq -r '.decision')" != "allow" ]; then
+  echo "Gemini env-guard hook must allow .env.example edits." >&2
+  exit 1
+fi
+
+if [ "$(printf '%s' '{"toolCall":{"name":"write_file","args":{"Path":"/tmp/app/src/index.ts"}}}' | sh -c "${gemini_pre_cmd}" | jq -r '.decision')" != "allow" ]; then
+  echo "Gemini env-guard hook must allow regular file edits." >&2
+  exit 1
+fi
+
+if [ "$(printf '%s' '{"toolCall":{"name":"write_file","args":{"Path":"/tmp/app/src/nonexistent.ts"}}}' | sh -c "${gemini_post_cmd}")" != "{}" ]; then
+  echo "Gemini auto-format hook must return {} on stdout." >&2
+  exit 1
+fi
+
+set +e
+printf '%s' '{"tool_input":{"file_path":"/tmp/app/.env"}}' | sh -c "${claude_pre_cmd}" >/dev/null 2>&1
+claude_env_status=$?
+printf '%s' '{"tool_input":{"file_path":"/tmp/app/.env.example"}}' | sh -c "${claude_pre_cmd}" >/dev/null 2>&1
+claude_example_status=$?
+set -e
+if [ "${claude_env_status}" -ne 2 ] || [ "${claude_example_status}" -ne 0 ]; then
+  echo "Claude Code PreToolUse .env guard did not return expected exit codes." >&2
   exit 1
 fi
 

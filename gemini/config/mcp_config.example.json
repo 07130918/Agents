@@ -1,0 +1,29 @@
+{
+  "mcpServers": {
+    "context7": {
+      "command": "context7-mcp",
+      "args": []
+    },
+    "chrome-devtools": {
+      "command": "chrome-devtools-mcp",
+      "args": [
+        "--autoConnect",
+        "--userDataDir",
+        "/Users/<your-user>/Library/Application Support/BraveSoftware/Brave-Browser"
+      ]
+    },
+    "asana": {
+      "command": "/Users/<your-user>/.local/bin/asana-mcp",
+      "args": []
+    },
+    "figma": {
+      "command": "figma-developer-mcp",
+      "args": [
+        "--stdio"
+      ],
+      "env": {
+        "FIGMA_API_KEY": "YOUR_FIGMA_API_KEY"
+      }
+    }
+  }
+}

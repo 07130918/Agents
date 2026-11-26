@@ -1,4 +1,27 @@
 {
-  "note": "Claude Code local settings example. Do not commit real settings containing secrets or machine-specific state."
+  "note": "Claude Code local settings example. Do not commit real settings containing secrets or machine-specific state.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=$(jq -r '.tool_input.file_path // empty'); printf '%s\\n' \"$f\" | grep -qE '(^|/)\\.env(\\.|$)' && ! printf '%s\\n' \"$f\" | grep -qE '(^|/)\\.env\\.(example|sample|template)$' && { echo 'Blocked: .env edits require manual review' >&2; exit 2; } || exit 0"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=$(jq -r '.tool_input.file_path // empty'); case \"$f\" in *.py) (cd \"$(dirname \"$f\")\" && uv run --no-sync ruff check --fix --unfixable F401 \"$f\" 2>/dev/null) ;; *.ts|*.tsx|*.js|*.jsx) (cd \"$(dirname \"$f\")\" && npx --no-install biome format --write \"$f\" 2>/dev/null) ;; esac; exit 0"
+          }
+        ]
+      }
+    ]
+  }
 }
-

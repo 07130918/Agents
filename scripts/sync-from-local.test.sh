@@ -38,6 +38,9 @@ for runtime_cache in .venv .pytest_cache .ruff_cache .mypy_cache; do
     >"${TEST_CONFIG_ROOT}/.agents/skills/review-remediation-harness/${runtime_cache}/probe"
 done
 
+printf '%s\n' '{"entries":[{"path":"~/.agents/skills","exclude":["audit-codex-config","claude-review","sync-probe"]}]}' \
+  >"${TEST_CONFIG_ROOT}/.gemini/config/skills.json"
+
 AGENTS_LOCAL_CONFIG_ROOT="${TEST_CONFIG_ROOT}" "${TEST_REPOSITORY}/scripts/sync-from-local.sh" >/dev/null
 
 if [ ! -f "${TEST_REPOSITORY}/codex/skills/review-remediation-harness/pyproject.toml" ] ||
@@ -66,6 +69,21 @@ fi
 
 if [ ! -f "${TEST_REPOSITORY}/claude/skills/visualize-architecture-flow/SKILL.md" ]; then
   echo "Existing active Claude Code skill must remain in the repository." >&2
+  exit 1
+fi
+
+if ! grep -Fq '"sync-probe"' "${TEST_REPOSITORY}/gemini/config/skills.json"; then
+  echo "Gemini skills.json must be synced into the repository." >&2
+  exit 1
+fi
+
+if [ ! -f "${TEST_REPOSITORY}/gemini/config/hooks.json" ]; then
+  echo "Gemini hooks.json must be synced into the repository." >&2
+  exit 1
+fi
+
+if [ -L "${TEST_REPOSITORY}/codex/AGENTS.md" ] || ! cmp -s "${TEST_REPOSITORY}/codex/AGENTS.md" "${TEST_REPOSITORY}/claude/CLAUDE.md"; then
+  echo "Synced codex/AGENTS.md must remain a regular file identical to claude/CLAUDE.md." >&2
   exit 1
 fi
 
