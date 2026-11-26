@@ -2,9 +2,18 @@
   "entries": [
     {
       "path": "~/.agents/skills",
-      "exclude": [
-        "audit-codex-config",
-        "claude-review"
+      "include_only": [
+        "issue-to-pr",
+        "bug-investigation",
+        "create-pr",
+        "git-worktree-ops",
+        "sync-docs-code",
+        "principle-of-programming-reviewer",
+        "review-remediation-harness",
+        "handoff-prompt",
+        "grill-me",
+        "grill-with-docs",
+        "visualize-architecture-flow"
       ]
     }
   ]
